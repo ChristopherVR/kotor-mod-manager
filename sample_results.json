@@ -1,0 +1,170 @@
+{
+  "1313": {
+    "label": "Dialogue_Fixes",
+    "expected": "Override",
+    "status": "ok",
+    "has_tslpatchdata": false,
+    "has_tslpatcher_exe": false,
+    "has_holopatcher": false,
+    "has_override_folder": false,
+    "loose_override_files": [],
+    "exe_files": [],
+    "readme_files": [
+      "Readme.txt"
+    ],
+    "ini_files": [],
+    "other_dirs": [],
+    "total_files": 3,
+    "all_top_level": [
+      "[DIR] Corrections only",
+      "[DIR] PC Response Moderation version",
+      "Readme.txt"
+    ]
+  },
+  "491": {
+    "label": "HQ_Starfields",
+    "expected": "Override",
+    "status": "ok",
+    "has_tslpatchdata": false,
+    "has_tslpatcher_exe": false,
+    "has_holopatcher": false,
+    "has_override_folder": false,
+    "loose_override_files": [
+      "LSF_sky01.tga",
+      "LSF_sky02.tga",
+      "LSF_space01.tga",
+      "LSP_nebula01.tga",
+      "LSP_stars01.tga",
+      "LSP_stars02.tga",
+      "LYV_space01.tga"
+    ],
+    "exe_files": [],
+    "readme_files": [
+      "ReadMe.txt"
+    ],
+    "ini_files": [],
+    "other_dirs": [],
+    "total_files": 8,
+    "all_top_level": [
+      "LSF_sky01.tga",
+      "LSF_sky02.tga",
+      "LSF_space01.tga",
+      "LSP_nebula01.tga",
+      "LSP_stars01.tga",
+      "LSP_stars02.tga",
+      "LYV_space01.tga",
+      "ReadMe.txt"
+    ]
+  },
+  "1487": {
+    "label": "Saber_Throw",
+    "expected": "TSLPatcher",
+    "status": "ok",
+    "has_tslpatchdata": true,
+    "has_tslpatcher_exe": true,
+    "has_holopatcher": false,
+    "has_override_folder": false,
+    "loose_override_files": [
+      "src\\fp_saberthrow.nss"
+    ],
+    "exe_files": [
+      "TSLPatcher.exe"
+    ],
+    "readme_files": [
+      "README.rtf"
+    ],
+    "ini_files": [
+      "tslpatchdata\\changes.ini"
+    ],
+    "other_dirs": [],
+    "total_files": 7,
+    "all_top_level": [
+      "README.rtf",
+      "[DIR] src",
+      "[DIR] tslpatchdata",
+      "TSLPatcher.exe"
+    ]
+  },
+  "2321": {
+    "label": "Minor_Music",
+    "expected": "TSLPatcher",
+    "status": "ok",
+    "has_tslpatchdata": true,
+    "has_tslpatcher_exe": true,
+    "has_holopatcher": false,
+    "has_override_folder": false,
+    "loose_override_files": [],
+    "exe_files": [
+      "Minor music tweaks\\TSLPatcher.exe"
+    ],
+    "readme_files": [],
+    "ini_files": [
+      "Minor music tweaks\\tslpatchdata\\changes.ini"
+    ],
+    "other_dirs": [],
+    "total_files": 25,
+    "all_top_level": [
+      "[DIR] Minor music tweaks"
+    ]
+  },
+  "2729": {
+    "label": "K2_Swoops",
+    "expected": "HoloPatcher",
+    "status": "unpack_failed"
+  },
+  "2785": {
+    "label": "Kebla_Yurt",
+    "expected": "HoloPatcher",
+    "status": "ok",
+    "has_tslpatchdata": true,
+    "has_tslpatcher_exe": false,
+    "has_holopatcher": true,
+    "has_override_folder": false,
+    "loose_override_files": [],
+    "exe_files": [
+      "Kebla Yurt Revamp\\HoloPatcher.exe"
+    ],
+    "readme_files": [
+      "Kebla Yurt Revamp\\Readme.txt"
+    ],
+    "ini_files": [
+      "Kebla Yurt Revamp\\tslpatchdata\\changes.ini"
+    ],
+    "other_dirs": [],
+    "total_files": 4,
+    "all_top_level": [
+      "[DIR] Kebla Yurt Revamp"
+    ]
+  },
+  "1090": {
+    "label": "Senni_Vek",
+    "expected": "HoloPatcher",
+    "status": "ok",
+    "has_tslpatchdata": true,
+    "has_tslpatcher_exe": false,
+    "has_holopatcher": true,
+    "has_override_folder": false,
+    "loose_override_files": [],
+    "exe_files": [
+      "SVR1.2\\HoloPatcher.exe"
+    ],
+    "readme_files": [
+      "SVR1.2\\Readme.txt"
+    ],
+    "ini_files": [
+      "SVR1.2\\tslpatchdata\\namespaces.ini",
+      "SVR1.2\\tslpatchdata\\hulas\\changes.ini",
+      "SVR1.2\\tslpatchdata\\restore\\changes.ini"
+    ],
+    "other_dirs": [],
+    "total_files": 18,
+    "all_top_level": [
+      "[DIR] SVR1.2"
+    ]
+  },
+  "824": {
+    "label": "Ajunta_Pall",
+    "expected": "Manual",
+    "status": "unpack_failed"
+  }
+}

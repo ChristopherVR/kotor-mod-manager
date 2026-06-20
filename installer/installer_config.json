@@ -1,0 +1,123 @@
+{
+  "_version": 1,
+  "_comment": "Installer type configuration. Add or edit entries to support new patcher types without code changes.",
+
+  "holopatcher_search_paths": [
+    "HoloPatcher.exe",
+    "HoloPatcher/HoloPatcher.exe",
+    "C:/Program Files/HoloPatcher/HoloPatcher.exe",
+    "C:/Program Files (x86)/HoloPatcher/HoloPatcher.exe",
+    "C:/tools/HoloPatcher/HoloPatcher.exe"
+  ],
+
+  "installer_types": {
+
+    "holopatcher": {
+      "priority": 1,
+      "description": "HoloPatcher — fully headless CLI patcher (preferred)",
+      "detection": {
+        "exe_names": ["HoloPatcher.exe"],
+        "any_exe_required": true
+      },
+      "execution": {
+        "mode": "headless_cli",
+        "cli_template": ["{exe}", "--game-dir", "{game_dir}", "--tslpatchdata", "{tslpatchdata}", "--install"],
+        "namespace_flag": "--namespace-option-index",
+        "exit_codes_ok": [0, 1],
+        "timeout_sec": 600,
+        "progress_patterns": [
+          "^Patching\\s+(.+)$",
+          "^Copying\\s+(.+)$",
+          "^Installing\\s+(.+)$"
+        ]
+      }
+    },
+
+    "tslpatcher": {
+      "priority": 2,
+      "description": "TSLPatcher — all versions including legacy VB6 builds",
+      "detection": {
+        "requires_dir": "tslpatchdata",
+        "exe_names": [
+          "TSLPatcher.exe",
+          "patcher.exe",
+          "TSL_Patcher.exe",
+          "KOTORPatcher.exe",
+          "KOTORModder.exe",
+          "Patcher.exe",
+          "Installer.exe"
+        ]
+      },
+      "execution": {
+        "mode": "cascade",
+        "strategies": ["holopatcher_shim", "win32_automation", "pywinauto_automation", "gui_manual"],
+        "win32_automation": {
+          "enabled": true,
+          "window_title_substrings": ["TSL Patcher", "KOTOR Patcher", "Patcher", "Installer", "Modder"],
+          "path_control_classes": ["TEdit", "Edit", "TMemo", "RichEdit"],
+          "path_control_index": 0,
+          "install_buttons": ["Install Mod", "Install", "Patch", "Apply", "Go", "Run", "Execute", "Start"],
+          "cancel_buttons": ["Cancel", "Exit", "Close", "Quit"],
+          "completion_window_titles": ["Complete", "Success", "Done", "Finished", "Error"],
+          "completion_text_substrings": ["Completed!", "successfully installed", "Installation complete", "Done.", "Finished"],
+          "timeout_sec": 300,
+          "poll_interval_ms": 500,
+          "read_log_control_classes": ["TMemo", "RichEdit", "TListBox"],
+          "read_log_control_index": 0
+        },
+        "pywinauto_automation": {
+          "enabled": true,
+          "backends": ["win32", "uia"],
+          "window_title_re": ".*(?:TSL Patcher|KOTOR Patcher|Patcher|Installer|Modder).*",
+          "path_controls": ["TEdit:0", "Edit:0", "TMemo:0"],
+          "install_buttons": ["Install Mod", "Install", "Patch", "Apply", "Go"],
+          "completion_text": ["Completed!", "successfully installed", "Done.", "Finished"],
+          "timeout_sec": 300
+        },
+        "gui_manual": {
+          "enabled": true,
+          "clipboard_path": true
+        }
+      }
+    },
+
+    "tlk_replace": {
+      "priority": 3,
+      "description": "dialog.tlk file replacement — goes to game root",
+      "detection": {
+        "file_patterns": ["dialog.tlk", "dialogm.tlk"]
+      },
+      "execution": {
+        "mode": "file_copy",
+        "destination": "game_root",
+        "backup_existing": true
+      }
+    },
+
+    "override_copy": {
+      "priority": 4,
+      "description": "Loose files copied into game Override/ directory",
+      "detection": {
+        "dir_names": ["Override"],
+        "file_extensions": [".utc", ".utp", ".uti", ".2da", ".ncs", ".dlg", ".nss"]
+      },
+      "execution": {
+        "mode": "dir_merge",
+        "source_dir": "Override",
+        "destination_dir": "Override"
+      }
+    },
+
+    "direct_copy": {
+      "priority": 5,
+      "description": "Loose KOTOR files copied directly into Override/",
+      "detection": {
+        "file_extensions": [".utc", ".utp", ".uti", ".2da", ".ncs", ".dlg", ".nss", ".tpc", ".tga", ".mdl", ".mdx"]
+      },
+      "execution": {
+        "mode": "file_copy",
+        "destination": "Override"
+      }
+    }
+  }
+}
