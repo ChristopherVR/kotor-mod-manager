@@ -1,82 +1,19 @@
-name: Build & Release
+name: CI Build
+
+# Validation builds for pull requests and manual runs. Produces a downloadable
+# exe artifact but does NOT publish a release (that is release.yml's job).
+# Reuses the same build definition so behaviour matches the released artifact.
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: write   # needed to create releases
+  contents: read
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Sanity check (imports + config)
-        run: |
-          python -c "import installer.config_loader, installer.patcher_strategy, installer.pipeline, ui.app; print('imports OK')"
-
-      - name: Build executable
-        run: pyinstaller kotor_mod_installer.spec --noconfirm
-
-      - name: Verify build output
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "dist/KOTOR-Mod-Installer.exe")) {
-            Write-Error "Build did not produce the expected exe."
-            exit 1
-          }
-          Get-Item "dist/KOTOR-Mod-Installer.exe" | Select-Object Name, Length
-
-      - name: Package release zip
-        shell: pwsh
-        run: |
-          $stage = "release_stage"
-          New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item "dist/KOTOR-Mod-Installer.exe" $stage
-          if (Test-Path "README.md") { Copy-Item "README.md" $stage }
-          New-Item -ItemType Directory -Force "$stage/tools/HoloPatcher" | Out-Null
-          @"
-          Drop HoloPatcher.exe in this folder to enable fully-headless,
-          one-click-free installation of every TSLPatcher mod.
-
-          Get it from: https://github.com/NickHugi/PyKotor/releases
-          The app also works without it (it automates the TSLPatcher GUI instead).
-          "@ | Set-Content "$stage/tools/HoloPatcher/PUT-HoloPatcher.exe-HERE.txt"
-          Compress-Archive -Path "$stage/*" -DestinationPath "KOTOR-Mod-Installer-windows.zip" -Force
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: KOTOR-Mod-Installer-windows
-          path: KOTOR-Mod-Installer-windows.zip
-          retention-days: 30
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            KOTOR-Mod-Installer-windows.zip
-            dist/KOTOR-Mod-Installer.exe
-          generate_release_notes: true
-          fail_on_unmatched_files: true
+  build:
+    uses: ./.github/workflows/_build.yml
+    with:
+      make_release: false

@@ -11,6 +11,7 @@ from typing import Optional
 import customtkinter as ctk
 
 import config as cfg
+from installer._version import __version__
 from installer.detector import NamespaceOption
 from installer.pipeline import ModStatus, Pipeline, PipelineMod
 from scraper.build_scraper import BUILD_URLS, BuildMod, scrape_build
@@ -295,7 +296,7 @@ class ReadmeDialog(ctk.CTkToplevel):
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("KOTOR Mod Installer")
+        self.title(f"KOTOR Mod Installer  v{__version__}")
         self.geometry("1200x800")
         self.minsize(900, 620)
         self.configure(fg_color=BG)

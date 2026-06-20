@@ -9,6 +9,7 @@ assets, and declares hidden imports that PyInstaller's static analysis can miss.
 Build:  pyinstaller kotor_mod_installer.spec --noconfirm
 """
 
+import os
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas = [
@@ -16,6 +17,17 @@ datas = [
 ]
 binaries = []
 hiddenimports = []
+
+# Bundle the headless HoloPatcher engine INTO the app so the distributed exe is
+# fully self-contained — users never touch the tools/ folder. Fetched at build
+# time by tools/setup_holopatcher.py (locally and in CI).
+_holo = os.path.join("tools", "HoloPatcher", "HoloPatcher.exe")
+if os.path.exists(_holo):
+    datas += [(_holo, os.path.join("tools", "HoloPatcher"))]
+    print(f"[spec] Bundling HoloPatcher shim: {_holo}")
+else:
+    print("[spec] WARNING: HoloPatcher.exe not found — building without the "
+          "bundled headless shim. Run tools/setup_holopatcher.py first.")
 
 # customtkinter ships JSON themes + assets that must travel with the app.
 for pkg in ("customtkinter",):

@@ -132,11 +132,15 @@ def find_system_holopatcher() -> Optional[Path]:
     config = load_config()
     search = config.get("holopatcher_search_paths", [])
 
-    # Roots to resolve relative search paths against. app_dir() is the folder
-    # containing the .exe in a frozen build, so a dropped-in
-    # tools/HoloPatcher/HoloPatcher.exe next to the app is found.
+    # Roots to resolve relative search paths against, in priority order:
+    #   1. _bundle_root() — HoloPatcher bundled INSIDE the frozen exe (_MEIPASS)
+    #   2. app_dir()      — a copy dropped next to the .exe
+    #   3. user data dir
     base = app_dir()
+    bundle = _bundle_root()
     roots = [
+        bundle / "tools" / "HoloPatcher",
+        bundle / "tools",
         base / "tools" / "HoloPatcher",
         base / "tools",
         base,

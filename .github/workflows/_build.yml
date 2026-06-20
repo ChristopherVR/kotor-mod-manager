@@ -1,0 +1,104 @@
+name: _build (reusable)
+
+# Reusable workflow: builds the self-contained Windows exe (HoloPatcher bundled),
+# always uploads it as an artifact, and optionally publishes a GitHub Release.
+# Called by build.yml (PR / manual validation) and release.yml (tagged release).
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to build (tag/branch/sha). Empty = default."
+        type: string
+        required: false
+        default: ""
+      make_release:
+        description: "Publish a GitHub Release with the built artifacts."
+        type: boolean
+        required: false
+        default: false
+      tag:
+        description: "Tag name to release under (required when make_release)."
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Sanity check (imports + config)
+        run: python -c "import installer.config_loader, installer.patcher_strategy, installer.pipeline, ui.app; print('imports OK')"
+
+      - name: Fetch HoloPatcher shim (bundled into the exe)
+        run: python tools/setup_holopatcher.py
+
+      - name: Verify HoloPatcher shim present
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "tools/HoloPatcher/HoloPatcher.exe")) {
+            Write-Error "HoloPatcher.exe was not fetched — the build would not be self-contained."
+            exit 1
+          }
+          Get-Item "tools/HoloPatcher/HoloPatcher.exe" | Select-Object Name, Length
+
+      - name: Build executable
+        run: pyinstaller kotor_mod_installer.spec --noconfirm
+
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/KOTOR-Mod-Installer.exe")) {
+            Write-Error "Build did not produce the expected exe."
+            exit 1
+          }
+          Get-Item "dist/KOTOR-Mod-Installer.exe" | Select-Object Name, Length
+
+      - name: Package release zip
+        shell: pwsh
+        run: |
+          $stage = "release_stage"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "dist/KOTOR-Mod-Installer.exe" $stage
+          if (Test-Path "README.md") { Copy-Item "README.md" $stage }
+          if (Test-Path "CHANGELOG.md") { Copy-Item "CHANGELOG.md" $stage }
+          # HoloPatcher is bundled inside the exe — nothing to drop in.
+          Compress-Archive -Path "$stage/*" -DestinationPath "KOTOR-Mod-Installer-windows.zip" -Force
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: KOTOR-Mod-Installer-windows
+          path: KOTOR-Mod-Installer-windows.zip
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: inputs.make_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: |
+            KOTOR-Mod-Installer-windows.zip
+            dist/KOTOR-Mod-Installer.exe
+          body_path: CHANGELOG.md
+          fail_on_unmatched_files: true

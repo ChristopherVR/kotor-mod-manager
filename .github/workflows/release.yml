@@ -1,0 +1,91 @@
+name: Release
+
+# On every push to main: compute the next semver from Conventional Commits
+# (git-cliff), regenerate CHANGELOG.md, bump installer/_version.py, tag it, and
+# build + publish the release. One workflow run does bump → build → release, so
+# it does not depend on a token-pushed tag re-triggering CI.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    # Skip the bot's own release commits to avoid loops.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.ver.outputs.release }}
+      tag: ${{ steps.ver.outputs.next }}
+    steps:
+      - name: Checkout (full history + tags)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      - name: Compute next version
+        id: ver
+        run: |
+          NEXT="$(git cliff --bumped-version 2>/dev/null | tr -d '[:space:]')"
+          LAST="$(git describe --tags --abbrev=0 2>/dev/null || echo '')"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+          if [ -z "$NEXT" ] || [ "$NEXT" = "$LAST" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "No releasable changes (next='$NEXT', last='$LAST')."
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "Releasing $NEXT (previous: ${LAST:-none})."
+          fi
+
+      - name: Regenerate changelog
+        if: steps.ver.outputs.release == 'true'
+        run: git cliff --bump -o CHANGELOG.md
+
+      - name: Bump version file
+        if: steps.ver.outputs.release == 'true'
+        run: |
+          NEXT="${{ steps.ver.outputs.next }}"
+          VER="${NEXT#v}"
+          cat > installer/_version.py <<EOF
+          """Single source of truth for the application version.
+
+          Bumped automatically by the release pipeline (git-cliff). Do not edit by hand.
+          """
+
+          __version__ = "$VER"
+          EOF
+
+      - name: Commit, tag, and push
+        if: steps.ver.outputs.release == 'true'
+        run: |
+          NEXT="${{ steps.ver.outputs.next }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md installer/_version.py
+          git commit -m "chore(release): $NEXT"
+          git tag -a "$NEXT" -m "$NEXT"
+          git push origin HEAD:${{ github.ref_name }}
+          git push origin "$NEXT"
+
+  build-release:
+    needs: version
+    if: needs.version.outputs.release == 'true'
+    uses: ./.github/workflows/_build.yml
+    with:
+      ref: ${{ needs.version.outputs.tag }}
+      make_release: true
+      tag: ${{ needs.version.outputs.tag }}
+    permissions:
+      contents: write

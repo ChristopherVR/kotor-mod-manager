@@ -33,10 +33,11 @@ open-source reimplementation that reads the *identical* `tslpatchdata` /
 `changes.ini` / `namespaces.ini` format. One HoloPatcher engine installs **any**
 TSLPatcher mod with no GUI.
 
-To enable it, drop `HoloPatcher.exe` into `tools/HoloPatcher/` next to the app
-(or run `python tools/setup_holopatcher.py`), or set the `KOTOR_HOLOPATCHER_EXE`
-environment variable. The app shows the shim status in the bottom bar. Without
-it, the app automates the TSLPatcher GUI instead.
+**HoloPatcher is bundled inside the released exe automatically** — you don't need
+to download or drop in anything. The build fetches it via
+`tools/setup_holopatcher.py` and embeds it. The bottom bar shows the shim status.
+You can still override the bundled copy with the `KOTOR_HOLOPATCHER_EXE`
+environment variable or a `tools/HoloPatcher/HoloPatcher.exe` next to the app.
 
 ## Run from source
 
@@ -53,10 +54,24 @@ pyinstaller kotor_mod_installer.spec --noconfirm
 # → dist/KOTOR-Mod-Installer.exe
 ```
 
-## CI
+## Versioning & releases
 
-`.github/workflows/build.yml` builds the Windows exe on every push and attaches a
-zipped release on any `v*` tag (e.g. `git tag v1.0.0 && git push --tags`).
+Versioning is automatic and driven by [Conventional Commits](https://www.conventionalcommits.org):
+
+- Every push to `main` runs `.github/workflows/release.yml`, which uses
+  [git-cliff](https://git-cliff.org) (`cliff.toml`) to compute the next semver
+  (`feat:` → minor, `fix:`/other → patch, `BREAKING CHANGE` → major),
+  regenerate `CHANGELOG.md`, bump `installer/_version.py`, tag it, and build +
+  publish the GitHub Release.
+- If a push contains no release-worthy commits, no version is cut.
+- Pull requests and manual runs build a validation artifact via
+  `.github/workflows/build.yml` (no release).
+- Both paths share `.github/workflows/_build.yml`, so CI builds match released
+  ones exactly. The released exe is fully self-contained (HoloPatcher bundled).
+
+Commit messages should follow Conventional Commits, e.g. `feat: add pause/resume`,
+`fix(pipeline): handle multi-file mods`, or `feat!: ...` / a `BREAKING CHANGE:`
+footer for a major bump.
 
 ## License / disclaimer
 
