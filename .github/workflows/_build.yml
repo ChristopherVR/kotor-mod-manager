@@ -1,24 +1,22 @@
 name: _build (reusable)
 
-# Reusable workflow: builds the self-contained Windows exe (HoloPatcher bundled),
-# always uploads it as an artifact, and optionally publishes a GitHub Release.
-# Called by build.yml (PR / manual validation) and release.yml (tagged release).
+# Reusable workflow: builds the Python backend sidecar (PyInstaller, HoloPatcher
+# bundled), then the Tauri desktop app (React + Rust) into a self-contained NSIS
+# installer. Always uploads the installer as an artifact; optionally publishes a
+# GitHub Release. Called by build.yml (PR/manual) and release.yml (tagged).
 
 on:
   workflow_call:
     inputs:
       ref:
-        description: "Git ref to build (tag/branch/sha). Empty = default."
         type: string
         required: false
         default: ""
       make_release:
-        description: "Publish a GitHub Release with the built artifacts."
         type: boolean
         required: false
         default: false
       tag:
-        description: "Tag name to release under (required when make_release)."
         type: string
         required: false
         default: ""
@@ -35,61 +33,82 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
+      # ---- Python backend sidecar ----------------------------------------
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
+      - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Sanity check (imports + config)
-        run: python -c "import installer.config_loader, installer.patcher_strategy, installer.pipeline, ui.app; print('imports OK')"
+      - name: Backend sanity check
+        run: python -c "import backend.server, installer.pipeline, installer.patcher_strategy; print('backend imports OK')"
 
-      - name: Fetch HoloPatcher shim (bundled into the exe)
+      - name: Fetch HoloPatcher shim
         run: python tools/setup_holopatcher.py
 
-      - name: Verify HoloPatcher shim present
+      - name: Verify HoloPatcher present
         shell: pwsh
         run: |
           if (-not (Test-Path "tools/HoloPatcher/HoloPatcher.exe")) {
-            Write-Error "HoloPatcher.exe was not fetched — the build would not be self-contained."
-            exit 1
+            Write-Error "HoloPatcher.exe missing — sidecar would not be self-contained."; exit 1
           }
-          Get-Item "tools/HoloPatcher/HoloPatcher.exe" | Select-Object Name, Length
 
-      - name: Build executable
-        run: pyinstaller kotor_mod_installer.spec --noconfirm
+      - name: Build backend sidecar (PyInstaller)
+        run: pyinstaller backend.spec --noconfirm
 
-      - name: Verify build output
+      - name: Stage sidecar for Tauri (target-triple name)
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist/KOTOR-Mod-Installer.exe")) {
-            Write-Error "Build did not produce the expected exe."
-            exit 1
-          }
-          Get-Item "dist/KOTOR-Mod-Installer.exe" | Select-Object Name, Length
+          $triple = (rustc -Vv | Select-String 'host:').ToString().Split(' ')[1]
+          if (-not $triple) { $triple = "x86_64-pc-windows-msvc" }
+          New-Item -ItemType Directory -Force "frontend/src-tauri/binaries" | Out-Null
+          Copy-Item "dist/kotor-backend.exe" "frontend/src-tauri/binaries/kotor-backend-$triple.exe" -Force
+          Get-Item "frontend/src-tauri/binaries/kotor-backend-$triple.exe" | Select-Object Name, Length
 
-      - name: Package release zip
+      # ---- Frontend (React) + Tauri (Rust) -------------------------------
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Tauri app + installer
+        working-directory: frontend
+        run: npx tauri build
+
+      - name: Locate installer
+        id: artifact
         shell: pwsh
         run: |
-          $stage = "release_stage"
-          New-Item -ItemType Directory -Force $stage | Out-Null
-          Copy-Item "dist/KOTOR-Mod-Installer.exe" $stage
-          if (Test-Path "README.md") { Copy-Item "README.md" $stage }
-          if (Test-Path "CHANGELOG.md") { Copy-Item "CHANGELOG.md" $stage }
-          # HoloPatcher is bundled inside the exe — nothing to drop in.
-          Compress-Archive -Path "$stage/*" -DestinationPath "KOTOR-Mod-Installer-windows.zip" -Force
+          $nsis = Get-ChildItem "frontend/src-tauri/target/release/bundle/nsis/*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $nsis) { Write-Error "NSIS installer not found."; exit 1 }
+          Write-Output "Installer: $($nsis.FullName) ($([math]::Round($nsis.Length/1MB,1)) MB)"
+          "path=$($nsis.FullName)" >> $env:GITHUB_OUTPUT
 
-      - name: Upload build artifact
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KOTOR-Mod-Installer-windows
-          path: KOTOR-Mod-Installer-windows.zip
+          name: KOTOR-Mod-Installer-Setup
+          path: ${{ steps.artifact.outputs.path }}
           retention-days: 30
 
       - name: Publish GitHub Release
@@ -97,8 +116,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
-          files: |
-            KOTOR-Mod-Installer-windows.zip
-            dist/KOTOR-Mod-Installer.exe
+          files: ${{ steps.artifact.outputs.path }}
           body_path: CHANGELOG.md
           fail_on_unmatched_files: true

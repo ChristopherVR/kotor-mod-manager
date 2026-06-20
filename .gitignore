@@ -43,3 +43,15 @@ build_log.txt
 build_detail.json
 mod_analysis.json
 ordered_mods.json
+backend_build_log.txt
+tauri_build_log.txt
+
+# ── Frontend (Tauri + React) ───────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/package-lock.json.bak
+# Rust / Tauri build output
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
+# Sidecar binaries are produced at build time (PyInstaller), never committed
+frontend/src-tauri/binaries/

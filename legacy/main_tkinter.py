@@ -1,4 +1,9 @@
-"""KOTOR Mod Installer — entry point."""
+"""KOTOR Mod Installer — LEGACY CustomTkinter entry point.
+
+Superseded by the Tauri + React frontend (frontend/) talking to the FastAPI
+backend (backend/server.py). Kept as a no-frills fallback GUI.
+Run from the project root with:  python -m legacy.main_tkinter
+"""
 
 import sys
 
@@ -26,7 +31,7 @@ def main():
         print(f"  pip install {' '.join(missing)}")
         sys.exit(1)
 
-    from ui.app import App
+    from legacy.ui.app import App
     app = App()
     app.mainloop()
 

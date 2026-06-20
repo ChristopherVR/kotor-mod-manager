@@ -19,11 +19,33 @@ interaction as possible.
 - DeadlyStream login with credentials stored in Windows Credential Manager.
 - Data-driven installer config (`installer/installer_config.json`) — add new
   patcher types / legacy exe names without code changes.
+- Modern **Tauri + React + shadcn/ui** desktop frontend over a **Python (FastAPI)**
+  backend. The whole Python pipeline is reused unchanged behind the API.
 
-## Download & run (no Python needed)
+## Architecture
 
-Grab the latest `KOTOR-Mod-Installer-windows.zip` from the
-[Releases](../../releases) page, unzip, and run `KOTOR-Mod-Installer.exe`.
+```
+Tauri shell (Rust)  ──spawns──▶  Python sidecar (PyInstaller exe)
+  React + shadcn UI                FastAPI: REST + WebSocket
+       │  http/ws 127.0.0.1:8756        │
+       └───────────────────────────────┘
+                                   pipeline / scraper / detector /
+                                   patcher_strategy  (+ bundled HoloPatcher)
+```
+
+- `frontend/` — Tauri v2 app (React, Vite, Tailwind, shadcn/ui). `src-tauri/` is
+  the Rust shell that spawns the backend sidecar on launch and kills it on exit.
+- `backend/server.py` — FastAPI wrapper exposing the pipeline; streams live
+  status/log/progress over a WebSocket.
+- `installer/`, `scraper/`, `config.py` — unchanged Python backend logic.
+- `legacy/` — the original CustomTkinter UI, kept as a no-frills fallback
+  (`python -m legacy.main_tkinter`).
+
+## Download & run (no dependencies needed)
+
+Grab the latest `*-setup.exe` from the [Releases](../../releases) page and run
+it. The installer is fully self-contained — the Python backend and HoloPatcher
+are bundled; no Python, Node, or Rust required on the target machine.
 
 ## The HoloPatcher shim ("dynamic patcher")
 
@@ -39,19 +61,41 @@ to download or drop in anything. The build fetches it via
 You can still override the bundled copy with the `KOTOR_HOLOPATCHER_EXE`
 environment variable or a `tools/HoloPatcher/HoloPatcher.exe` next to the app.
 
-## Run from source
+## Run from source (dev)
+
+Prerequisites: Python 3.12, Node 20+, Rust (stable).
 
 ```bash
+# 1. Python backend
 pip install -r requirements.txt
-python main.py
+python tools/setup_holopatcher.py          # fetch the headless shim once
+python -m backend.server --port 8756       # runs the API (leave running)
+
+# 2. Frontend (in another terminal)
+cd frontend
+npm install
+npm run tauri dev                          # spawns its own backend + opens the app
 ```
 
-## Build the executable locally
+`npm run tauri dev` launches the Rust shell, which itself spawns the backend
+sidecar — so for a pure dev loop you usually only need step 2. Run the backend
+manually (step 1) when iterating on Python, or to use the UI in a plain browser
+at `http://localhost:5173`.
+
+The legacy Tkinter UI still works: `python -m legacy.main_tkinter`.
+
+## Build the installer locally
 
 ```bash
+# Build the Python sidecar, stage it for Tauri, then build the app.
 pip install pyinstaller
-pyinstaller kotor_mod_installer.spec --noconfirm
-# → dist/KOTOR-Mod-Installer.exe
+python tools/setup_holopatcher.py
+pyinstaller backend.spec --noconfirm
+mkdir -p frontend/src-tauri/binaries
+cp dist/kotor-backend.exe \
+   "frontend/src-tauri/binaries/kotor-backend-$(rustc -vV | sed -n 's/host: //p').exe"
+cd frontend && npm install && npx tauri build
+# → frontend/src-tauri/target/release/bundle/nsis/*-setup.exe
 ```
 
 ## Versioning & releases
@@ -66,8 +110,11 @@ Versioning is automatic and driven by [Conventional Commits](https://www.convent
 - If a push contains no release-worthy commits, no version is cut.
 - Pull requests and manual runs build a validation artifact via
   `.github/workflows/build.yml` (no release).
-- Both paths share `.github/workflows/_build.yml`, so CI builds match released
-  ones exactly. The released exe is fully self-contained (HoloPatcher bundled).
+- Both paths share `.github/workflows/_build.yml`, which builds the Python
+  sidecar then the Tauri installer, so CI builds match released ones exactly.
+  The released installer is fully self-contained (Python backend + HoloPatcher
+  bundled). The release bump also syncs the version into `tauri.conf.json`,
+  `frontend/package.json`, and `Cargo.toml`.
 
 Commit messages should follow Conventional Commits, e.g. `feat: add pause/resume`,
 `fix(pipeline): handle multi-file mods`, or `feat!: ...` / a `BREAKING CHANGE:`

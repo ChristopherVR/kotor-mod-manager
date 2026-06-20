@@ -8,6 +8,9 @@ rarfile>=4.1
 tqdm>=4.66.0
 keyring>=24.0.0
 cryptography>=41.0.0
+# Backend API (served to the Tauri + React frontend)
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
 # Optional: improves TSLPatcher GUI automation for .NET/UIA-based patchers.
 # The Win32 (ctypes) automation path works without this; pywinauto is a
 # secondary fallback in the strategy cascade.

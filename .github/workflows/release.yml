@@ -53,11 +53,12 @@ jobs:
         if: steps.ver.outputs.release == 'true'
         run: git cliff --bump -o CHANGELOG.md
 
-      - name: Bump version file
+      - name: Bump version across the project
         if: steps.ver.outputs.release == 'true'
         run: |
           NEXT="${{ steps.ver.outputs.next }}"
           VER="${NEXT#v}"
+          # Python backend version (shown in app + API)
           cat > installer/_version.py <<EOF
           """Single source of truth for the application version.
 
@@ -66,6 +67,14 @@ jobs:
 
           __version__ = "$VER"
           EOF
+          # Tauri app version (drives the installer/exe version)
+          tmp=$(mktemp)
+          jq --arg v "$VER" '.version = $v' frontend/src-tauri/tauri.conf.json > "$tmp" && mv "$tmp" frontend/src-tauri/tauri.conf.json
+          # Frontend package version
+          jq --arg v "$VER" '.version = $v' frontend/package.json > "$tmp" && mv "$tmp" frontend/package.json
+          # Rust crate version
+          sed -i -E "0,/^version = \".*\"/s//version = \"$VER\"/" frontend/src-tauri/Cargo.toml
+          echo "Bumped to $VER"
 
       - name: Commit, tag, and push
         if: steps.ver.outputs.release == 'true'
@@ -73,7 +82,8 @@ jobs:
           NEXT="${{ steps.ver.outputs.next }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md installer/_version.py
+          git add CHANGELOG.md installer/_version.py \
+            frontend/src-tauri/tauri.conf.json frontend/package.json frontend/src-tauri/Cargo.toml
           git commit -m "chore(release): $NEXT"
           git tag -a "$NEXT" -m "$NEXT"
           git push origin HEAD:${{ github.ref_name }}
