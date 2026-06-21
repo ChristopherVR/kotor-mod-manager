@@ -1,7 +1,18 @@
-import { useMemo } from "react";
+import { Fragment, useMemo, type ReactNode } from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/lib/i18n";
+
+// Render inline **bold** segments within a line.
+function inline(text: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") ? (
+      <strong key={i} className="font-medium text-foreground">{part.slice(2, -2)}</strong>
+    ) : (
+      <Fragment key={i}>{part}</Fragment>
+    )
+  );
+}
 
 interface WhatsNewProps {
   open: boolean;
@@ -80,13 +91,13 @@ export function WhatsNew({ open, version, notes, onClose }: WhatsNewProps) {
             return (
               <ul key={i} className="list-disc space-y-1 pl-5 text-muted-foreground">
                 {b.items.map((it, j) => (
-                  <li key={j} className="leading-relaxed">{it}</li>
+                  <li key={j} className="leading-relaxed">{inline(it)}</li>
                 ))}
               </ul>
             );
           }
           return (
-            <p key={i} className="leading-relaxed text-muted-foreground">{b.text}</p>
+            <p key={i} className="leading-relaxed text-muted-foreground">{inline(b.text)}</p>
           );
         })}
       </div>
