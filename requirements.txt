@@ -6,7 +6,7 @@ rarfile>=4.1
 keyring>=24.0.0
 cryptography>=41.0.0
 # Used by tools/setup-style scripts (icon generation, analysis scripts)
-pillow>=10.0.0
+pillow>=12.2.0
 # Backend API (served to the Tauri + React frontend)
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
