@@ -32,6 +32,46 @@ export async function pickDirectory(): Promise<string | null> {
   }
 }
 
+/**
+ * Subscribe to OS file/folder drag-drop onto the webview. Returns an
+ * unsubscribe function. In a plain browser this is a no-op.
+ */
+export async function onFilesDropped(
+  cb: (paths: string[]) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  try {
+    const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+    const unlisten = await getCurrentWebview().onDragDropEvent((e) => {
+      if (e.payload.type === "drop") cb(e.payload.paths);
+    });
+    return unlisten;
+  } catch {
+    return () => {};
+  }
+}
+
+/**
+ * Subscribe to drag-drop hover state (enter/over vs leave/drop) so the UI can
+ * highlight a drop zone. Returns an unsubscribe function; no-op in a browser.
+ */
+export async function onDragHover(
+  cb: (active: boolean) => void,
+): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  try {
+    const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+    const unlisten = await getCurrentWebview().onDragDropEvent((e) => {
+      const type = e.payload.type;
+      if (type === "enter" || type === "over") cb(true);
+      else cb(false);
+    });
+    return unlisten;
+  } catch {
+    return () => {};
+  }
+}
+
 /** Pick a single executable file (used for the custom patcher path). */
 export async function pickFile(
   extensions: string[] = ["exe"],

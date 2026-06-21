@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Play, Pause, Square, AlertTriangle, RotateCcw, Download, X,
+  Play, Pause, Square, AlertTriangle, RotateCcw, Download, X, FolderInput, UploadCloud,
 } from "lucide-react";
 import { api, type BuildInfo, type BuildMod } from "@/lib/api";
-import { pickDirectory } from "@/lib/tauri";
+import { pickDirectory, onFilesDropped, onDragHover } from "@/lib/tauri";
 import { ModList, type ModRuntime } from "@/components/ModList";
 import { BuildModDetail } from "@/components/BuildModDetail";
 import { Button } from "@/components/ui/button";
@@ -35,22 +35,91 @@ interface BuildsViewProps {
   setRunning: (v: boolean) => void;
   setPaused: (v: boolean) => void;
   requestLogin: () => void;
+  activeProfile: string;
 }
 
 export function BuildsView(props: BuildsViewProps) {
   const {
     ready, loggedIn, builds, selectedBuild, onSelectBuild, mods, setMods, runtime, resetRuntime,
     activeFileId, running, paused, overall, done, errors, patcherMod, clearPatcher, addLog,
-    setRunning, setPaused, requestLogin,
+    setRunning, setPaused, requestLogin, activeProfile,
   } = props;
 
   const t = useT();
   const [loading, setLoading] = useState(false);
   const [unattended, setUnattended] = useState(false);
   const [openMod, setOpenMod] = useState<BuildMod | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dragActive, setDragActive] = useState(false);
+
+  const buildGame = builds.find((b) => b.key === selectedBuild)?.game ?? mods[0]?.game ?? "";
 
   const labelFor = (key: string) => builds.find((b) => b.key === key)?.label ?? key;
   const patcherName = patcherMod ? mods.find((m) => m.file_id === patcherMod)?.name : null;
+
+  // Default to ALL mods selected whenever the loaded mod list changes.
+  useEffect(() => {
+    setSelected(new Set(mods.map((m) => m.file_id)));
+  }, [mods]);
+
+  const toggleMod = (fileId: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(fileId)) next.delete(fileId);
+      else next.add(fileId);
+      return next;
+    });
+  };
+  const selectAll = () => setSelected(new Set(mods.map((m) => m.file_id)));
+  const selectNone = () => setSelected(new Set());
+
+  const selectedCount = useMemo(
+    () => mods.filter((m) => selected.has(m.file_id)).length,
+    [mods, selected],
+  );
+
+  // Import a dropped folder of mods, or a single archive.
+  const importFolder = async (path: string) => {
+    if (!buildGame) { addLog(t("builds.importNoGame"), "warning"); return; }
+    try {
+      addLog(t("builds.importingFolder", { path }), "info");
+      await api.importFolder({ game: buildGame, path, profile: activeProfile || undefined });
+    } catch (e: any) {
+      addLog(t("builds.importFailed", { error: e?.message ?? "error" }), "error");
+    }
+  };
+  const importArchive = async (path: string) => {
+    if (!buildGame) { addLog(t("builds.importNoGame"), "warning"); return; }
+    try {
+      addLog(t("builds.importingMod", { path }), "info");
+      await api.importMod({ game: buildGame, path, profile: activeProfile || undefined });
+    } catch (e: any) {
+      addLog(t("builds.importFailed", { error: e?.message ?? "error" }), "error");
+    }
+  };
+
+  const pickImportFolder = async () => {
+    const dir = await pickDirectory();
+    if (dir) importFolder(dir);
+  };
+
+  // Register OS drag-drop listeners (Tauri only; no-op in a browser).
+  useEffect(() => {
+    let disposed = false;
+    const cleanups: Array<() => void> = [];
+    onFilesDropped((paths) => {
+      setDragActive(false);
+      for (const p of paths) {
+        const low = p.toLowerCase();
+        if (low.endsWith(".zip") || low.endsWith(".7z") || low.endsWith(".rar")) importArchive(p);
+        else importFolder(p);
+      }
+    }).then((un) => { if (disposed) un(); else cleanups.push(un); });
+    onDragHover((active) => setDragActive(active))
+      .then((un) => { if (disposed) un(); else cleanups.push(un); });
+    return () => { disposed = true; cleanups.forEach((c) => c()); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildGame, activeProfile]);
 
   const loadBuild = async () => {
     setLoading(true);
@@ -69,8 +138,10 @@ export function BuildsView(props: BuildsViewProps) {
   const startInstall = async () => {
     if (!loggedIn) { requestLogin(); return; }
     if (mods.length === 0) { addLog("Load a mod list first.", "warning"); return; }
+    if (selectedCount === 0) { addLog(t("builds.selectNoneWarn"), "warning"); return; }
+    const fileIds = Array.from(selected);
     try {
-      await api.startInstall(selectedBuild, unattended);
+      await api.startInstall(selectedBuild, unattended, undefined, fileIds);
       setRunning(true);
     } catch (e: any) {
       if (e?.data?.error === "game_path_required") {
@@ -78,7 +149,7 @@ export function BuildsView(props: BuildsViewProps) {
         const dir = await pickDirectory();
         if (!dir) return;
         try {
-          await api.startInstall(selectedBuild, unattended, dir);
+          await api.startInstall(selectedBuild, unattended, dir, fileIds);
           setRunning(true);
         } catch (e2: any) {
           addLog(`Start failed: ${e2?.message}`, "error");
@@ -155,20 +226,57 @@ export function BuildsView(props: BuildsViewProps) {
         <Button variant="secondary" size="sm" onClick={loadBuild} disabled={loading || running}>
           <Download /> {loading ? t("builds.loading") : t("builds.loadList")}
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={pickImportFolder}
+          disabled={running}
+          title={t("builds.importFolderHint")}
+        >
+          <FolderInput /> {t("builds.importFolder")}
+        </Button>
+        {mods.length > 0 && !running && (
+          <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+            <span>{t("builds.selectedCount", { selected: selectedCount, total: mods.length })}</span>
+            <Button variant="ghost" size="sm" onClick={selectAll}>{t("builds.selectAll")}</Button>
+            <Button variant="ghost" size="sm" onClick={selectNone}>{t("builds.selectNone")}</Button>
+          </div>
+        )}
+      </div>
+
+      {/* Drop zone hint */}
+      <div
+        className={cn(
+          "mx-5 mt-3 flex items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-2.5 text-xs transition-colors",
+          dragActive
+            ? "border-primary bg-primary/10 text-primary"
+            : "border-border/60 text-muted-foreground"
+        )}
+      >
+        <UploadCloud className="size-4 shrink-0" />
+        <span>{t("builds.dropHint")}</span>
       </div>
 
       {/* Mod list */}
       <div className="min-h-0 flex-1 p-4">
         <div className="flex h-full flex-col rounded-lg border bg-card/30 p-2">
-          <ModList mods={mods} runtime={runtime} activeFileId={activeFileId} onOpenMod={setOpenMod} />
+          <ModList
+            mods={mods}
+            runtime={runtime}
+            activeFileId={activeFileId}
+            onOpenMod={setOpenMod}
+            selectable={!running}
+            selected={selected}
+            onToggle={toggleMod}
+          />
         </div>
       </div>
 
       {/* Sticky action bar */}
       <footer className="flex items-center gap-3 border-t bg-card/40 px-5 py-3">
         {!running ? (
-          <Button onClick={startInstall} disabled={!ready || mods.length === 0}>
-            <Play /> {t("builds.installAll")}
+          <Button onClick={startInstall} disabled={!ready || mods.length === 0 || selectedCount === 0}>
+            <Play /> {t("builds.installSelected", { count: selectedCount })}
           </Button>
         ) : (
           <>

@@ -111,6 +111,7 @@ export type WsEvent =
   | { type: "progress"; file_id: string; pct: number; kb: number; total_kb: number }
   | { type: "install_progress"; file_id: string; pct: number; label: string }
   | { type: "update_progress"; pct: number; downloaded: number; total: number }
+  | { type: "library"; event: "import_folder_done"; count: number; [k: string]: unknown }
   | { type: "pipeline"; event: "started" | "finished"; [k: string]: unknown };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -145,10 +146,15 @@ export const api = {
   loadBuild: (key: string) =>
     req<{ ok: boolean; build_key: string; mods: BuildMod[] }>(
       `/api/builds/${key}/load`, { method: "POST" }),
-  startInstall: (build_key: string, unattended: boolean, game_path?: string) =>
+  startInstall: (
+    build_key: string,
+    unattended: boolean,
+    game_path?: string,
+    selected_file_ids?: string[],
+  ) =>
     req<{ ok: boolean; total: number; game_path: string }>("/api/install/start", {
       method: "POST",
-      body: JSON.stringify({ build_key, unattended, game_path }),
+      body: JSON.stringify({ build_key, unattended, game_path, selected_file_ids }),
     }),
   control: (action: "pause" | "resume" | "stop" | "retry") =>
     req<{ ok: boolean; action: string }>(`/api/install/${action}`, { method: "POST" }),
@@ -196,6 +202,16 @@ export const api = {
   conflicts: (profile: string) =>
     req<{ conflicts: Conflict[] }>(
       `/api/conflicts?profile=${encodeURIComponent(profile)}`),
+  importFolder: (body: { game: string; path: string; profile?: string }) =>
+    req<{ ok: boolean; count: number }>("/api/library/import-folder", {
+      method: "POST",
+      body: JSON.stringify({ ...body, unattended: true }),
+    }),
+  importMod: (body: { game: string; path: string; profile?: string }) =>
+    req<{ ok: boolean; detected_method?: string }>("/api/library/import", {
+      method: "POST",
+      body: JSON.stringify({ ...body, unattended: true }),
+    }),
   modInfo: (fileId: string, slug: string, game: string) =>
     req<ModInfo>(
       `/api/mod/info?file_id=${encodeURIComponent(fileId)}&slug=${encodeURIComponent(slug)}&game=${game}`),

@@ -11,9 +11,18 @@ interface ConflictsViewProps {
   profiles: Profile[];
   activeProfile: string;
   setActiveProfile: (id: string) => void;
+  addLog: (message: string, tag?: string) => void;
+  onResolved: () => void;
 }
 
-export function ConflictsView({ refreshTick, profiles, activeProfile, setActiveProfile }: ConflictsViewProps) {
+export function ConflictsView({
+  refreshTick,
+  profiles,
+  activeProfile,
+  setActiveProfile,
+  addLog,
+  onResolved,
+}: ConflictsViewProps) {
   const t = useT();
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,6 +41,11 @@ export function ConflictsView({ refreshTick, profiles, activeProfile, setActiveP
   }, [activeProfile]);
 
   useEffect(() => { load(); }, [load, refreshTick]);
+
+  const handleResolved = useCallback(() => {
+    load();
+    onResolved();
+  }, [load, onResolved]);
 
   const switchProfile = (id: string) => {
     setActiveProfile(id);
@@ -70,7 +84,13 @@ export function ConflictsView({ refreshTick, profiles, activeProfile, setActiveP
         ) : (
           <div className="mx-auto max-w-3xl space-y-3">
             {conflicts.map((c) => (
-              <ConflictCard key={c.id} conflict={c} />
+              <ConflictCard
+                key={c.id}
+                conflict={c}
+                profile={activeProfile}
+                addLog={addLog}
+                onResolved={handleResolved}
+              />
             ))}
           </div>
         )}

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { BuildMod, ModStatus } from "@/lib/api";
 import { STATUS_META, ACTIVE_STATUSES } from "@/lib/status";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
@@ -21,10 +22,25 @@ export const DEFAULT_RUNTIME: ModRuntime = {
   progressLabel: "",
 };
 
-function Row({ mod, rt, onOpen }: { mod: BuildMod; rt: ModRuntime; onOpen?: () => void }) {
+function Row({
+  mod,
+  rt,
+  onOpen,
+  selectable,
+  selected,
+  onToggle,
+}: {
+  mod: BuildMod;
+  rt: ModRuntime;
+  onOpen?: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggle?: (fileId: string) => void;
+}) {
   const meta = STATUS_META[rt.status];
   const active = ACTIVE_STATUSES.includes(rt.status);
   const showBar = active && (rt.progress > 0 || rt.status !== "WAITING_PATCHER");
+  const deemphasized = selectable && !selected;
 
   return (
     <div
@@ -40,10 +56,20 @@ function Row({ mod, rt, onOpen }: { mod: BuildMod; rt: ModRuntime; onOpen?: () =
       className={cn(
         "flex flex-col gap-1 rounded-md border border-transparent px-3 py-2 transition-colors",
         active ? "bg-accent/40 border-border" : "hover:bg-card/60",
+        deemphasized && "opacity-50",
         onOpen && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       )}
     >
       <div className="flex items-center gap-3">
+        {selectable && (
+          <div onClick={(e) => e.stopPropagation()} className="flex shrink-0 items-center">
+            <Checkbox
+              checked={!!selected}
+              onCheckedChange={() => onToggle?.(mod.file_id)}
+              aria-label={mod.name}
+            />
+          </div>
+        )}
         <span className="w-8 shrink-0 text-right font-mono text-xs text-muted-foreground">
           {mod.install_order}
         </span>
@@ -75,11 +101,17 @@ export function ModList({
   runtime,
   activeFileId,
   onOpenMod,
+  selectable,
+  selected,
+  onToggle,
 }: {
   mods: BuildMod[];
   runtime: Record<string, ModRuntime>;
   activeFileId: string | null;
   onOpenMod?: (mod: BuildMod) => void;
+  selectable?: boolean;
+  selected?: Set<string>;
+  onToggle?: (fileId: string) => void;
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -107,6 +139,9 @@ export function ModList({
           mod={m}
           rt={runtime[m.file_id] ?? DEFAULT_RUNTIME}
           onOpen={onOpenMod ? () => onOpenMod(m) : undefined}
+          selectable={selectable}
+          selected={selected?.has(m.file_id)}
+          onToggle={onToggle}
         />
       ))}
     </div>

@@ -182,6 +182,13 @@ export default function App() {
           [e.file_id]: { ...(prev[e.file_id] ?? DEFAULT_RUNTIME), progress: e.pct * 100, progressLabel: e.label },
         }));
         break;
+      case "library":
+        if (e.event === "import_folder_done") {
+          addLog(`Imported ${e.count} mod(s) from folder.`, "success");
+          refreshConflicts();
+          setDataTick((t) => t + 1);
+        }
+        break;
       case "pipeline":
         if (e.event === "started") { setRunning(true); setPaused(false); }
         else if (e.event === "finished") {
@@ -252,6 +259,7 @@ export default function App() {
           setRunning={setRunning}
           setPaused={setPaused}
           requestLogin={() => setShowLogin(true)}
+          activeProfile={activeProfile}
         />
       )}
       {view === "library" && (
@@ -271,6 +279,8 @@ export default function App() {
           profiles={profiles}
           activeProfile={activeProfile}
           setActiveProfile={setActiveProfile}
+          addLog={addLog}
+          onResolved={() => { refreshConflicts(); setDataTick((t) => t + 1); }}
         />
       )}
       {view === "activity" && <ActivityView logs={logs} onClear={() => setLogs([])} />}
