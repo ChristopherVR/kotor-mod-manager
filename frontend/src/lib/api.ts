@@ -45,6 +45,24 @@ export interface Settings {
   download_dir: string;
 }
 
+export type GameKey = "KOTOR1" | "KOTOR2";
+
+export interface LibraryMod {
+  id: string; name: string; game: GameKey; enabled: boolean; toggleable: boolean;
+  state: string; install_method: string; deploy_kind: string; load_order: number;
+  source_type: string; source_ref: string; build_key: string | null;
+  file_count: number; baked_count: number; install_ts: number;
+  has_conflict: boolean; conflict_count: number;
+}
+
+export interface ConflictParticipant { mod_id: string; mod_name: string; enabled: boolean; }
+
+export interface Conflict {
+  id: string; resource: string; type: "override" | "2da" | "dialog" | "module";
+  severity: "info" | "warning" | "error"; participants: ConflictParticipant[];
+  winner_mod_id: string | null;
+}
+
 // WebSocket event shapes
 export type WsEvent =
   | { type: "hello"; version: string }
@@ -95,6 +113,19 @@ export const api = {
     req<{ ok: boolean; action: string }>(`/api/install/${action}`, { method: "POST" }),
   installState: () =>
     req<{ running: boolean; mods: any[] }>("/api/install/state"),
+  library: (game: GameKey) =>
+    req<{ game: string; mods: LibraryMod[] }>(`/api/library?game=${game}`),
+  libraryEnable: (game: GameKey, id: string) =>
+    req<{ ok: boolean }>(`/api/library/${id}/enable?game=${game}`, { method: "POST" }),
+  libraryDisable: (game: GameKey, id: string) =>
+    req<{ ok: boolean }>(`/api/library/${id}/disable?game=${game}`, { method: "POST" }),
+  libraryUninstall: (game: GameKey, id: string, force = false) =>
+    req<{ ok: boolean }>(`/api/library/${id}/uninstall?game=${game}`, {
+      method: "POST",
+      body: JSON.stringify({ force }),
+    }),
+  conflicts: (game: GameKey) =>
+    req<{ conflicts: Conflict[] }>(`/api/conflicts?game=${game}`),
 };
 
 // Resilient WebSocket with auto-reconnect.

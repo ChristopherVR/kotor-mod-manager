@@ -1,27 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Play, Pause, Square, Settings as SettingsIcon, LogIn, CheckCircle2,
-  Zap, AlertTriangle, RotateCcw, Download,
-} from "lucide-react";
-import {
   api, connectEvents, waitForBackend,
   type AppStatus, type BuildInfo, type BuildMod, type WsEvent,
 } from "@/lib/api";
-import { pickDirectory } from "@/lib/tauri";
-import { ModList, DEFAULT_RUNTIME, type ModRuntime } from "@/components/ModList";
-import { LogPanel, type LogLine } from "@/components/LogPanel";
+import { DEFAULT_RUNTIME, type ModRuntime } from "@/components/ModList";
+import { type LogLine } from "@/components/LogPanel";
 import { LoginDialog } from "@/components/LoginDialog";
-import { SettingsDialog } from "@/components/SettingsDialog";
-import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
+import { AppShell } from "@/layouts/AppShell";
+import { BuildsView } from "@/views/BuildsView";
+import { LibraryView } from "@/views/LibraryView";
+import { ConflictsView } from "@/views/ConflictsView";
+import { ActivityView } from "@/views/ActivityView";
+import { SettingsView } from "@/views/SettingsView";
+import { type ViewId } from "@/lib/views";
 
 const FINAL = new Set(["DONE", "SKIPPED", "ERROR"]);
+const DEFAULT_CONFLICT_GAME = "KOTOR1" as const;
 
 export default function App() {
+  const [view, setView] = useState<ViewId>("builds");
+
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<AppStatus | null>(null);
   const [builds, setBuilds] = useState<BuildInfo[]>([]);
@@ -31,13 +29,12 @@ export default function App() {
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [unattended, setUnattended] = useState(false);
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [patcherMod, setPatcherMod] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [username, setUsername] = useState("");
+  const [conflictCount, setConflictCount] = useState(0);
+  const [dataTick, setDataTick] = useState(0);
 
   const logId = useRef(0);
   const addLog = useCallback((message: string, tag = "") => {
@@ -47,12 +44,21 @@ export default function App() {
     });
   }, []);
 
+  const resetRuntime = useCallback(() => setRuntime({}), []);
+
   const refreshStatus = useCallback(async () => {
     try {
       const s = await api.status();
       setStatus(s);
       setRunning(s.pipeline_running);
     } catch { /* backend not up yet */ }
+  }, []);
+
+  const refreshConflicts = useCallback(async () => {
+    try {
+      const r = await api.conflicts(DEFAULT_CONFLICT_GAME);
+      setConflictCount(r.conflicts?.length ?? 0);
+    } catch { /* endpoint may be unavailable */ }
   }, []);
 
   // Boot: wait for backend, load builds + status.
@@ -69,8 +75,9 @@ export default function App() {
       } catch (e: any) {
         addLog(`Startup error: ${e?.message}`, "error");
       }
+      refreshConflicts();
     })();
-  }, [addLog]);
+  }, [addLog, refreshConflicts]);
 
   // WebSocket event stream.
   useEffect(() => {
@@ -127,6 +134,8 @@ export default function App() {
           setRunning(false); setPaused(false); setActiveFileId(null); setPatcherMod(null);
           addLog(`Finished: ${e.done}/${e.total} installed${e.errors ? `, ${e.errors} error(s)` : ""}.`,
             e.errors ? "warning" : "success");
+          refreshConflicts();
+          setDataTick((t) => t + 1);
         }
         break;
     }
@@ -135,54 +144,6 @@ export default function App() {
   // Keep a ref of patcherMod for use inside the event handler closure.
   const patcherRef = useRef<string | null>(null);
   useEffect(() => { patcherRef.current = patcherMod; }, [patcherMod]);
-
-  const loadBuild = async () => {
-    setLoading(true);
-    setRuntime({});
-    try {
-      const r = await api.loadBuild(selectedBuild);
-      setMods(r.mods);
-      addLog(`Loaded ${r.mods.length} mods for ${labelFor(selectedBuild)}.`, "success");
-    } catch (e: any) {
-      addLog(`Load failed: ${e?.message}`, "error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const startInstall = async () => {
-    if (!status?.logged_in) { setShowLogin(true); return; }
-    if (mods.length === 0) { addLog("Load a mod list first.", "warning"); return; }
-    try {
-      await api.startInstall(selectedBuild, unattended);
-      setRunning(true);
-    } catch (e: any) {
-      if (e?.data?.error === "game_path_required") {
-        addLog(`Select your ${e.data.game} installation folder…`, "warning");
-        const dir = await pickDirectory();
-        if (!dir) return;
-        try {
-          await api.startInstall(selectedBuild, unattended, dir);
-          setRunning(true);
-        } catch (e2: any) {
-          addLog(`Start failed: ${e2?.message}`, "error");
-        }
-      } else {
-        addLog(`Start failed: ${e?.message}`, "error");
-      }
-    }
-  };
-
-  const control = async (action: "pause" | "resume" | "stop" | "retry") => {
-    try {
-      await api.control(action);
-      if (action === "pause") setPaused(true);
-      if (action === "resume") setPaused(false);
-      if (action === "stop") { setRunning(false); setPaused(false); }
-    } catch (e: any) {
-      addLog(`${action} failed: ${e?.message}`, "error");
-    }
-  };
 
   // Overall progress = finished / total.
   const { done, errors, overall } = useMemo(() => {
@@ -195,146 +156,76 @@ export default function App() {
     return { done: d, errors: er, overall: mods.length ? (d / mods.length) * 100 : 0 };
   }, [mods, runtime]);
 
-  const patcherName = patcherMod ? mods.find((m) => m.file_id === patcherMod)?.name : null;
+  const handleSignOut = useCallback(() => {
+    setUsername("");
+    setStatus((prev) => (prev ? { ...prev, logged_in: false } : prev));
+    addLog("Signed out.", "muted");
+  }, [addLog]);
 
   return (
-    <div className="flex h-full flex-col bg-background text-foreground">
-      {/* Top bar */}
-      <header className="flex items-center gap-3 border-b bg-card/40 px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <Zap className="size-5 text-primary" />
-          <span className="text-sm font-semibold">KOTOR Mod Installer</span>
-          {status && <span className="text-xs text-muted-foreground">v{status.version}</span>}
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {status?.shim_available ? (
-            <span className="flex items-center gap-1 text-xs text-[hsl(var(--success))]">
-              <Zap className="size-3.5" /> Headless patcher ready
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-xs text-[hsl(var(--warning))]">
-              <AlertTriangle className="size-3.5" /> No HoloPatcher shim
-            </span>
-          )}
-          <Separator orientation="vertical" className="h-5" />
-          {status?.logged_in ? (
-            <span className="flex items-center gap-1 text-xs text-[hsl(var(--success))]">
-              <CheckCircle2 className="size-3.5" /> {username || "Logged in"}
-            </span>
-          ) : (
-            <Button variant="default" size="sm" onClick={() => setShowLogin(true)}>
-              <LogIn /> Login
-            </Button>
-          )}
-          <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
-            <SettingsIcon /> Settings
-          </Button>
-        </div>
-      </header>
-
-      {/* TSLPatcher banner */}
-      {patcherName && (
-        <div className="flex items-center gap-2 border-b border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.1)] px-4 py-2 text-sm text-[hsl(var(--warning))] animate-fade-in">
-          <AlertTriangle className="size-4 shrink-0" />
-          <span>
-            TSLPatcher is open for <b>{patcherName}</b>. The game path is on your clipboard — paste it,
-            click Install, then close the patcher window.
-          </span>
-        </div>
+    <AppShell
+      active={view}
+      onNavigate={setView}
+      status={status}
+      username={username}
+      running={running}
+      overallPct={overall}
+      conflictCount={conflictCount}
+      onSignIn={() => setShowLogin(true)}
+      onSignOut={handleSignOut}
+    >
+      {view === "builds" && (
+        <BuildsView
+          ready={ready}
+          loggedIn={!!status?.logged_in}
+          builds={builds}
+          selectedBuild={selectedBuild}
+          onSelectBuild={setSelectedBuild}
+          mods={mods}
+          setMods={setMods}
+          runtime={runtime}
+          resetRuntime={resetRuntime}
+          activeFileId={activeFileId}
+          running={running}
+          paused={paused}
+          overall={overall}
+          done={done}
+          errors={errors}
+          patcherMod={patcherMod}
+          clearPatcher={() => setPatcherMod(null)}
+          addLog={addLog}
+          setRunning={setRunning}
+          setPaused={setPaused}
+          requestLogin={() => setShowLogin(true)}
+        />
       )}
-
-      {/* Build selector */}
-      <div className="flex items-center gap-3 border-b bg-card/20 px-4 py-2">
-        <Select
-          value={selectedBuild}
-          onChange={(e) => setSelectedBuild(e.target.value)}
-          disabled={running}
-          className="w-64"
-        >
-          {builds.map((b) => (
-            <option key={b.key} value={b.key}>{b.label}</option>
-          ))}
-        </Select>
-        <Button variant="secondary" size="sm" onClick={loadBuild} disabled={loading || running}>
-          <Download /> {loading ? "Loading…" : "Load Mod List"}
-        </Button>
-        {mods.length > 0 && (
-          <span className="text-xs text-muted-foreground">
-            {mods.length} mods · {done}/{mods.length} done{errors ? ` · ${errors} error(s)` : ""}
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Overall</span>
-          <Progress value={overall} className="w-40" />
-        </div>
-      </div>
-
-      {/* Main content */}
-      <main className="flex min-h-0 flex-1 gap-3 p-3">
-        <section className="flex min-h-0 flex-[3] flex-col rounded-lg border bg-card/30 p-2">
-          <ModList mods={mods} runtime={runtime} activeFileId={activeFileId} />
-        </section>
-        <section className="flex min-h-0 flex-[2] flex-col gap-2">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-xs font-medium text-muted-foreground">Activity Log</span>
-            <Button variant="ghost" size="sm" onClick={() => setLogs([])}>Clear</Button>
-          </div>
-          <div className="min-h-0 flex-1">
-            <LogPanel lines={logs} />
-          </div>
-        </section>
-      </main>
-
-      {/* Bottom action bar */}
-      <footer className="flex items-center gap-3 border-t bg-card/40 px-4 py-2.5">
-        {!running ? (
-          <Button onClick={startInstall} disabled={!ready || mods.length === 0}>
-            <Play /> Download &amp; Install All
-          </Button>
-        ) : (
-          <>
-            {!paused ? (
-              <Button variant="secondary" onClick={() => control("pause")}>
-                <Pause /> Pause
-              </Button>
-            ) : (
-              <Button variant="secondary" onClick={() => control("resume")}>
-                <Play /> Resume
-              </Button>
-            )}
-            <Button variant="destructive" onClick={() => control("stop")}>
-              <Square /> Stop
-            </Button>
-          </>
-        )}
-        {!running && errors > 0 && (
-          <Button variant="outline" onClick={() => control("retry").then(startInstall)}>
-            <RotateCcw /> Retry failed
-          </Button>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <Switch id="un" checked={unattended} onCheckedChange={setUnattended} disabled={running} />
-          <label htmlFor="un" className="cursor-pointer text-xs text-muted-foreground">
-            Unattended (never prompt; skip mods needing a manual GUI)
-          </label>
-        </div>
-        <span className={cn("text-xs", ready ? "text-muted-foreground" : "text-destructive")}>
-          {ready ? (running ? (paused ? "Paused" : "Installing…") : "Idle") : "Connecting to backend…"}
-        </span>
-      </footer>
+      {view === "library" && (
+        <LibraryView
+          onGoToBuilds={() => setView("builds")}
+          onGoToConflicts={() => setView("conflicts")}
+          addLog={addLog}
+          refreshTick={dataTick}
+        />
+      )}
+      {view === "conflicts" && <ConflictsView refreshTick={dataTick} />}
+      {view === "activity" && <ActivityView logs={logs} onClear={() => setLogs([])} />}
+      {view === "settings" && (
+        <SettingsView
+          status={status}
+          username={username}
+          onSignIn={() => setShowLogin(true)}
+          onSignOut={handleSignOut}
+          addLog={addLog}
+        />
+      )}
 
       <LoginDialog
         open={showLogin}
         onClose={() => setShowLogin(false)}
         onLoggedIn={(u) => { setUsername(u); refreshStatus(); }}
       />
-      <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
-    </div>
+    </AppShell>
   );
-
-  function labelFor(key: string) {
-    return builds.find((b) => b.key === key)?.label ?? key;
-  }
 }
 
 function fmtKb(kb: number): string {

@@ -22,7 +22,7 @@ export function LogPanel({ lines }: { lines: LogLine[] }) {
   }, [lines.length]);
 
   return (
-    <div className="h-full overflow-auto rounded-md bg-[hsl(222_47%_5%)] p-3 font-mono text-xs leading-relaxed">
+    <div className="h-full overflow-auto rounded-md bg-[hsl(var(--sidebar))] p-3 font-mono text-xs leading-relaxed">
       {lines.length === 0 && (
         <div className="text-muted-foreground/60">Activity log will appear here…</div>
       )}
