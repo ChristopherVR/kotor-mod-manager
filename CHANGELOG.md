@@ -1,11 +1,17 @@
 # Changelog
 
+## [0.7.1] - 2026-06-21
+
+### Bug Fixes
+
+- **security:** Avoid building a command string from a path in reveal_path
 ## [0.7.0] - 2026-06-21
 
 ### Features
 
 - Simpler install screen and a peek button for your Nexus key
 - Optional KOTOR menu click sound (off by default)
+- **ui:** Library filters/thumbnails/context menus, log export, surface patcher errors
 ## [0.6.1] - 2026-06-21
 
 ### Build & CI
