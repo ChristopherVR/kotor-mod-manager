@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [0.5.0] - 2026-06-21
+
+### Features
+
+- Cleaner screenshots, real Nexus links, folder import, mod selection
+- **ui:** Conflict resolution actions, folder drag-drop, mod toggles
+
+### Bug Fixes
+
+- **scraper:** Keep only the real screenshot gallery
 ## [0.4.0] - 2026-06-21
 
 ### Features
