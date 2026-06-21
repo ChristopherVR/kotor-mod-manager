@@ -202,8 +202,12 @@ class DeadlyStreamClient:
         "set_resources", "logo", "favicon", "/icon", "emoticon", "/style_",
         "themes/", "/theme/", "badge", "spinner", "sprite", "rank",
         "placeholder", "loading", "blank.", "/r/",
+        # forum/site chrome that isn't a mod screenshot
+        "/reactions/", "deadly_stream", "_banner", "/comment", "/uploads/monthly",
     )
-    _IMG_CONTENT_HINTS = ("/uploads/", "monthly_", "/gallery/", "screenshot", "/attachments/")
+    # The actual file screenshot gallery lives under /downloads/screens/.
+    _IMG_SCREENSHOT_HINTS = ("/downloads/screens/",)
+    _IMG_CONTENT_HINTS = ("/downloads/screens/", "/uploads/", "/gallery/", "screenshot", "/attachments/")
 
     @staticmethod
     def _norm_img_url(src: str) -> str:
@@ -244,7 +248,11 @@ class DeadlyStreamClient:
         og = soup.find("meta", property="og:image")
         if og and og.get("content"):
             add(og["content"])
-        return urls[:10]
+
+        # Prefer the file's real screenshot gallery (/downloads/screens/) when present;
+        # only fall back to other content images if there are none.
+        screens = [u for u in urls if any(h in u.lower() for h in self._IMG_SCREENSHOT_HINTS)]
+        return (screens or urls)[:10]
 
     def get_mod_details(self, file_id: str, slug: str = "") -> dict:
         """
