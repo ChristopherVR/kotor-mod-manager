@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.0] - 2026-06-21
+
+### Features
+
+- Simpler install screen and a peek button for your Nexus key
+- Optional KOTOR menu click sound (off by default)
 ## [0.6.1] - 2026-06-21
 
 ### Build & CI
