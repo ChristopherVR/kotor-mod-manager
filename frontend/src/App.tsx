@@ -17,8 +17,17 @@ import { type ViewId } from "@/lib/views";
 const FINAL = new Set(["DONE", "SKIPPED", "ERROR"]);
 const DEFAULT_CONFLICT_GAME = "KOTOR1" as const;
 
+const VIEW_IDS: ViewId[] = ["builds", "library", "conflicts", "activity", "settings"];
+
 export default function App() {
-  const [view, setView] = useState<ViewId>("builds");
+  const [view, setViewState] = useState<ViewId>(() => {
+    const h = typeof location !== "undefined" ? (location.hash.replace("#", "") as ViewId) : "builds";
+    return VIEW_IDS.includes(h) ? h : "builds";
+  });
+  const setView = useCallback((v: ViewId) => {
+    setViewState(v);
+    if (typeof location !== "undefined") location.hash = v;
+  }, []);
 
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<AppStatus | null>(null);
