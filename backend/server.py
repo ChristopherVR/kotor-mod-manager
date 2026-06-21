@@ -118,6 +118,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mod-manager (Library) routes
+from backend.library_routes import bind_state as _bind_library, library_router  # noqa: E402
+
+_bind_library(state)
+app.include_router(library_router)
+
 
 # ---------------------------------------------------------------------------
 # Lifecycle
@@ -277,6 +283,7 @@ def install_start(req: StartInstallRequest) -> dict:
         on_progress=on_progress,
         on_install_progress=on_install_progress,
         auto_unattended=req.unattended,
+        game_key=BUILD_GAME.get(req.build_key, ""),
     )
     state.pipeline.start()
     hub.publish({"type": "pipeline", "event": "started",

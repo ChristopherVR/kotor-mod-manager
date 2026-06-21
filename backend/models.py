@@ -4,6 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from installer.mod_manager import InstalledMod
 from installer.pipeline import PipelineMod
 from scraper.build_scraper import BuildMod
 
@@ -24,6 +25,47 @@ class StartInstallRequest(BaseModel):
     build_key: str
     unattended: bool = False
     game_path: Optional[str] = None   # override; otherwise resolved from settings
+
+
+class ImportRequest(BaseModel):
+    game: str
+    path: str
+    name: Optional[str] = None
+    option_hint: str = ""
+    unattended: bool = True
+    game_path: Optional[str] = None
+
+
+class UninstallRequest(BaseModel):
+    force: bool = False
+
+
+class ReorderRequest(BaseModel):
+    game: str
+    ordered_ids: list[str]
+
+
+def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0) -> dict:
+    return {
+        "id": m.id,
+        "name": m.name,
+        "game": m.game,
+        "enabled": m.enabled,
+        "toggleable": m.toggleable,
+        "state": m.state,
+        "install_method": m.install_method,
+        "deploy_kind": m.deploy_kind,
+        "load_order": m.load_order,
+        "source_type": m.source_type,
+        "source_ref": m.source_ref,
+        "build_key": m.build_key,
+        "option_hint": m.option_hint,
+        "file_count": len(m.deployed_files),
+        "baked_count": len(m.baked_files),
+        "install_ts": m.install_ts,
+        "has_conflict": conflict_count > 0,
+        "conflict_count": conflict_count,
+    }
 
 
 def build_mod_to_dict(m: BuildMod) -> dict:

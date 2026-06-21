@@ -80,6 +80,8 @@ class Pipeline:
         on_progress: Optional[ProgressCB] = None,
         on_install_progress: Optional[InstallProgressCB] = None,
         auto_unattended: bool = False,
+        game_key: str = "",
+        record_to_library: bool = True,
     ):
         self._mods = [PipelineMod(m) for m in mods]
         self._game_path = game_path
@@ -91,6 +93,9 @@ class Pipeline:
         self._on_install_progress = on_install_progress
         # When True, never fall back to a manual GUI click (fully unattended).
         self._auto_unattended = auto_unattended
+        # Mod-manager recording (e.g. "KOTOR1"); empty disables recording.
+        self._game_key = game_key
+        self._record_to_library = record_to_library and bool(game_key)
 
         self._stop_event = threading.Event()
         self._pause_event = threading.Event()
@@ -183,6 +188,7 @@ class Pipeline:
 
             archives = self._client.download_all_files(
                 file_id=mod.file_id,
+                slug=mod.slug,
                 dest_dir=dest_dir,
                 progress_callback=dl_progress,
                 cancel_event=self._stop_event,
@@ -237,7 +243,9 @@ class Pipeline:
                 else:
                     self._log(f"  Method: {plan.method.name}", "muted")
                 self._install_progress(pm, (i - 1) / total, f"{plan.method.name} ({i}/{total})")
+                pre = self._pre_install_snapshot(plan)
                 self._install_one(pm, plan)
+                self._record_install(pm, plan, pre)
                 self._install_progress(pm, i / total, "Done")
 
             self._set_status(pm, ModStatus.DONE)
@@ -347,3 +355,70 @@ class Pipeline:
             raise InstallError(
                 f"Manual install required for: {mod.name}\nMod files are at: {plan.mod_root}"
             )
+
+    # ------------------------------------------------------------------
+    # Mod-manager recording
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_baked(plan: InstallPlan) -> bool:
+        return plan.method in (InstallMethod.TSLPATCHER, InstallMethod.HOLOPATCHER)
+
+    def _pre_install_snapshot(self, plan: InstallPlan) -> dict:
+        """Capture pre-install state needed to record this plan after success."""
+        if not self._record_to_library:
+            return {}
+        from installer import mod_manager
+        if self._is_baked(plan):
+            return {"baked": True, "before": mod_manager.snapshot_targets(self._game_path)}
+        mappings = loose_mappings(plan)
+        pre_existing = {
+            rel for (rel, _src) in mappings
+            if (self._game_path / rel).exists()
+        }
+        return {"baked": False, "mappings": mappings, "pre_existing": pre_existing}
+
+    def _record_install(self, pm: PipelineMod, plan: InstallPlan, pre: dict) -> None:
+        if not self._record_to_library or not pre:
+            return
+        from installer import mod_manager
+        mod = pm.build_mod
+        try:
+            if pre.get("baked"):
+                after = mod_manager.snapshot_targets(self._game_path)
+                mod_manager.record_install(
+                    self._game_key, self._game_path,
+                    name=mod.name, install_method=plan.method.name,
+                    source_type="build", source_ref=mod.file_id,
+                    deploy_kind=mod_manager.DeployKind.BAKED.value,
+                    snapshot_before=pre.get("before"), snapshot_after=after,
+                    build_key=mod.build_key, option_hint=mod.option_hint,
+                )
+            else:
+                mod_manager.record_install(
+                    self._game_key, self._game_path,
+                    name=mod.name, install_method=plan.method.name,
+                    source_type="build", source_ref=mod.file_id,
+                    deploy_kind=mod_manager.DeployKind.LOOSE.value,
+                    plan_file_mappings=pre.get("mappings"),
+                    pre_existing=pre.get("pre_existing"),
+                    build_key=mod.build_key, option_hint=mod.option_hint,
+                )
+        except Exception as e:  # recording must never fail an install
+            self._log(f"    (library record skipped: {e})", "muted")
+
+
+def loose_mappings(plan: InstallPlan) -> list[tuple[str, "Path | None"]]:
+    """
+    Collect (dest_relative, source) for a loose plan, recursing into sub-plans.
+    TLK plans deploy dialog.tlk at game root.
+    """
+    out: list[tuple[str, "Path | None"]] = []
+    for fm in plan.file_mappings:
+        out.append((fm.dest_relative, fm.source))
+    for sub in plan.sub_plans:
+        out.extend(loose_mappings(sub))
+    if plan.method in (InstallMethod.TLK_REPLACE, InstallMethod.MULTI_VARIANT):
+        if not any(rel.lower() == "dialog.tlk" for rel, _ in out):
+            out.append(("dialog.tlk", None))
+    return out
