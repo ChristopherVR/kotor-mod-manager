@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KOTOR Mod Manager — download, install & manage KOTOR 1 & 2 mods</title>
+<meta name="description" content="A one-click downloader, installer, and full mod manager for Star Wars: KOTOR 1 & 2. Headless TSLPatcher installs, enable/disable, conflict detection." />
+<style>
+  :root{
+    --bg:#191510; --bg2:#13100c; --fg:#efeae0; --muted:#a79e90;
+    --card:#221d17; --card2:#1b1712; --border:#322b23;
+    --primary:#d2693f; --primary-d:#b9572f;
+    --success:#43b06a; --warning:#e6a23c; --info:#5aa9d6; --danger:#dc5b4b;
+    --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font:16px/1.6 "Segoe UI",system-ui,-apple-system,sans-serif;
+  }
+  a{color:var(--primary); text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:1040px; margin:0 auto; padding:0 24px}
+  header.nav{
+    position:sticky; top:0; z-index:10; backdrop-filter:blur(8px);
+    background:rgba(19,16,12,.8); border-bottom:1px solid var(--border);
+  }
+  .nav .wrap{display:flex; align-items:center; gap:14px; height:60px}
+  .logo{display:flex; align-items:center; gap:10px; font-weight:700}
+  .logo .bolt{
+    width:30px;height:30px;border-radius:8px;display:grid;place-items:center;
+    background:linear-gradient(145deg,#2a2017,#1d1812); border:1px solid var(--border);
+    color:var(--primary); font-size:18px
+  }
+  .nav nav{margin-left:auto; display:flex; gap:22px; font-size:14px; color:var(--muted)}
+  .nav nav a{color:var(--muted)}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+    background:var(--primary); color:#fff; border:none; border-radius:10px;
+    padding:11px 18px; font-weight:600; font-size:15px; transition:.15s;
+  }
+  .btn:hover{background:var(--primary-d); text-decoration:none}
+  .btn.ghost{background:transparent; border:1px solid var(--border); color:var(--fg)}
+
+  .hero{padding:84px 0 56px; text-align:center}
+  .hero h1{font-size:46px; line-height:1.1; margin:0 0 16px; letter-spacing:-.02em}
+  .hero h1 .grad{color:var(--primary)}
+  .hero p.lead{font-size:19px; color:var(--muted); max-width:680px; margin:0 auto 28px}
+  .cta{display:flex; gap:12px; justify-content:center; flex-wrap:wrap}
+  .pill{font-size:12.5px; color:var(--muted)}
+
+  section{padding:46px 0}
+  h2{font-size:28px; margin:0 0 8px; letter-spacing:-.01em}
+  .sub{color:var(--muted); margin:0 0 28px}
+
+  .shot{border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;
+        box-shadow:0 18px 50px rgba(0,0,0,.45); background:var(--card2)}
+  .shot img{display:block; width:100%}
+  .shot.big{margin:18px 0 0}
+
+  .features{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px}
+  .feat{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px}
+  .feat h3{margin:0 0 6px; font-size:16px}
+  .feat p{margin:0; color:var(--muted); font-size:14.5px}
+  .feat .ic{font-size:20px}
+
+  .steps{display:grid; gap:22px}
+  .step{display:grid; grid-template-columns:46px 1fr; gap:18px; align-items:start}
+  .step .n{
+    width:46px;height:46px;border-radius:50%;display:grid;place-items:center;
+    background:var(--card); border:1px solid var(--border); color:var(--primary); font-weight:700; font-size:18px
+  }
+  .step h3{margin:2px 0 4px; font-size:18px}
+  .step p{margin:0 0 12px; color:var(--muted)}
+  .step .shot{margin-top:6px}
+  .tag{display:inline-block; font-size:12px; padding:2px 9px; border-radius:999px;
+       border:1px solid var(--border); color:var(--muted); margin-left:8px; vertical-align:middle}
+  .tag.warn{color:var(--warning); border-color:transparent; background:rgba(230,162,60,.14)}
+  .tag.err{color:var(--danger); border-color:transparent; background:rgba(220,91,75,.14)}
+
+  .gallery{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media (max-width:760px){ .gallery{grid-template-columns:1fr} .hero h1{font-size:34px} }
+
+  footer{border-top:1px solid var(--border); padding:30px 0; color:var(--muted); font-size:14px}
+  code{background:var(--card); border:1px solid var(--border); border-radius:6px; padding:1px 7px; font-size:13.5px}
+  .note{background:var(--card); border:1px solid var(--border); border-left:3px solid var(--primary);
+        border-radius:10px; padding:14px 16px; color:var(--muted); font-size:14.5px}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <div class="logo"><span class="bolt">⚡</span> KOTOR Mod Manager</div>
+    <nav>
+      <a href="#screens">Screens</a>
+      <a href="#how">How to use</a>
+      <a href="#features">Features</a>
+      <a href="https://github.com/ChristopherVR/kotor-mod-manager">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="hero">
+    <h1>Install &amp; manage <span class="grad">KOTOR</span> mods<br>without the busywork.</h1>
+    <p class="lead">
+      A one-click downloader, installer, and full mod manager for
+      <em>Star Wars: Knights of the Old Republic</em> 1 &amp; 2. It follows the
+      recommended community build, installs TSLPatcher mods <strong>headlessly</strong>,
+      and lets you enable, disable, and resolve conflicts — all from a single app.
+    </p>
+    <div class="cta">
+      <a class="btn" href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest">⬇ Download for Windows</a>
+      <a class="btn ghost" href="#how">See how it works</a>
+    </div>
+    <p class="pill">One self-contained <code>.exe</code> · no Python/Node/installer needed · auto-update check</p>
+  </section>
+
+  <section id="screens">
+    <h2>What it looks like</h2>
+    <p class="sub">A clean, Claude-desktop-style interface with a sidebar for each part of the workflow.</p>
+    <div class="shot big"><img src="images/02-library.png" alt="Library view — installed mods with enable/disable toggles"></div>
+    <div class="gallery" style="margin-top:16px">
+      <div class="shot"><img src="images/03-conflicts.png" alt="Conflicts view"></div>
+      <div class="shot"><img src="images/04-settings.png" alt="Settings view"></div>
+    </div>
+  </section>
+
+  <section id="how">
+    <h2>How to use it</h2>
+    <p class="sub">From download to a fully-modded game in four steps.</p>
+    <div class="steps">
+
+      <div class="step">
+        <div class="n">1</div>
+        <div>
+          <h3>Download &amp; launch</h3>
+          <p>Grab <code>KOTOR-Mod-Installer.exe</code> from the
+          <a href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest">latest release</a>
+          and run it — that's the whole app, one file. On first launch, open
+          <strong>Settings</strong> and point it at your KOTOR&nbsp;1 / KOTOR&nbsp;2 install
+          folders, then sign in to your DeadlyStream account.</p>
+          <div class="shot"><img src="images/04-settings.png" alt="Settings — game paths and account"></div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">2</div>
+        <div>
+          <h3>Pick a build &amp; install</h3>
+          <p>Go to <strong>Mod Builds</strong>, choose a curated build (e.g. <em>KOTOR 1 — Full Build</em>),
+          and click <strong>Load Mod List</strong> then <strong>Download &amp; Install All</strong>.
+          Mods download and install <em>in the recommended order</em>, with live progress.
+          TSLPatcher mods are applied <strong>headlessly</strong> — no clicking through each patcher.</p>
+          <div class="shot"><img src="images/01-builds.png" alt="Mod Builds — the guided install"></div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">3</div>
+        <div>
+          <h3>Manage your library</h3>
+          <p>The <strong>Library</strong> tracks every installed mod. Flip a switch to
+          <strong>enable or disable</strong> a mod (its files move in and out of the game),
+          see the install method, and import <em>any</em> mod archive you like — not just the
+          curated ones.</p>
+          <div class="shot"><img src="images/02-library.png" alt="Library — enable/disable installed mods"></div>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="n">4</div>
+        <div>
+          <h3>Resolve conflicts</h3>
+          <p>The <strong>Conflicts</strong> view flags when two mods touch the same file
+          <span class="tag warn">file overlap</span> or when a mod's own readme says it's
+          incompatible with another <span class="tag err">declared</span> — so you can fix
+          load order or disable the loser before it breaks your game.</p>
+          <div class="shot"><img src="images/03-conflicts.png" alt="Conflicts — file overlaps and declared incompatibilities"></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section id="features">
+    <h2>Features</h2>
+    <p class="sub">Everything you need to mod KOTOR end-to-end.</p>
+    <div class="features">
+      <div class="feat"><div class="ic">📦</div><h3>Guided builds</h3><p>Downloads the recommended community mod list in the correct install order.</p></div>
+      <div class="feat"><div class="ic">⚡</div><h3>Headless TSLPatcher</h3><p>A bundled HoloPatcher engine applies TSLPatcher mods with no per-mod clicking.</p></div>
+      <div class="feat"><div class="ic">🔀</div><h3>Enable / disable</h3><p>Toggle loose-file mods on and off; the manager moves their files for you.</p></div>
+      <div class="feat"><div class="ic">⚠️</div><h3>Conflict detection</h3><p>Finds file overlaps and declared incompatibilities across your enabled mods.</p></div>
+      <div class="feat"><div class="ic">📥</div><h3>Import any mod</h3><p>Point it at any archive or folder — it detects the install type and tracks it.</p></div>
+      <div class="feat"><div class="ic">🔄</div><h3>Auto-update</h3><p>Checks GitHub for new releases and tells you when an update is available.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="note">
+      <strong>Heads up:</strong> the manager installs from <em>your own</em> authenticated
+      DeadlyStream account and runs mod-supplied installers. It bundles no mod content.
+      TSLPatcher and HoloPatcher are third-party tools owned by their respective authors.
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <div class="wrap">
+    Built for the KOTOR modding community ·
+    <a href="https://github.com/ChristopherVR/kotor-mod-manager">Source on GitHub</a> ·
+    <a href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest">Releases</a>
+  </div>
+</footer>
+
+</body>
+</html>

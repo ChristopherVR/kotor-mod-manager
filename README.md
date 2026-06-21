@@ -67,6 +67,9 @@ page and run it — that's the whole app. It is a single self-contained file: th
 Python backend and HoloPatcher are embedded; no Python, Node, Rust, or installer
 needed. The app checks GitHub for newer releases on startup.
 
+📖 **Usage guide & screenshots:** see the [project site](https://christophervr.github.io/kotor-mod-manager/)
+(published from `docs/` via GitHub Pages).
+
 ## The HoloPatcher shim ("dynamic patcher")
 
 TSLPatcher has no command line, and there are many legacy builds. Rather than
