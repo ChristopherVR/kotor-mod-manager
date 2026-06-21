@@ -87,6 +87,7 @@ export function SettingsView({
                 username={username}
                 onSignIn={onSignIn}
                 onSignOut={onSignOut}
+                addLog={addLog}
               />
             )}
             {section === "patcher" && <PatcherSection status={status} addLog={addLog} />}

@@ -374,6 +374,7 @@ def get_settings() -> dict:
         "download_dir": conf.get("download_dir", ""),
         "language": conf.get("language", "en"),
         "custom_patcher_path": conf.get("custom_patcher_path", ""),
+        "nexus_api_key": conf.get("nexus_api_key", ""),
     }
 
 
@@ -456,37 +457,50 @@ def set_active(req: ActiveProfileRequest) -> dict:
 # Mod details (description / screenshots / Nexus link)
 # ---------------------------------------------------------------------------
 
-_NEXUS_DOMAIN = {"KOTOR1": "kotor", "KOTOR2": "kotor2"}
 _BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
 _MODINFO_CACHE: dict = {}
 _NEXUS_CACHE: dict = {}
 
 
-def _resolve_nexus_url(name: str, domain: str) -> str:
+def _resolve_nexus_url(name: str, game: str) -> str:
     """
-    Best-effort: find the actual Nexus mod page for `name`. Falls back to a
-    search URL if no confident match (or Nexus blocks the request). Cached.
+    Find the actual Nexus mod page for `name`. Uses the Nexus API (if a key is
+    configured) for an accurate match, then a best-effort scrape, then a search
+    URL. Cached per (game, name).
     """
-    from urllib.parse import quote_plus
-    search_url = f"https://www.nexusmods.com/{domain}/search/?gsearch={quote_plus(name)}&gsearchtype=mods"
+    from scraper import nexus
+    domain = nexus.GAME_DOMAIN.get(game, "kotor")
+    fallback = nexus.search_url(game, name)
     if not name:
-        return f"https://www.nexusmods.com/{domain}/mods/"
-    key = f"{domain}:{name.lower()}"
-    if key in _NEXUS_CACHE:
-        return _NEXUS_CACHE[key]
-    result = search_url
+        return fallback
+    ckey = f"{game}:{name.lower()}"
+    if ckey in _NEXUS_CACHE:
+        return _NEXUS_CACHE[ckey]
+
+    result = fallback
+    api_key = cfg.load().get("nexus_api_key", "")
+    # 1. Official-ish API search (accurate, needs a key).
+    if api_key:
+        try:
+            url = nexus.search_by_name(name, game, api_key)
+            if url:
+                _NEXUS_CACHE[ckey] = url
+                return url
+        except Exception:
+            pass
+    # 2. Best-effort HTML scrape of the public search page.
     try:
         import re as _re
         import requests as _rq
-        r = _rq.get(search_url, headers={"User-Agent": _BROWSER_UA}, timeout=5)
+        r = _rq.get(fallback, headers={"User-Agent": _BROWSER_UA}, timeout=5)
         if r.status_code == 200:
             m = _re.search(rf"/{_re.escape(domain)}/mods/(\d+)", r.text)
             if m:
                 result = f"https://www.nexusmods.com/{domain}/mods/{m.group(1)}"
     except Exception:
         pass
-    _NEXUS_CACHE[key] = result
+    _NEXUS_CACHE[ckey] = result
     return result
 
 
@@ -497,11 +511,18 @@ def mod_info(file_id: str, slug: str = "", game: str = "KOTOR1") -> dict:
         return _MODINFO_CACHE[cache_key]
     details = state.client.get_mod_details(file_id, slug)
     name = details.get("title", "")
-    domain = _NEXUS_DOMAIN.get(game, "kotor")
-    details["nexus_url"] = _resolve_nexus_url(name, domain)
+    details["nexus_url"] = _resolve_nexus_url(name, game)
     if not details.get("error"):
         _MODINFO_CACHE[cache_key] = details
     return details
+
+
+@app.get("/api/nexus/validate")
+def nexus_validate() -> dict:
+    """Validate the configured Nexus API key (for the Settings UI)."""
+    from scraper import nexus
+    key = cfg.load().get("nexus_api_key", "")
+    return nexus.validate(key)
 
 
 def _image_cache_dir() -> Path:

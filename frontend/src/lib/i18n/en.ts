@@ -165,6 +165,16 @@ export const en: Dict = {
   "settings.account.notSignedIn": "Not signed in",
   "settings.account.notSignedInHint": "Sign in to DeadlyStream to download mods that require an account.",
 
+  // Settings → Nexus
+  "settings.nexus.title": "Nexus Mods",
+  "settings.nexus.hint": "Add your personal Nexus API key to link mods to their real Nexus page.",
+  "settings.nexus.getKey": "Get your API key",
+  "settings.nexus.label": "API key",
+  "settings.nexus.placeholder": "Paste your Nexus personal API key",
+  "settings.nexus.saving": "Saving…",
+  "settings.nexus.valid": "Key valid — signed in as {name}",
+  "settings.nexus.invalid": "Key invalid or could not be verified.",
+
   // Settings → Patcher
   "settings.patcher.title": "Patcher engine",
   "settings.patcher.description":

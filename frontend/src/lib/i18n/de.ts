@@ -165,6 +165,16 @@ export const de: Dict = {
   "settings.account.notSignedIn": "Nicht angemeldet",
   "settings.account.notSignedInHint": "Melde dich bei DeadlyStream an, um Mods herunterzuladen, die ein Konto erfordern.",
 
+  // Settings → Nexus
+  "settings.nexus.title": "Nexus Mods",
+  "settings.nexus.hint": "Füge deinen persönlichen Nexus-API-Schlüssel hinzu, um Mods mit ihrer echten Nexus-Seite zu verknüpfen.",
+  "settings.nexus.getKey": "API-Schlüssel holen",
+  "settings.nexus.label": "API-Schlüssel",
+  "settings.nexus.placeholder": "Füge deinen persönlichen Nexus-API-Schlüssel ein",
+  "settings.nexus.saving": "Wird gespeichert…",
+  "settings.nexus.valid": "Schlüssel gültig — angemeldet als {name}",
+  "settings.nexus.invalid": "Schlüssel ungültig oder nicht überprüfbar.",
+
   // Settings → Patcher
   "settings.patcher.title": "Patcher-Engine",
   "settings.patcher.description":

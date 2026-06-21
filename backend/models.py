@@ -21,6 +21,7 @@ class SettingsModel(BaseModel):
     download_dir: str = ""
     language: str = "en"
     custom_patcher_path: str = ""
+    nexus_api_key: str = ""
 
 
 class StartInstallRequest(BaseModel):

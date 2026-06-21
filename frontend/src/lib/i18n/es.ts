@@ -165,6 +165,16 @@ export const es: Dict = {
   "settings.account.notSignedIn": "Sin sesión iniciada",
   "settings.account.notSignedInHint": "Inicia sesión en DeadlyStream para descargar mods que requieran una cuenta.",
 
+  // Settings → Nexus
+  "settings.nexus.title": "Nexus Mods",
+  "settings.nexus.hint": "Añade tu clave de API personal de Nexus para enlazar los mods a su página real de Nexus.",
+  "settings.nexus.getKey": "Obtén tu clave de API",
+  "settings.nexus.label": "Clave de API",
+  "settings.nexus.placeholder": "Pega tu clave de API personal de Nexus",
+  "settings.nexus.saving": "Guardando…",
+  "settings.nexus.valid": "Clave válida — sesión iniciada como {name}",
+  "settings.nexus.invalid": "Clave no válida o no se pudo verificar.",
+
   // Settings → Patcher
   "settings.patcher.title": "Motor del parcheador",
   "settings.patcher.description":

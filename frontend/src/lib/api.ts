@@ -45,6 +45,14 @@ export interface Settings {
   download_dir: string;
   language: string;
   custom_patcher_path: string;
+  nexus_api_key: string;
+}
+
+export interface NexusValidation {
+  ok: boolean;
+  name?: string;
+  is_premium?: boolean;
+  error?: string;
 }
 
 export interface PatcherStatus {
@@ -140,6 +148,7 @@ export const api = {
       body: JSON.stringify({ username, password, save }),
     }),
   logout: () => req<{ ok: boolean }>("/api/logout", { method: "POST" }),
+  nexusValidate: () => req<NexusValidation>("/api/nexus/validate"),
   getSettings: () => req<Settings>("/api/settings"),
   setSettings: (s: Settings) =>
     req<{ ok: boolean }>("/api/settings", { method: "POST", body: JSON.stringify(s) }),
