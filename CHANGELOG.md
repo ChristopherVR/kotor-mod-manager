@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [0.6.1] - 2026-06-21
+
+### Build & CI
+
+- Run the offline test suite before building
+
+### Testing
+
+- E2e download/install suite + fixes it surfaced
 ## [0.6.0] - 2026-06-21
 
 ### Features
