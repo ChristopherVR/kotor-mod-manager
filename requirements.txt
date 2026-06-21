@@ -9,7 +9,7 @@ cryptography>=41.0.0
 pillow>=10.0.0
 # Backend API (served to the Tauri + React frontend)
 fastapi>=0.110.0
-uvicorn[standard]>=0.29.0
+uvicorn[standard]>=0.49.0
 # Optional: improves TSLPatcher GUI automation for .NET/UIA-based patchers.
 # The Win32 (ctypes) automation path works without this; pywinauto is a
 # secondary fallback in the strategy cascade.
