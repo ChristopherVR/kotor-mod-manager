@@ -20,6 +20,7 @@ class SettingsModel(BaseModel):
     kotor2_path: str = ""
     download_dir: str = ""
     language: str = "en"
+    custom_patcher_path: str = ""
 
 
 class StartInstallRequest(BaseModel):

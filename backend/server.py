@@ -12,6 +12,7 @@ Run standalone:  python -m backend.server --port 8756
 
 import argparse
 import asyncio
+import os
 import threading
 from pathlib import Path
 from typing import Optional
@@ -254,11 +255,19 @@ def update_check() -> dict:
 
 @app.post("/api/update/open")
 def update_open(url: str = "") -> dict:
-    """Open a release URL in the user's default browser."""
-    import webbrowser
+    """Open a URL in the user's default browser (reliable from a windowless exe)."""
+    import sys
     target = url or f"https://github.com/{UPDATE_REPO}/releases/latest"
+    if not (target.startswith("http://") or target.startswith("https://")):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "invalid_url"})
     try:
-        webbrowser.open(target)
+        if sys.platform == "win32":
+            # os.startfile is the most reliable way to open a URL from a
+            # windowless (PyInstaller --windowed) subprocess.
+            os.startfile(target)  # noqa: S606
+        else:
+            import webbrowser
+            webbrowser.open(target)
         return {"ok": True}
     except Exception as e:
         return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
@@ -364,6 +373,27 @@ def get_settings() -> dict:
         "kotor2_path": conf.get("kotor2_path", ""),
         "download_dir": conf.get("download_dir", ""),
         "language": conf.get("language", "en"),
+        "custom_patcher_path": conf.get("custom_patcher_path", ""),
+    }
+
+
+@app.get("/api/patcher/status")
+def patcher_status() -> dict:
+    """Detailed patcher-engine info for the Settings → Patcher section."""
+    holo = find_system_holopatcher()
+    conf = cfg.load()
+    custom = conf.get("custom_patcher_path", "")
+    source = "none"
+    if custom and holo and str(holo) == custom:
+        source = "custom"
+    elif holo:
+        source = "bundled" if "_MEI" in str(holo) or "tools" in str(holo).lower() else "system"
+    return {
+        "available": holo is not None,
+        "path": str(holo) if holo else None,
+        "source": source,
+        "custom_patcher_path": custom,
+        "strategies": ["holopatcher_shim", "win32_automation", "pywinauto_automation", "gui_manual"],
     }
 
 
@@ -440,6 +470,32 @@ def mod_info(file_id: str, slug: str = "", game: str = "KOTOR1") -> dict:
         if name else f"https://www.nexusmods.com/{domain}/mods/"
     )
     return details
+
+
+@app.get("/api/mod/image")
+def mod_image(url: str):
+    """
+    Proxy a DeadlyStream image through the authenticated session so screenshots
+    render in the app (avoids hotlink protection / login-gated images / CSP).
+    Restricted to deadlystream.com to avoid being an open proxy.
+    """
+    from urllib.parse import urlparse
+    from fastapi import Response
+    host = urlparse(url).hostname or ""
+    if not (host == "deadlystream.com" or host.endswith(".deadlystream.com")):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "host_not_allowed"})
+    try:
+        r = state.client._session.get(
+            url, timeout=20, headers={"Referer": "https://deadlystream.com/"}
+        )
+        r.raise_for_status()
+        ctype = r.headers.get("Content-Type", "image/jpeg")
+        if "image" not in ctype:
+            return JSONResponse(status_code=415, content={"ok": False, "error": "not_an_image"})
+        return Response(content=r.content, media_type=ctype,
+                        headers={"Cache-Control": "max-age=86400"})
+    except Exception as e:
+        return JSONResponse(status_code=502, content={"ok": False, "error": str(e)})
 
 
 @app.post("/api/builds/{build_key}/load")

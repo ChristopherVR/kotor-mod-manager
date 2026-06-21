@@ -110,7 +110,6 @@ def legacy_tslpatcher_exe_names() -> list[str]:
 _ENV_HOLOPATCHER = "KOTOR_HOLOPATCHER_EXE"
 
 
-@lru_cache(maxsize=1)
 def find_system_holopatcher() -> Optional[Path]:
     """
     Locate a system-wide HoloPatcher executable to use as a universal
@@ -128,6 +127,15 @@ def find_system_holopatcher() -> Optional[Path]:
         p = Path(env)
         if p.exists():
             return p
+
+    # 2. User-configured custom patcher (Settings → Patcher)
+    try:
+        import config as _appcfg
+        custom = _appcfg.load().get("custom_patcher_path", "")
+        if custom and Path(custom).exists():
+            return Path(custom)
+    except Exception:
+        pass
 
     config = load_config()
     search = config.get("holopatcher_search_paths", [])

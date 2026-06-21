@@ -48,6 +48,53 @@ class BuildMod:
         return f"https://deadlystream.com/files/file/{self.file_id}-{self.slug}/"
 
 
+# Anchor text that is NOT a mod name (download links, mirrors, etc.)
+_GENERIC_LINK_TEXT = {
+    "download", "download here", "here", "link", "this", "this one", "mirror",
+    "click here", "get it here", "dl", "file", "page", "mod", "read more",
+    "deadlystream", "nexus", "nexusmods", "source", "official",
+}
+
+
+def _slug_to_name(slug: str) -> str:
+    return re.sub(r"\s+", " ", slug.replace("-", " ").replace("_", " ")).strip().title()
+
+
+def _clean_mod_name(el, slug: str) -> str:
+    """
+    Derive a reliable mod name. The anchor text is preferred, but many build
+    pages use generic link text ("Download", "here") or wrap the name in a
+    nearby heading/bold — fall back to those, then to the slug.
+    """
+    raw = el.get_text(" ", strip=True)
+    raw = re.sub(r"https?://\S+", "", raw).strip()
+    norm = raw.lower().strip(" :–-•|")
+
+    def usable(s: str) -> bool:
+        n = s.lower().strip(" :–-•|")
+        return bool(n) and len(n) >= 3 and n not in _GENERIC_LINK_TEXT and not n.isdigit()
+
+    if usable(raw):
+        return raw[:120]
+
+    # Look for a nearby strong/b/heading inside the same list item / row.
+    for ancestor in el.parents:
+        atag = getattr(ancestor, "name", None)
+        if atag in ("li", "tr", "p", "td", "div"):
+            for cand in ancestor.find_all(["strong", "b", "h3", "h4", "h5"]):
+                txt = cand.get_text(" ", strip=True)
+                if usable(txt):
+                    return txt[:120]
+            # The leading text of the container before the link often is the name.
+            lead = ancestor.get_text(" ", strip=True)
+            lead = re.split(r"\b(download|here|mirror|link)\b", lead, 1, flags=re.I)[0].strip(" :–-•|")
+            if usable(lead) and len(lead) <= 90:
+                return lead[:120]
+            break
+
+    return _slug_to_name(slug)[:120]
+
+
 def _extract_option_hint(note: str) -> str:
     t = note.lower()
     if "pc response moderation" in t or "moderation version" in t:
@@ -128,8 +175,7 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None) -> 
                         note = candidate
                         break
 
-            name = el.get_text(strip=True)
-            name = re.sub(r"https?://\S+", "", name).strip() or slug.replace("-", " ").title()
+            name = _clean_mod_name(el, slug)
 
             category = h4 or h3 or ""
             section = h2
