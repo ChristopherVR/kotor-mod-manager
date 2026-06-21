@@ -194,6 +194,58 @@ class DeadlyStreamClient:
     def get_file_info(self, file_id: str, slug: str = "") -> dict:
         return self._get_file_info(file_id, slug)
 
+    # Real screenshots live under uploads/attachments; everything else
+    # (avatars, the site logo, theme icons, emoticons) is filtered out.
+    _IMG_EXTS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
+    _IMG_EXCLUDE = (
+        "avatar", "/profile", "profile_", "photo-thumb", "default_photo",
+        "set_resources", "logo", "favicon", "/icon", "emoticon", "/style_",
+        "themes/", "/theme/", "badge", "spinner", "sprite", "rank",
+        "placeholder", "loading", "blank.", "/r/",
+    )
+    _IMG_CONTENT_HINTS = ("/uploads/", "monthly_", "/gallery/", "screenshot", "/attachments/")
+
+    @staticmethod
+    def _norm_img_url(src: str) -> str:
+        if src.startswith("//"):
+            return "https:" + src
+        if src.startswith("/"):
+            return BASE + src
+        return src
+
+    @classmethod
+    def _looks_like_screenshot(cls, url: str) -> bool:
+        low = url.lower()
+        if any(k in low for k in cls._IMG_EXCLUDE):
+            return False
+        # Must come from a real content area (uploads/attachments/gallery).
+        return any(k in low for k in cls._IMG_CONTENT_HINTS)
+
+    def _extract_screenshots(self, soup) -> list:
+        urls: list[str] = []
+
+        def add(src: str) -> None:
+            if not src:
+                return
+            full = self._norm_img_url(src)
+            if self._looks_like_screenshot(full) and full not in urls:
+                urls.append(full)
+
+        # 1. Attachment/lightbox image links = the full-size screenshots.
+        for a in soup.find_all("a", href=True):
+            cls = " ".join(a.get("class", [])).lower()
+            ext = (a.get("data-fileext") or "").lower()
+            if "ipsattachlink" in cls or "lightbox" in cls or ext in ("jpg", "jpeg", "png", "gif", "webp"):
+                add(a["href"])
+        # 2. Inline images (description + record gallery).
+        for img in soup.find_all("img"):
+            add(img.get("data-src") or img.get("src") or "")
+        # 3. og:image last (often the site logo — only kept if it passes the filter).
+        og = soup.find("meta", property="og:image")
+        if og and og.get("content"):
+            add(og["content"])
+        return urls[:10]
+
     def get_mod_details(self, file_id: str, slug: str = "") -> dict:
         """
         Rich detail for a mod page: title, description, screenshot image URLs,
@@ -216,24 +268,7 @@ class DeadlyStreamClient:
         desc_tag = soup.find("div", class_=re.compile("ipsType_richText|file_description|cFileDescription", re.I))
         description = desc_tag.get_text("\n", strip=True)[:2000] if desc_tag else ""
 
-        # Screenshots: og:image + images inside the description / gallery.
-        images: list[str] = []
-        og = soup.find("meta", property="og:image")
-        if og and og.get("content"):
-            images.append(og["content"])
-        for img in soup.find_all("img"):
-            src = img.get("data-src") or img.get("src") or ""
-            if not src:
-                continue
-            low = src.lower()
-            if any(k in low for k in ("/uploads/", "monthly_", "/gallery/", "screenshot")):
-                if src.startswith("//"):
-                    src = "https:" + src
-                elif src.startswith("/"):
-                    src = BASE + src
-                if src not in images:
-                    images.append(src)
-        images = images[:8]
+        images = self._extract_screenshots(soup)
 
         author = ""
         a_tag = soup.find("a", href=re.compile(r"/profile/"))

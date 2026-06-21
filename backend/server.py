@@ -457,19 +457,57 @@ def set_active(req: ActiveProfileRequest) -> dict:
 # ---------------------------------------------------------------------------
 
 _NEXUS_DOMAIN = {"KOTOR1": "kotor", "KOTOR2": "kotor2"}
+_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
+_MODINFO_CACHE: dict = {}
+_NEXUS_CACHE: dict = {}
+
+
+def _resolve_nexus_url(name: str, domain: str) -> str:
+    """
+    Best-effort: find the actual Nexus mod page for `name`. Falls back to a
+    search URL if no confident match (or Nexus blocks the request). Cached.
+    """
+    from urllib.parse import quote_plus
+    search_url = f"https://www.nexusmods.com/{domain}/search/?gsearch={quote_plus(name)}&gsearchtype=mods"
+    if not name:
+        return f"https://www.nexusmods.com/{domain}/mods/"
+    key = f"{domain}:{name.lower()}"
+    if key in _NEXUS_CACHE:
+        return _NEXUS_CACHE[key]
+    result = search_url
+    try:
+        import re as _re
+        import requests as _rq
+        r = _rq.get(search_url, headers={"User-Agent": _BROWSER_UA}, timeout=5)
+        if r.status_code == 200:
+            m = _re.search(rf"/{_re.escape(domain)}/mods/(\d+)", r.text)
+            if m:
+                result = f"https://www.nexusmods.com/{domain}/mods/{m.group(1)}"
+    except Exception:
+        pass
+    _NEXUS_CACHE[key] = result
+    return result
 
 
 @app.get("/api/mod/info")
 def mod_info(file_id: str, slug: str = "", game: str = "KOTOR1") -> dict:
+    cache_key = f"{file_id}:{game}"
+    if cache_key in _MODINFO_CACHE:
+        return _MODINFO_CACHE[cache_key]
     details = state.client.get_mod_details(file_id, slug)
     name = details.get("title", "")
     domain = _NEXUS_DOMAIN.get(game, "kotor")
-    from urllib.parse import quote_plus
-    details["nexus_url"] = (
-        f"https://www.nexusmods.com/{domain}/search/?gsearch={quote_plus(name)}&gsearchtype=mods"
-        if name else f"https://www.nexusmods.com/{domain}/mods/"
-    )
+    details["nexus_url"] = _resolve_nexus_url(name, domain)
+    if not details.get("error"):
+        _MODINFO_CACHE[cache_key] = details
     return details
+
+
+def _image_cache_dir() -> Path:
+    d = cfg.CONFIG_DIR / "cache" / "images"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 @app.get("/api/mod/image")
@@ -477,23 +515,41 @@ def mod_image(url: str):
     """
     Proxy a DeadlyStream image through the authenticated session so screenshots
     render in the app (avoids hotlink protection / login-gated images / CSP).
-    Restricted to deadlystream.com to avoid being an open proxy.
+    Restricted to deadlystream.com, and cached on disk so repeat views are fast.
     """
+    import hashlib
     from urllib.parse import urlparse
     from fastapi import Response
+
     host = urlparse(url).hostname or ""
     if not (host == "deadlystream.com" or host.endswith(".deadlystream.com")):
         return JSONResponse(status_code=400, content={"ok": False, "error": "host_not_allowed"})
+
+    ext = os.path.splitext(urlparse(url).path)[1].lower()
+    media = {
+        ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp",
+        ".bmp": "image/bmp", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    }.get(ext, "image/jpeg")
+
+    key = hashlib.sha256(url.encode("utf-8")).hexdigest()
+    cache_file = _image_cache_dir() / f"{key}{ext or '.img'}"
+    if cache_file.exists():
+        return Response(content=cache_file.read_bytes(), media_type=media,
+                        headers={"Cache-Control": "max-age=604800"})
     try:
         r = state.client._session.get(
             url, timeout=20, headers={"Referer": "https://deadlystream.com/"}
         )
         r.raise_for_status()
-        ctype = r.headers.get("Content-Type", "image/jpeg")
+        ctype = r.headers.get("Content-Type", media)
         if "image" not in ctype:
             return JSONResponse(status_code=415, content={"ok": False, "error": "not_an_image"})
+        try:
+            cache_file.write_bytes(r.content)
+        except OSError:
+            pass
         return Response(content=r.content, media_type=ctype,
-                        headers={"Cache-Control": "max-age=86400"})
+                        headers={"Cache-Control": "max-age=604800"})
     except Exception as e:
         return JSONResponse(status_code=502, content={"ok": False, "error": str(e)})
 
@@ -526,6 +582,13 @@ def install_start(req: StartInstallRequest) -> dict:
         return JSONResponse(status_code=400, content={"ok": False, "error": "Load the mod list first"})
     if not state.client._logged_in:
         return JSONResponse(status_code=401, content={"ok": False, "error": "Not logged in"})
+
+    # Honour a user selection (toggled-off mods are skipped).
+    if req.selected_file_ids is not None:
+        chosen = set(req.selected_file_ids)
+        mods = [m for m in mods if m.file_id in chosen]
+        if not mods:
+            return JSONResponse(status_code=400, content={"ok": False, "error": "No mods selected"})
 
     game = BUILD_GAME.get(req.build_key, "KOTOR1")
     # Resolve the target install: a chosen profile, else the game default.

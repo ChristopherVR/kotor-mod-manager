@@ -28,6 +28,7 @@ class StartInstallRequest(BaseModel):
     unattended: bool = False
     game_path: Optional[str] = None   # override; otherwise resolved from settings
     profile: str = ""                 # target install profile id (optional)
+    selected_file_ids: Optional[list[str]] = None  # if set, only install these
 
 
 class ImportRequest(BaseModel):
@@ -42,6 +43,14 @@ class ImportRequest(BaseModel):
 
 class UninstallRequest(BaseModel):
     force: bool = False
+
+
+class ImportFolderRequest(BaseModel):
+    game: str
+    path: str            # a folder containing mod archives (zip/7z/rar)
+    profile: str = ""
+    unattended: bool = True
+    game_path: Optional[str] = None
 
 
 class ReorderRequest(BaseModel):
