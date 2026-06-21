@@ -1,37 +1,40 @@
 import { useCallback, useEffect, useState } from "react";
 import { GitMerge, CheckCircle2 } from "lucide-react";
-import { api, type Conflict, type GameKey } from "@/lib/api";
+import { api, type Conflict, type Profile } from "@/lib/api";
 import { ConflictCard } from "@/components/ConflictCard";
+import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
-import { cn } from "@/lib/utils";
 
 interface ConflictsViewProps {
   refreshTick: number;
+  profiles: Profile[];
+  activeProfile: string;
+  setActiveProfile: (id: string) => void;
 }
 
-const FILTERS: { id: GameKey; label: string }[] = [
-  { id: "KOTOR1", label: "KOTOR 1" },
-  { id: "KOTOR2", label: "KOTOR 2" },
-];
-
-export function ConflictsView({ refreshTick }: ConflictsViewProps) {
-  const [game, setGame] = useState<GameKey>("KOTOR1");
+export function ConflictsView({ refreshTick, profiles, activeProfile, setActiveProfile }: ConflictsViewProps) {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
+    if (!activeProfile) { setConflicts([]); setLoading(false); return; }
     setLoading(true);
     try {
-      const r = await api.conflicts(game);
+      const r = await api.conflicts(activeProfile);
       setConflicts(r.conflicts ?? []);
     } catch {
       setConflicts([]);
     } finally {
       setLoading(false);
     }
-  }, [game]);
+  }, [activeProfile]);
 
   useEffect(() => { load(); }, [load, refreshTick]);
+
+  const switchProfile = (id: string) => {
+    setActiveProfile(id);
+    api.setActiveProfile(id).catch(() => {});
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -42,22 +45,17 @@ export function ConflictsView({ refreshTick }: ConflictsViewProps) {
             {conflicts.length} contested {conflicts.length === 1 ? "resource" : "resources"}
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-1 rounded-md bg-muted p-0.5">
-          {FILTERS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setGame(f.id)}
-              className={cn(
-                "rounded px-2.5 py-1 text-xs font-medium transition-colors",
-                game === f.id
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {f.label}
-            </button>
+        <Select
+          value={activeProfile}
+          onChange={(e) => switchProfile(e.target.value)}
+          className="ml-auto max-w-[16rem]"
+          disabled={profiles.length === 0}
+        >
+          {profiles.length === 0 && <option value="">No game installs</option>}
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
           ))}
-        </div>
+        </Select>
       </header>
 
       <div className="min-h-0 flex-1 overflow-auto p-4">

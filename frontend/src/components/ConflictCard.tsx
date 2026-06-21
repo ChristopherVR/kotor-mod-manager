@@ -1,3 +1,4 @@
+import { Lightbulb } from "lucide-react";
 import type { Conflict } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -6,6 +7,12 @@ const SEVERITY_DOT: Record<Conflict["severity"], string> = {
   info: "bg-[hsl(var(--info))]",
   warning: "bg-[hsl(var(--warning))]",
   error: "bg-destructive",
+};
+
+const SEVERITY_BADGE: Record<Conflict["severity"], "info" | "warning" | "destructive"> = {
+  info: "info",
+  warning: "warning",
+  error: "destructive",
 };
 
 const TYPE_VARIANT: Record<Conflict["type"], "info" | "warning" | "muted" | "secondary" | "destructive"> = {
@@ -24,8 +31,24 @@ export function ConflictCard({ conflict }: { conflict: Conflict }) {
         <code className="flex-1 truncate font-mono text-sm text-foreground" title={conflict.resource}>
           {conflict.resource}
         </code>
+        <Badge variant={SEVERITY_BADGE[conflict.severity]}>{conflict.severity}</Badge>
         <Badge variant={TYPE_VARIANT[conflict.type]}>{conflict.type}</Badge>
       </div>
+
+      {conflict.description && (
+        <p className="mt-2.5 text-sm leading-relaxed text-foreground">{conflict.description}</p>
+      )}
+
+      {conflict.recommendation && (
+        <div className="mt-2.5 flex items-start gap-2 rounded-md border border-[hsl(var(--info)/0.3)] bg-[hsl(var(--info)/0.08)] p-2.5">
+          <Lightbulb className="mt-0.5 size-4 shrink-0 text-[hsl(var(--info))]" />
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">Recommendation: </span>
+            {conflict.recommendation}
+          </p>
+        </div>
+      )}
+
       <ul className="mt-3 space-y-1.5 pl-4">
         {conflict.participants.map((p) => {
           const winner = conflict.winner_mod_id === p.mod_id;

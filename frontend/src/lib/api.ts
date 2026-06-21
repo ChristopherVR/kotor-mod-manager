@@ -47,13 +47,39 @@ export interface Settings {
 
 export type GameKey = "KOTOR1" | "KOTOR2";
 
+export interface Profile {
+  id: string;
+  name: string;
+  game: GameKey;
+  path: string;
+  is_default: boolean;
+}
+
+export interface ModInfo {
+  title: string;
+  description: string;
+  images: string[];
+  author: string;
+  ds_url: string;
+  nexus_url: string;
+  error?: string;
+}
+
+export interface DeployedFile { rel_path: string; sha256: string; size: number; overwrote: boolean; }
+export interface BakedFile { rel_path: string; post_sha256: string; created: boolean; }
+
 export interface LibraryMod {
   id: string; name: string; game: GameKey; enabled: boolean; toggleable: boolean;
   state: string; install_method: string; deploy_kind: string; load_order: number;
-  source_type: string; source_ref: string; build_key: string | null;
+  source_type: string; source_ref: string; source_slug: string; build_key: string | null;
   file_count: number; baked_count: number; install_ts: number;
   has_conflict: boolean; conflict_count: number;
 }
+
+export type LibraryDetail = LibraryMod & {
+  deployed_files: DeployedFile[];
+  baked_files: BakedFile[];
+};
 
 export interface ConflictParticipant { mod_id: string; mod_name: string; enabled: boolean; }
 
@@ -62,6 +88,8 @@ export interface Conflict {
   type: "override" | "2da" | "dialog" | "module" | "declared";
   severity: "info" | "warning" | "error"; participants: ConflictParticipant[];
   winner_mod_id: string | null;
+  description: string;
+  recommendation: string;
 }
 
 // WebSocket event shapes
@@ -115,19 +143,54 @@ export const api = {
     req<{ ok: boolean; action: string }>(`/api/install/${action}`, { method: "POST" }),
   installState: () =>
     req<{ running: boolean; mods: any[] }>("/api/install/state"),
-  library: (game: GameKey) =>
-    req<{ game: string; mods: LibraryMod[] }>(`/api/library?game=${game}`),
-  libraryEnable: (game: GameKey, id: string) =>
-    req<{ ok: boolean }>(`/api/library/${id}/enable?game=${game}`, { method: "POST" }),
-  libraryDisable: (game: GameKey, id: string) =>
-    req<{ ok: boolean }>(`/api/library/${id}/disable?game=${game}`, { method: "POST" }),
-  libraryUninstall: (game: GameKey, id: string, force = false) =>
-    req<{ ok: boolean }>(`/api/library/${id}/uninstall?game=${game}`, {
+  // Profiles (multiple game installs on one machine).
+  profiles: () =>
+    req<{ profiles: Profile[]; active: string }>("/api/profiles"),
+  createProfile: (body: { name: string; game: GameKey; path: string }) =>
+    req<{ ok: boolean; profile: Profile }>("/api/profiles", {
       method: "POST",
-      body: JSON.stringify({ force }),
+      body: JSON.stringify(body),
     }),
-  conflicts: (game: GameKey) =>
-    req<{ conflicts: Conflict[] }>(`/api/conflicts?game=${game}`),
+  updateProfile: (id: string, body: { name?: string; path?: string }) =>
+    req<{ ok: boolean; profile: Profile }>(`/api/profiles/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteProfile: (id: string) =>
+    req<{ ok: boolean }>(`/api/profiles/${id}`, { method: "DELETE" }),
+  setActiveProfile: (id: string) =>
+    req<{ ok: boolean }>("/api/profiles/active", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
+
+  library: (profile: string) =>
+    req<{ game: string; profile: string; mods: LibraryMod[] }>(
+      `/api/library?profile=${encodeURIComponent(profile)}`),
+  libraryDetail: (id: string, profile: string) =>
+    req<LibraryDetail>(
+      `/api/library/${id}?profile=${encodeURIComponent(profile)}`),
+  libraryEnable: (profile: string, id: string) =>
+    req<{ ok: boolean }>(
+      `/api/library/${id}/enable?profile=${encodeURIComponent(profile)}`, { method: "POST" }),
+  libraryDisable: (profile: string, id: string) =>
+    req<{ ok: boolean }>(
+      `/api/library/${id}/disable?profile=${encodeURIComponent(profile)}`, { method: "POST" }),
+  libraryUninstall: (profile: string, id: string, force = false) =>
+    req<{ ok: boolean }>(
+      `/api/library/${id}/uninstall?profile=${encodeURIComponent(profile)}`, {
+        method: "POST",
+        body: JSON.stringify({ force }),
+      }),
+  conflicts: (profile: string) =>
+    req<{ conflicts: Conflict[] }>(
+      `/api/conflicts?profile=${encodeURIComponent(profile)}`),
+  modInfo: (fileId: string, slug: string, game: GameKey) =>
+    req<ModInfo>(
+      `/api/mod/info?file_id=${encodeURIComponent(fileId)}&slug=${encodeURIComponent(slug)}&game=${game}`),
+  openUrl: (url: string) =>
+    req<{ ok: boolean }>(
+      `/api/update/open?url=${encodeURIComponent(url)}`, { method: "POST" }),
   updateCheck: () => req<UpdateInfo>("/api/update/check"),
   updateOpen: (url?: string) =>
     req<{ ok: boolean }>(`/api/update/open${url ? `?url=${encodeURIComponent(url)}` : ""}`, {

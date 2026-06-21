@@ -1,16 +1,24 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
-  FolderOpen, CheckCircle2, LogIn, LogOut, Zap, AlertTriangle,
-  Download, RefreshCw,
+  SlidersHorizontal, Gamepad2, User, Zap, RefreshCw, type LucideIcon,
 } from "lucide-react";
-import { api, type AppStatus, type Settings, type UpdateInfo } from "@/lib/api";
-import { pickDirectory } from "@/lib/tauri";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import type { AppStatus, Profile } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { GeneralSection } from "@/views/settings/GeneralSection";
+import { GameInstallsSection } from "@/views/settings/GameInstallsSection";
+import { AccountSection } from "@/views/settings/AccountSection";
+import { PatcherSection } from "@/views/settings/PatcherSection";
+import { UpdatesSection } from "@/views/settings/UpdatesSection";
 
-const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "" };
+type SectionId = "general" | "installs" | "account" | "patcher" | "updates";
+
+const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
+  { id: "general", label: "General", icon: SlidersHorizontal },
+  { id: "installs", label: "Game Installs", icon: Gamepad2 },
+  { id: "account", label: "Account", icon: User },
+  { id: "patcher", label: "Patcher", icon: Zap },
+  { id: "updates", label: "Updates", icon: RefreshCw },
+];
 
 interface SettingsViewProps {
   status: AppStatus | null;
@@ -18,174 +26,69 @@ interface SettingsViewProps {
   onSignIn: () => void;
   onSignOut: () => void;
   addLog: (message: string, tag?: string) => void;
+  profiles: Profile[];
+  activeProfile: string;
+  setActiveProfile: (id: string) => void;
+  refreshProfiles: () => Promise<void> | void;
 }
 
-export function SettingsView({ status, username, onSignIn, onSignOut, addLog }: SettingsViewProps) {
-  const [s, setS] = useState<Settings>(EMPTY);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [update, setUpdate] = useState<UpdateInfo | null>(null);
-  const [checking, setChecking] = useState(false);
-
-  useEffect(() => {
-    api.getSettings().then(setS).catch(() => {});
-    api.updateCheck().then(setUpdate).catch(() => {});
-  }, []);
-
-  const checkUpdates = async () => {
-    setChecking(true);
-    try {
-      const info = await api.updateCheck();
-      setUpdate(info);
-      if (info.available) addLog(`Update available: v${info.latest_version}`, "info");
-      else if (!info.error) addLog("You're on the latest version.", "muted");
-    } catch (e: any) {
-      addLog(`Update check failed: ${e?.message}`, "error");
-    } finally {
-      setChecking(false);
-    }
-  };
-
-  const browse = async (key: keyof Settings) => {
-    const dir = await pickDirectory();
-    if (dir) setS((prev) => ({ ...prev, [key]: dir }));
-  };
-
-  const save = async () => {
-    setSaving(true);
-    setSaved(false);
-    try {
-      await api.setSettings(s);
-      setSaved(true);
-      addLog("Settings saved.", "success");
-    } catch (e: any) {
-      addLog(`Failed to save settings: ${e?.message}`, "error");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const row = (key: keyof Settings, label: string) => (
-    <div className="space-y-1.5">
-      <Label>{label}</Label>
-      <div className="flex gap-2">
-        <Input value={s[key]} onChange={(e) => { setSaved(false); setS({ ...s, [key]: e.target.value }); }} />
-        <Button variant="outline" size="icon" onClick={() => browse(key)} title="Browse">
-          <FolderOpen />
-        </Button>
-      </div>
-    </div>
-  );
+export function SettingsView({
+  status, username, onSignIn, onSignOut, addLog,
+  profiles, activeProfile, setActiveProfile, refreshProfiles,
+}: SettingsViewProps) {
+  const [section, setSection] = useState<SectionId>("general");
 
   return (
     <div className="flex h-full flex-col">
       <header className="border-b bg-card/30 px-5 py-3">
         <h1 className="text-base font-semibold">Settings</h1>
-        <p className="text-xs text-muted-foreground">Game paths, downloads, and account</p>
+        <p className="text-xs text-muted-foreground">Game installs, downloads, account, and updates</p>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        <div className="mx-auto max-w-2xl space-y-4">
-          <Card>
-            <CardHeader><CardTitle>Game paths</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              {row("kotor1_path", "KOTOR 1 Installation Path")}
-              {row("kotor2_path", "KOTOR 2 Installation Path")}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle>Downloads</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              {row("download_dir", "Download Folder")}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle>Account</CardTitle></CardHeader>
-            <CardContent>
-              {status?.logged_in ? (
-                <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1.5 text-sm text-[hsl(var(--success))]">
-                    <CheckCircle2 className="size-4" /> {username || "Signed in"}
-                  </span>
-                  <Button variant="outline" size="sm" className="ml-auto" onClick={onSignOut}>
-                    <LogOut /> Sign out
-                  </Button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">Not signed in to DeadlyStream.</span>
-                  <Button variant="default" size="sm" className="ml-auto" onClick={onSignIn}>
-                    <LogIn /> Sign in
-                  </Button>
-                </div>
+      <div className="flex min-h-0 flex-1">
+        {/* Secondary sidebar */}
+        <nav className="w-52 shrink-0 space-y-1 overflow-y-auto border-r bg-card/20 p-3">
+          {SECTIONS.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setSection(id)}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                section === id
+                  ? "bg-sidebar-accent text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
               )}
-            </CardContent>
-          </Card>
+            >
+              <Icon className="size-4 shrink-0" />
+              <span className="flex-1 truncate text-left">{label}</span>
+            </button>
+          ))}
+        </nav>
 
-          <Card>
-            <CardHeader><CardTitle>Headless patcher</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              {status?.shim_available ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--success)/0.15)] px-2.5 py-0.5 text-xs font-medium text-[hsl(var(--success))]">
-                  <Zap className="size-3.5" /> Headless patcher ready
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--warning)/0.15)] px-2.5 py-0.5 text-xs font-medium text-[hsl(var(--warning))]">
-                  <AlertTriangle className="size-3.5" /> No HoloPatcher shim
-                </span>
-              )}
-              {status?.shim_path && (
-                <p className="truncate font-mono text-xs text-muted-foreground" title={status.shim_path}>
-                  {status.shim_path}
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle>Updates</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-3">
-                <p className="text-sm text-muted-foreground">
-                  KOTOR Mod Installer{" "}
-                  <span className="font-mono text-foreground">
-                    v{update?.current_version ?? status?.version ?? "?"}
-                  </span>
-                </p>
-                <Button variant="outline" size="sm" className="ml-auto"
-                        onClick={checkUpdates} disabled={checking}>
-                  <RefreshCw className={checking ? "animate-spin" : ""} />
-                  {checking ? "Checking…" : "Check for updates"}
-                </Button>
-              </div>
-              {update?.available ? (
-                <div className="rounded-md border border-[hsl(var(--info)/0.4)] bg-[hsl(var(--info)/0.1)] p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-[hsl(var(--info))]">
-                      Version {update.latest_version} is available
-                    </span>
-                    <Button size="sm" className="ml-auto"
-                            onClick={() => api.updateOpen(update.url ?? undefined).catch(() => {})}>
-                      <Download /> Get update
-                    </Button>
-                  </div>
-                  {update.notes && (
-                    <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap font-sans text-xs text-muted-foreground">
-                      {update.notes}
-                    </pre>
-                  )}
-                </div>
-              ) : update && !update.error ? (
-                <p className="text-xs text-[hsl(var(--success))]">You're on the latest version.</p>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <div className="flex items-center gap-3">
-            <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save settings"}</Button>
-            {saved && <span className="text-xs text-[hsl(var(--success))]">Saved</span>}
+        {/* Content */}
+        <div className="min-h-0 flex-1 overflow-auto p-4">
+          <div className="mx-auto max-w-2xl space-y-4">
+            {section === "general" && <GeneralSection addLog={addLog} />}
+            {section === "installs" && (
+              <GameInstallsSection
+                profiles={profiles}
+                activeProfile={activeProfile}
+                setActiveProfile={setActiveProfile}
+                refreshProfiles={refreshProfiles}
+                addLog={addLog}
+              />
+            )}
+            {section === "account" && (
+              <AccountSection
+                status={status}
+                username={username}
+                onSignIn={onSignIn}
+                onSignOut={onSignOut}
+              />
+            )}
+            {section === "patcher" && <PatcherSection status={status} />}
+            {section === "updates" && <UpdatesSection status={status} addLog={addLog} />}
           </div>
         </div>
       </div>

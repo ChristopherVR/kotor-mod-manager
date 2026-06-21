@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api, connectEvents, waitForBackend,
-  type AppStatus, type BuildInfo, type BuildMod, type WsEvent,
+  type AppStatus, type BuildInfo, type BuildMod, type Profile, type WsEvent,
 } from "@/lib/api";
 import { DEFAULT_RUNTIME, type ModRuntime } from "@/components/ModList";
 import { type LogLine } from "@/components/LogPanel";
@@ -15,7 +15,6 @@ import { SettingsView } from "@/views/SettingsView";
 import { type ViewId } from "@/lib/views";
 
 const FINAL = new Set(["DONE", "SKIPPED", "ERROR"]);
-const DEFAULT_CONFLICT_GAME = "KOTOR1" as const;
 
 const VIEW_IDS: ViewId[] = ["builds", "library", "conflicts", "activity", "settings"];
 
@@ -44,6 +43,8 @@ export default function App() {
   const [username, setUsername] = useState("");
   const [conflictCount, setConflictCount] = useState(0);
   const [dataTick, setDataTick] = useState(0);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [activeProfile, setActiveProfile] = useState<string>("");
 
   const logId = useRef(0);
   const addLog = useCallback((message: string, tag = "") => {
@@ -63,10 +64,29 @@ export default function App() {
     } catch { /* backend not up yet */ }
   }, []);
 
+  // Keep a ref of the active profile so closures (WS handler) see the latest.
+  const activeProfileRef = useRef(activeProfile);
+  useEffect(() => { activeProfileRef.current = activeProfile; }, [activeProfile]);
+
   const refreshConflicts = useCallback(async () => {
+    const pid = activeProfileRef.current;
+    if (!pid) return;
     try {
-      const r = await api.conflicts(DEFAULT_CONFLICT_GAME);
+      const r = await api.conflicts(pid);
       setConflictCount(r.conflicts?.length ?? 0);
+    } catch { /* endpoint may be unavailable */ }
+  }, []);
+
+  const refreshProfiles = useCallback(async () => {
+    try {
+      const r = await api.profiles();
+      setProfiles(r.profiles ?? []);
+      setActiveProfile((cur) => {
+        const next = r.active || r.profiles?.[0]?.id || "";
+        // Preserve a still-valid current selection (e.g. user-switched profile).
+        if (cur && r.profiles?.some((p) => p.id === cur)) return cur;
+        return next;
+      });
     } catch { /* endpoint may be unavailable */ }
   }, []);
 
@@ -84,14 +104,19 @@ export default function App() {
       } catch (e: any) {
         addLog(`Startup error: ${e?.message}`, "error");
       }
-      refreshConflicts();
+      await refreshProfiles();
       api.updateCheck()
         .then((u) => {
           if (u.available) addLog(`Update available: v${u.latest_version} — see Settings.`, "info");
         })
         .catch(() => {});
     })();
-  }, [addLog, refreshConflicts]);
+  }, [addLog, refreshProfiles]);
+
+  // Refresh conflict count whenever the active profile changes.
+  useEffect(() => {
+    if (activeProfile) refreshConflicts();
+  }, [activeProfile, refreshConflicts]);
 
   // WebSocket event stream.
   useEffect(() => {
@@ -220,9 +245,19 @@ export default function App() {
           onGoToConflicts={() => setView("conflicts")}
           addLog={addLog}
           refreshTick={dataTick}
+          profiles={profiles}
+          activeProfile={activeProfile}
+          setActiveProfile={setActiveProfile}
         />
       )}
-      {view === "conflicts" && <ConflictsView refreshTick={dataTick} />}
+      {view === "conflicts" && (
+        <ConflictsView
+          refreshTick={dataTick}
+          profiles={profiles}
+          activeProfile={activeProfile}
+          setActiveProfile={setActiveProfile}
+        />
+      )}
       {view === "activity" && <ActivityView logs={logs} onClear={() => setLogs([])} />}
       {view === "settings" && (
         <SettingsView
@@ -231,6 +266,10 @@ export default function App() {
           onSignIn={() => setShowLogin(true)}
           onSignOut={handleSignOut}
           addLog={addLog}
+          profiles={profiles}
+          activeProfile={activeProfile}
+          setActiveProfile={setActiveProfile}
+          refreshProfiles={refreshProfiles}
         />
       )}
 
