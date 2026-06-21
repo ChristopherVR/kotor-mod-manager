@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.2] - 2026-06-21
+
+### Documentation
+
+- Show the app in action with fresh screenshots and demo clips
+
+### Build & CI
+
+- Keep the app's dependencies up to date automatically
+- Tidy the Releases page each week, keeping the 5 newest downloads
 ## [0.7.1] - 2026-06-21
 
 ### Bug Fixes
