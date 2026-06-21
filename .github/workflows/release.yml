@@ -38,15 +38,24 @@ jobs:
       - name: Compute next version
         id: ver
         run: |
-          NEXT="$(git cliff --bumped-version 2>/dev/null | tr -d '[:space:]')"
+          # Current version from the single source of truth.
+          CUR="$(grep -oP '__version__ = "\K[^"]+' installer/_version.py || echo '0.1.0')"
+          # git-cliff returns empty on a repo with zero tags — fall back to CUR.
+          RAW="$(git cliff --bumped-version 2>/dev/null | tr -d '[:space:]')"
+          RAW="${RAW#v}"
+          [ -z "$RAW" ] && RAW="$CUR"
+          TAG="v$RAW"
           LAST="$(git describe --tags --abbrev=0 2>/dev/null || echo '')"
-          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
-          if [ -z "$NEXT" ] || [ "$NEXT" = "$LAST" ]; then
+          echo "next=$TAG" >> "$GITHUB_OUTPUT"
+          if [ -z "$LAST" ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            echo "First release: $TAG"
+          elif [ "$TAG" = "$LAST" ]; then
             echo "release=false" >> "$GITHUB_OUTPUT"
-            echo "No releasable changes (next='$NEXT', last='$LAST')."
+            echo "No releasable changes (next=$TAG == last=$LAST)."
           else
             echo "release=true" >> "$GITHUB_OUTPUT"
-            echo "Releasing $NEXT (previous: ${LAST:-none})."
+            echo "Releasing $TAG (previous: $LAST)."
           fi
 
       - name: Regenerate changelog
