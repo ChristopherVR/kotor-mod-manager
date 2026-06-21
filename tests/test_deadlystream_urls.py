@@ -1,5 +1,5 @@
 """
-URL-shape tests for the DeadlyStream client — confirms the slug is threaded
+URL-shape tests for the DeadlyStream client - confirms the slug is threaded
 into every download/CSRF URL and that the HTML-interstitial guard fires.
 No network: the session is monkeypatched.
 

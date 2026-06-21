@@ -13,6 +13,9 @@ SERVICE_NAME = "kotor_mod_installer_ds"
 CSRF_RE = re.compile(r'"csrfKey"\s*:\s*"([a-f0-9]+)"', re.IGNORECASE)
 # Also try meta tag
 CSRF_META_RE = re.compile(r'data-csrfkey="([a-f0-9]+)"', re.IGNORECASE)
+# Fallback: the key appears as a URL param on links (csrfKey=<hex>), possibly
+# HTML-encoded as &amp;csrfKey=<hex>.
+CSRF_PARAM_RE = re.compile(r'csrfKey=([a-f0-9]{16,})', re.IGNORECASE)
 
 BASE = "https://deadlystream.com"
 LOGIN_URL = f"{BASE}/login/"
@@ -64,11 +67,16 @@ class DeadlyStreamClient:
         m = CSRF_META_RE.search(html)
         if m:
             return m.group(1)
-        # BeautifulSoup fallback
+        # BeautifulSoup fallback (hidden form input)
         soup = BeautifulSoup(html, "lxml")
         tag = soup.find("input", {"name": "csrfKey"})
         if tag and tag.get("value"):
             return tag["value"]
+        # Last resort: the key appears as a URL param on many links/buttons,
+        # e.g. ?do=download&amp;csrfKey=<hex>. Handle the &amp; HTML entity.
+        m = CSRF_PARAM_RE.search(html)
+        if m:
+            return m.group(1)
         return None
 
     def login(self, username: str, password: str) -> None:
@@ -105,7 +113,7 @@ class DeadlyStreamClient:
                     return
 
             raise AuthError(
-                "Login failed — check your username/password. "
+                "Login failed - check your username/password. "
                 "DeadlyStream may also be rate-limiting logins."
             )
 
@@ -244,7 +252,7 @@ class DeadlyStreamClient:
         # 2. Inline images (description + record gallery).
         for img in soup.find_all("img"):
             add(img.get("data-src") or img.get("src") or "")
-        # 3. og:image last (often the site logo — only kept if it passes the filter).
+        # 3. og:image last (often the site logo - only kept if it passes the filter).
         og = soup.find("meta", property="og:image")
         if og and og.get("content"):
             add(og["content"])
@@ -334,7 +342,7 @@ class DeadlyStreamClient:
             pass
 
         if not records:
-            # Single-file submission — fall back to the primary download URL.
+            # Single-file submission - fall back to the primary download URL.
             records.append({
                 "name": f"mod_{file_id}",
                 "url": f"{page_url}?do=download&csrfKey={csrf}",

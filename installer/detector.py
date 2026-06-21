@@ -14,7 +14,7 @@ class InstallMethod(Enum):
     DIRECT_COPY   = auto()   # Loose KOTOR files → copy to Override/
     MULTI_VARIANT = auto()   # Sub-folders each with a variant (user must pick one)
     MULTIPLE      = auto()   # Multiple distinct sub-mods, each needs its own install
-    MANUAL        = auto()   # Unknown — show readme to user
+    MANUAL        = auto()   # Unknown - show readme to user
 
 
 OVERRIDE_EXTENSIONS = {
@@ -27,6 +27,11 @@ OVERRIDE_EXTENSIONS = {
 
 MODULE_EXTENSIONS = {".mod", ".sav", ".rim", ".erf"}
 MOVIE_EXTENSIONS  = {".bik", ".avi", ".mpg"}
+# Files that belong in the GAME ROOT (next to swkotor.exe), not Override —
+# e.g. Miles Sound System fixes for the Amazon/modern releases.
+ROOT_EXTENSIONS   = {".asi", ".flt", ".m3d"}
+ROOT_FILENAMES    = {"swkotor.ini", "swkotor2.ini", "miles32.dll", "mss32.dll",
+                     "binkw32.dll", "eax.dll", "dsound.dll"}
 
 
 @dataclass
@@ -143,6 +148,9 @@ def _collect_loose_files(root: Path) -> list[ModFileMapping]:
             mappings.append(ModFileMapping(source=p, dest_relative=f"Modules/{p.name}"))
         elif ext in MOVIE_EXTENSIONS:
             mappings.append(ModFileMapping(source=p, dest_relative=f"Movies/{p.name}"))
+        elif ext in ROOT_EXTENSIONS or p.name.lower() in ROOT_FILENAMES:
+            # Game-root files (Miles sound fixes, ini/dll patches).
+            mappings.append(ModFileMapping(source=p, dest_relative=p.name))
         elif ext in OVERRIDE_EXTENSIONS:
             mappings.append(ModFileMapping(source=p, dest_relative=f"Override/{p.name}"))
     return mappings
@@ -214,7 +222,7 @@ def _plan_for_root(mod_root: Path) -> InstallPlan:
             readme_text=readme,
         )
 
-    # 2. TSLPatcher (handled headlessly via the HoloPatcher shim cascade — the
+    # 2. TSLPatcher (handled headlessly via the HoloPatcher shim cascade - the
     #    mod's own .exe is optional; tslpatchdata + an ini is enough).
     tslpatcher_data = _find_dir(mod_root, "tslpatchdata")
     tslpatcher_exe  = _find_tslpatcher(mod_root)
@@ -305,7 +313,7 @@ def detect(extracted_dir: Path) -> InstallPlan:
     # e.g. Dialogue Fixes with "Corrections only/" and "PC Response Moderation version/"
     all_contain_tlk = all(_find_tlk_variants(d) for d in sub_dirs)
     if all_contain_tlk and len(sub_dirs) > 1:
-        # Each sub-folder is a variant of the same mod — user picks one
+        # Each sub-folder is a variant of the same mod - user picks one
         all_variants = []
         for d in sub_dirs:
             for label, path in _find_tlk_variants(d):
