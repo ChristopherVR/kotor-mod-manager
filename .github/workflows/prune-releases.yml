@@ -1,0 +1,64 @@
+name: Prune old releases
+
+# Keeps the 5 most recent GitHub releases and deletes the rest.
+# Git tags are left untouched, so older versions can still be checked out.
+
+on:
+  schedule:
+    # Every Monday at 07:00 UTC
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "How many of the most recent releases to keep"
+        required: false
+        default: "5"
+      dry_run:
+        description: "List what would be deleted without deleting"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prune-releases
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old releases, keep tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          KEEP: ${{ github.event.inputs.keep || '5' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          set -euo pipefail
+
+          echo "Keeping the ${KEEP} most recent releases."
+
+          # Releases newest-first, skipping the ones we keep.
+          old_tags="$(gh api --paginate "repos/${GH_REPO}/releases" \
+            --jq 'sort_by(.created_at) | reverse | .['"${KEEP}"':] | .[].tag_name')"
+
+          if [ -z "${old_tags}" ]; then
+            echo "Nothing to prune. There are ${KEEP} or fewer releases."
+            exit 0
+          fi
+
+          while IFS= read -r tag; do
+            [ -z "${tag}" ] && continue
+            if [ "${DRY_RUN}" = "true" ]; then
+              echo "[dry-run] would delete release: ${tag} (tag kept)"
+            else
+              echo "Deleting release: ${tag} (tag kept)"
+              # No --cleanup-tag, so the git tag is preserved.
+              gh release delete "${tag}" --repo "${GH_REPO}" --yes
+            fi
+          done <<< "${old_tags}"
+
+          echo "Done."
