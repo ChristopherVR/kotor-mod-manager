@@ -26,6 +26,8 @@ import config as cfg
 from backend.models import (
     ActiveProfileRequest,
     LoginRequest,
+    OpenDownloadRequest,
+    OpenPathRequest,
     ProfileCreate,
     ProfileUpdate,
     SettingsModel,
@@ -515,6 +517,30 @@ def mod_info(file_id: str, slug: str = "", game: str = "KOTOR1") -> dict:
     if not details.get("error"):
         _MODINFO_CACHE[cache_key] = details
     return details
+
+
+@app.post("/api/open-path")
+def open_path(req: OpenPathRequest) -> dict:
+    """Open an arbitrary local path in the OS file manager."""
+    from backend.fsutil import reveal_path
+    if not req.path:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "path_required"})
+    if not reveal_path(req.path, select=req.select):
+        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
+    return {"ok": True}
+
+
+@app.post("/api/mod/open-download")
+def open_mod_download(req: OpenDownloadRequest) -> dict:
+    """Open a build mod's download folder (download_dir/<file_id>_<slug[:30]>)."""
+    from backend.fsutil import reveal_path
+    download_dir = Path(cfg.load().get("download_dir", ""))
+    folder = download_dir / f"{req.file_id}_{req.slug[:30]}"
+    if not folder.exists():
+        return JSONResponse(status_code=404, content={"ok": False, "error": "download_unavailable"})
+    if not reveal_path(folder):
+        return JSONResponse(status_code=500, content={"ok": False, "error": "open_failed"})
+    return {"ok": True, "path": str(folder)}
 
 
 @app.get("/api/nexus/validate")

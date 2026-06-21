@@ -101,6 +101,7 @@ class InstalledMod:
     build_key: Optional[str] = None
     option_hint: str = ""
     source_slug: str = ""
+    category: str = ""
     deployed_files: list[DeployedFile] = field(default_factory=list)
     baked_files: list[BakedFile] = field(default_factory=list)
     # Incompatibilities the mod declares about ITSELF (parsed from its readme).
@@ -293,6 +294,7 @@ def record_install(
     readme_text: str = "",
     game_type: str = "",
     source_slug: str = "",
+    category: str = "",
 ) -> InstalledMod:
     """
     Record a completed install into the per-game manifest.
@@ -355,6 +357,7 @@ def record_install(
             install_method=install_method, deploy_kind=deploy_kind,
             state=state, enabled=enabled, load_order=load_order,
             build_key=build_key, option_hint=option_hint, source_slug=source_slug,
+            category=category,
             deployed_files=deployed, baked_files=baked,
             incompatibilities=parse_incompatibilities(readme_text),
         )

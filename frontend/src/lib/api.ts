@@ -90,8 +90,10 @@ export interface LibraryMod {
   id: string; name: string; game: GameKey; enabled: boolean; toggleable: boolean;
   state: string; install_method: string; deploy_kind: string; load_order: number;
   source_type: string; source_ref: string; source_slug: string; build_key: string | null;
+  category: string;
   file_count: number; baked_count: number; install_ts: number;
   has_conflict: boolean; conflict_count: number;
+  source_exists: boolean;
 }
 
 export type LibraryDetail = LibraryMod & {
@@ -207,6 +209,19 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ force }),
       }),
+  libraryOpenFolder: (profile: string, id: string) =>
+    req<{ ok: boolean; path?: string }>(
+      `/api/library/${id}/open-folder?profile=${encodeURIComponent(profile)}`, { method: "POST" }),
+  openPath: (path: string, select = false) =>
+    req<{ ok: boolean }>("/api/open-path", {
+      method: "POST",
+      body: JSON.stringify({ path, select }),
+    }),
+  openDownloadFolder: (file_id: string, slug: string, game: string) =>
+    req<{ ok: boolean; path?: string }>("/api/mod/open-download", {
+      method: "POST",
+      body: JSON.stringify({ file_id, slug, game }),
+    }),
   conflicts: (profile: string) =>
     req<{ conflicts: Conflict[] }>(
       `/api/conflicts?profile=${encodeURIComponent(profile)}`),

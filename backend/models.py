@@ -74,7 +74,19 @@ class ActiveProfileRequest(BaseModel):
     id: str
 
 
-def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0) -> dict:
+class OpenPathRequest(BaseModel):
+    path: str
+    select: bool = False   # highlight the file inside its folder (Windows/macOS)
+
+
+class OpenDownloadRequest(BaseModel):
+    file_id: str
+    slug: str = ""
+    game: str = "KOTOR1"
+
+
+def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0,
+                          source_exists: bool = False) -> dict:
     return {
         "id": m.id,
         "name": m.name,
@@ -88,6 +100,7 @@ def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0) -> dict:
         "source_type": m.source_type,
         "source_ref": m.source_ref,
         "source_slug": m.source_slug,
+        "category": getattr(m, "category", "") or "",
         "build_key": m.build_key,
         "option_hint": m.option_hint,
         "file_count": len(m.deployed_files),
@@ -95,6 +108,7 @@ def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0) -> dict:
         "install_ts": m.install_ts,
         "has_conflict": conflict_count > 0,
         "conflict_count": conflict_count,
+        "source_exists": source_exists,
     }
 
 

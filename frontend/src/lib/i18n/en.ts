@@ -47,6 +47,8 @@ export const en: Dict = {
   "builds.importFolder": "Install from folder…",
   "builds.importFolderHint": "Pick a folder of mod archives to import and install.",
   "builds.dropHint": "Drop a folder of mod .zips here to install",
+  "builds.openDownloadFolder": "Open download folder",
+  "builds.downloadFolderMissing": "No download folder found for \"{name}\" yet.",
   "builds.selectAll": "Select all",
   "builds.selectNone": "Select none",
   "builds.selectedCount": "{selected} of {total} selected",
@@ -85,8 +87,19 @@ export const en: Dict = {
   "library.conflict": "conflict",
   "library.enabled": "Enabled",
   "library.disabled": "Disabled",
+  "library.enable": "Enable",
+  "library.disable": "Disable",
+  "library.openFolder": "Open folder",
+  "library.openFolderFailed": "Source folder for \"{name}\" is no longer available.",
+  "library.allMethods": "All methods",
+  "library.allCategories": "All categories",
+  "library.duplicate": "duplicate",
+  "library.duplicateHint": "Another installed mod shares this name.",
+  "library.duplicateSummary": "{count} duplicate name(s)",
+  "library.duplicatesOnly": "Duplicates",
 
   // Mod detail
+  "modDetail.viewDetails": "View details",
   "modDetail.loadingDetails": "Loading details…",
   "modDetail.noDescription": "No description available",
   "modDetail.screenshots": "Screenshots",
@@ -127,6 +140,9 @@ export const en: Dict = {
   "activity.title": "Activity",
   "activity.entries": "{count} log entries",
   "activity.empty": "Activity log will appear here…",
+  "activity.copy": "Copy",
+  "activity.copied": "Copied",
+  "activity.export": "Export",
 
   // Settings shell
   "settings.title": "Settings",

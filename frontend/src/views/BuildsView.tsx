@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import {
   Play, Pause, Square, AlertTriangle, RotateCcw, Download, X, FolderInput, UploadCloud,
+  FolderOpen, ScrollText,
 } from "lucide-react";
 import { api, type BuildInfo, type BuildMod } from "@/lib/api";
 import { pickDirectory, onFilesDropped, onDragHover } from "@/lib/tauri";
 import { ModList, type ModRuntime } from "@/components/ModList";
+import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu";
 import { BuildModDetail } from "@/components/BuildModDetail";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -49,6 +51,7 @@ export function BuildsView(props: BuildsViewProps) {
   const [openMod, setOpenMod] = useState<BuildMod | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dragActive, setDragActive] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; mod: BuildMod } | null>(null);
 
   const buildGame = builds.find((b) => b.key === selectedBuild)?.game ?? mods[0]?.game ?? "";
 
@@ -169,6 +172,19 @@ export function BuildsView(props: BuildsViewProps) {
     }
   };
 
+  const openDownloadFolder = async (mod: BuildMod) => {
+    try {
+      await api.openDownloadFolder(mod.file_id, mod.slug, mod.game);
+    } catch {
+      addLog(t("builds.downloadFolderMissing", { name: mod.name }), "warning");
+    }
+  };
+
+  const menuItems = (mod: BuildMod): ContextMenuItem[] => [
+    { label: t("modDetail.viewDetails"), icon: ScrollText, onSelect: () => setOpenMod(mod) },
+    { label: t("builds.openDownloadFolder"), icon: FolderOpen, onSelect: () => openDownloadFolder(mod) },
+  ];
+
   const showBanner = !!patcherName;
 
   return (
@@ -263,6 +279,7 @@ export function BuildsView(props: BuildsViewProps) {
             runtime={runtime}
             activeFileId={activeFileId}
             onOpenMod={setOpenMod}
+            onContextMenu={(e: MouseEvent, mod) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, mod }); }}
             selectable={!running}
             selected={selected}
             onToggle={toggleMod}
@@ -305,6 +322,15 @@ export function BuildsView(props: BuildsViewProps) {
             : t("builds.statusConnecting")}
         </span>
       </footer>
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menuItems(menu.mod)}
+          onClose={() => setMenu(null)}
+        />
+      )}
 
       {openMod && <BuildModDetail mod={openMod} onClose={() => setOpenMod(null)} />}
     </div>

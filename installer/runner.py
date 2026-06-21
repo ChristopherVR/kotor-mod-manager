@@ -20,6 +20,44 @@ def _log(msg: str, cb: Optional[ProgressCallback]) -> None:
         cb(msg)
 
 
+# HoloPatcher (and the pykotor engine it wraps) reports fatal problems in its
+# output but can still exit 0/1, so a clean exit code is NOT proof of success.
+# Treat any of these signatures in stdout/stderr as a hard failure.
+_HOLO_ERROR_MARKERS = (
+    "is not a valid installation",
+    "[error]",
+    "traceback (most recent call last)",
+    "runtimeerror:",
+    "filenotfounderror:",
+    "permissionerror:",
+    "cannot initialize modinstaller",
+    "failed to install",
+    "installation failed",
+)
+
+# Lines matching these are noise even though they contain a marker substring
+# (e.g. a summary line reporting "0 errors").
+_HOLO_ERROR_IGNORE = (
+    "0 errors",
+    "no errors",
+    "errors: 0",
+)
+
+
+def _scan_patcher_output(text: str) -> Optional[str]:
+    """Return the first meaningful error line in patcher output, else None."""
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        low = line.lower()
+        if any(ok in low for ok in _HOLO_ERROR_IGNORE):
+            continue
+        if any(marker in low for marker in _HOLO_ERROR_MARKERS):
+            return line
+    return None
+
+
 # ------------------------------------------------------------------
 # HoloPatcher - fully headless
 # ------------------------------------------------------------------
@@ -70,16 +108,27 @@ def run_holopatcher(
 
     stdout = result.stdout.strip()
     stderr = result.stderr.strip()
+    combined = f"{stdout}\n{stderr}"
     if stdout:
         for line in stdout.splitlines()[-20:]:
             _log(f"  {line}", cb)
+
+    # A non-zero (other than 1 = "completed with warnings") exit is a failure.
     if result.returncode not in (0, 1):
-        # Exit code 1 = completed with warnings (acceptable)
         _log(f"  [stderr] {stderr[:300]}", cb)
         raise PatcherError(
             f"HoloPatcher exited with code {result.returncode}.\n"
-            f"{stderr[:400]}"
+            f"{(stderr or stdout)[:400]}"
         )
+
+    # Even on a 0/1 exit, HoloPatcher may have logged a fatal error (e.g. an
+    # invalid game directory). Surface it instead of falsely reporting success.
+    err_line = _scan_patcher_output(combined)
+    if err_line:
+        if stderr:
+            _log(f"  [stderr] {stderr[:300]}", cb)
+        raise PatcherError(f"HoloPatcher reported an error: {err_line}")
+
     _log("[HoloPatcher] Complete.", cb)
 
 

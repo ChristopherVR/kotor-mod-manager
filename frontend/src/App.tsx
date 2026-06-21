@@ -53,7 +53,7 @@ export default function App() {
   const logId = useRef(0);
   const addLog = useCallback((message: string, tag = "") => {
     setLogs((prev) => {
-      const next = [...prev, { id: logId.current++, message, tag }];
+      const next = [...prev, { id: logId.current++, message, tag, ts: Date.now() }];
       return next.length > 600 ? next.slice(-600) : next;
     });
   }, []);

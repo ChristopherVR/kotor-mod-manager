@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Library as LibraryIcon } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { FolderOpen, Library as LibraryIcon, Power, ScrollText } from "lucide-react";
 import { api, type LibraryMod, type Profile } from "@/lib/api";
 import { LibraryRow } from "@/components/LibraryRow";
 import { ModDetail } from "@/components/ModDetail";
+import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Select } from "@/components/ui/select";
@@ -20,6 +21,23 @@ interface LibraryViewProps {
   setActiveProfile: (id: string) => void;
 }
 
+// Friendly labels for raw install-method enum names.
+const METHOD_LABELS: Record<string, string> = {
+  TSLPATCHER: "TSLPatcher",
+  HOLOPATCHER: "HoloPatcher",
+  DIRECT_COPY: "Direct copy",
+  OVERRIDE_COPY: "Override copy",
+  TLK_REPLACE: "Dialog (TLK)",
+  MULTI_VARIANT: "Multi-variant",
+  MULTIPLE: "Multiple",
+  MANUAL: "Manual",
+};
+
+const methodLabel = (m: string) => METHOD_LABELS[m] ?? m;
+
+/** Normalize a mod name for duplicate detection. */
+const dupeKey = (m: LibraryMod) => m.name.trim().toLowerCase();
+
 export function LibraryView({
   onGoToBuilds, onGoToConflicts, addLog, refreshTick,
   profiles, activeProfile, setActiveProfile,
@@ -28,9 +46,13 @@ export function LibraryView({
   const [mods, setMods] = useState<LibraryMod[]>([]);
   const [query, setQuery] = useState("");
   const [enabledOnly, setEnabledOnly] = useState(false);
+  const [dupesOnly, setDupesOnly] = useState(false);
+  const [method, setMethod] = useState("all");
+  const [category, setCategory] = useState("all");
   const [loading, setLoading] = useState(true);
   const [errored, setErrored] = useState(false);
   const [openMod, setOpenMod] = useState<LibraryMod | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; mod: LibraryMod } | null>(null);
 
   const load = useCallback(async () => {
     if (!activeProfile) { setMods([]); setLoading(false); return; }
@@ -49,16 +71,37 @@ export function LibraryView({
 
   useEffect(() => { load(); }, [load, refreshTick]);
 
+  // Distinct methods/categories present, for the filter dropdowns.
+  const methods = useMemo(
+    () => Array.from(new Set(mods.map((m) => m.install_method).filter(Boolean))).sort(),
+    [mods],
+  );
+  const categories = useMemo(
+    () => Array.from(new Set(mods.map((m) => m.category).filter(Boolean))).sort(),
+    [mods],
+  );
+
+  // Names that occur more than once → duplicate set.
+  const dupeKeys = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of mods) counts.set(dupeKey(m), (counts.get(dupeKey(m)) ?? 0) + 1);
+    return new Set([...counts].filter(([, n]) => n > 1).map(([k]) => k));
+  }, [mods]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return mods
       .filter((m) => (enabledOnly ? m.enabled : true))
+      .filter((m) => (method === "all" ? true : m.install_method === method))
+      .filter((m) => (category === "all" ? true : m.category === category))
+      .filter((m) => (dupesOnly ? dupeKeys.has(dupeKey(m)) : true))
       .filter((m) => (q ? m.name.toLowerCase().includes(q) : true))
       .sort((a, b) => a.load_order - b.load_order);
-  }, [mods, query, enabledOnly]);
+  }, [mods, query, enabledOnly, method, category, dupesOnly, dupeKeys]);
 
   const total = mods.length;
   const enabledCount = mods.filter((m) => m.enabled).length;
+  const dupeCount = dupeKeys.size;
 
   const switchProfile = (id: string) => {
     setActiveProfile(id);
@@ -79,6 +122,34 @@ export function LibraryView({
     }
   };
 
+  const openFolder = async (mod: LibraryMod) => {
+    try {
+      await api.libraryOpenFolder(activeProfile, mod.id);
+    } catch (e: any) {
+      addLog(t("library.openFolderFailed", { name: mod.name }), "warning");
+    }
+  };
+
+  const openContextMenu = (e: MouseEvent, mod: LibraryMod) => {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, mod });
+  };
+
+  const menuItems = (mod: LibraryMod): ContextMenuItem[] => {
+    const items: ContextMenuItem[] = [
+      { label: t("modDetail.viewDetails"), icon: ScrollText, onSelect: () => setOpenMod(mod) },
+      {
+        label: t("library.openFolder"), icon: FolderOpen,
+        onSelect: () => openFolder(mod), disabled: !mod.source_exists,
+      },
+      {
+        label: mod.enabled ? t("library.disable") : t("library.enable"), icon: Power,
+        onSelect: () => toggle(mod, !mod.enabled), disabled: !mod.toggleable,
+      },
+    ];
+    return items;
+  };
+
   return (
     <div className="flex h-full flex-col">
       <header className="space-y-3 border-b bg-card/30 px-5 py-3">
@@ -87,6 +158,7 @@ export function LibraryView({
             <h1 className="text-base font-semibold">{t("library.title")}</h1>
             <p className="text-xs text-muted-foreground">
               {t("library.enabledSummary", { enabled: enabledCount, total })}
+              {dupeCount > 0 && ` · ${t("library.duplicateSummary", { count: dupeCount })}`}
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -94,11 +166,11 @@ export function LibraryView({
             <Switch checked={enabledOnly} onCheckedChange={setEnabledOnly} />
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <Select
             value={activeProfile}
             onChange={(e) => switchProfile(e.target.value)}
-            className="max-w-[16rem]"
+            className="max-w-[14rem]"
             disabled={profiles.length === 0}
           >
             {profiles.length === 0 && <option value="">{t("library.noProfiles")}</option>}
@@ -110,8 +182,31 @@ export function LibraryView({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("library.search")}
-            className="max-w-xs"
+            className="max-w-[16rem] flex-1"
           />
+          <Select value={method} onChange={(e) => setMethod(e.target.value)} className="w-auto">
+            <option value="all">{t("library.allMethods")}</option>
+            {methods.map((m) => (
+              <option key={m} value={m}>{methodLabel(m)}</option>
+            ))}
+          </Select>
+          {categories.length > 0 && (
+            <Select value={category} onChange={(e) => setCategory(e.target.value)} className="w-auto">
+              <option value="all">{t("library.allCategories")}</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </Select>
+          )}
+          {dupeCount > 0 && (
+            <Button
+              variant={dupesOnly ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setDupesOnly((v) => !v)}
+            >
+              {t("library.duplicatesOnly")}
+            </Button>
+          )}
         </div>
       </header>
 
@@ -137,9 +232,11 @@ export function LibraryView({
               <LibraryRow
                 key={`${m.game}:${m.id}`}
                 mod={m}
+                duplicate={dupeKeys.has(dupeKey(m))}
                 onToggle={(next) => toggle(m, next)}
                 onConflictClick={onGoToConflicts}
                 onOpen={() => setOpenMod(m)}
+                onContextMenu={(e) => openContextMenu(e, m)}
               />
             ))}
           </div>
@@ -150,6 +247,15 @@ export function LibraryView({
         <footer className="border-t bg-card/40 px-5 py-2">
           <Button variant="ghost" size="sm" onClick={onGoToBuilds}>{t("library.installMore")}</Button>
         </footer>
+      )}
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menuItems(menu.mod)}
+          onClose={() => setMenu(null)}
+        />
       )}
 
       {openMod && (

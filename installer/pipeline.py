@@ -398,7 +398,7 @@ class Pipeline:
                     snapshot_before=pre.get("before"), snapshot_after=after,
                     build_key=mod.build_key, option_hint=mod.option_hint,
                     readme_text=plan.readme_text, game_type=self._game_type,
-                    source_slug=mod.slug,
+                    source_slug=mod.slug, category=getattr(mod, "category", "") or "",
                 )
             else:
                 mod_manager.record_install(
@@ -410,7 +410,7 @@ class Pipeline:
                     pre_existing=pre.get("pre_existing"),
                     build_key=mod.build_key, option_hint=mod.option_hint,
                     readme_text=plan.readme_text, game_type=self._game_type,
-                    source_slug=mod.slug,
+                    source_slug=mod.slug, category=getattr(mod, "category", "") or "",
                 )
         except Exception as e:  # recording must never fail an install
             self._log(f"    (library record skipped: {e})", "muted")

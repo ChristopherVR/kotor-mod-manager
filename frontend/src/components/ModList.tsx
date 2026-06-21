@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent } from "react";
 import type { BuildMod, ModStatus } from "@/lib/api";
 import { STATUS_META, ACTIVE_STATUSES } from "@/lib/status";
 import { Badge } from "@/components/ui/badge";
@@ -26,6 +26,7 @@ function Row({
   mod,
   rt,
   onOpen,
+  onContextMenu,
   selectable,
   selected,
   onToggle,
@@ -33,6 +34,7 @@ function Row({
   mod: BuildMod;
   rt: ModRuntime;
   onOpen?: () => void;
+  onContextMenu?: (e: MouseEvent) => void;
   selectable?: boolean;
   selected?: boolean;
   onToggle?: (fileId: string) => void;
@@ -48,6 +50,7 @@ function Row({
       role={onOpen ? "button" : undefined}
       tabIndex={onOpen ? 0 : undefined}
       onClick={onOpen}
+      onContextMenu={onContextMenu}
       onKeyDown={
         onOpen
           ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }
@@ -101,6 +104,7 @@ export function ModList({
   runtime,
   activeFileId,
   onOpenMod,
+  onContextMenu,
   selectable,
   selected,
   onToggle,
@@ -109,6 +113,7 @@ export function ModList({
   runtime: Record<string, ModRuntime>;
   activeFileId: string | null;
   onOpenMod?: (mod: BuildMod) => void;
+  onContextMenu?: (e: MouseEvent, mod: BuildMod) => void;
   selectable?: boolean;
   selected?: Set<string>;
   onToggle?: (fileId: string) => void;
@@ -139,6 +144,7 @@ export function ModList({
           mod={m}
           rt={runtime[m.file_id] ?? DEFAULT_RUNTIME}
           onOpen={onOpenMod ? () => onOpenMod(m) : undefined}
+          onContextMenu={onContextMenu ? (e) => onContextMenu(e, m) : undefined}
           selectable={selectable}
           selected={selected?.has(m.file_id)}
           onToggle={onToggle}

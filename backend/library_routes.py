@@ -56,6 +56,31 @@ def _publish(event: dict) -> None:
         _state.hub.publish(event)
 
 
+def _download_dir() -> Path:
+    return Path(cfg.load().get("download_dir", ""))
+
+
+def _source_folder(mod, download_dir: Optional[Path] = None) -> Optional[Path]:
+    """Resolve the on-disk folder a library mod was installed from, if known.
+
+    - import mods: source_ref is the archive/folder path the user imported.
+    - build/deadlystream mods: the download folder under download_dir, named
+      "<file_id>_<slug[:30]>" (see installer.pipeline).
+    """
+    if mod.source_type == "import":
+        return Path(mod.source_ref) if mod.source_ref else None
+    if not mod.source_ref:
+        return None
+    slug = (mod.source_slug or "")[:30]
+    return (download_dir or _download_dir()) / f"{mod.source_ref}_{slug}"
+
+
+def _mod_dict(mod, conflict_count: int = 0, download_dir: Optional[Path] = None) -> dict:
+    folder = _source_folder(mod, download_dir)
+    exists = bool(folder and folder.exists())
+    return installed_mod_to_dict(mod, conflict_count, source_exists=exists)
+
+
 # ---------------------------------------------------------------------------
 # Library listing
 # ---------------------------------------------------------------------------
@@ -67,9 +92,10 @@ def get_library(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     conflicts = mod_manager.compute_conflicts(scope)
     counts = mod_manager.conflict_counts_by_mod(conflicts)
     mods = sorted(manifest.mods, key=lambda m: m.load_order)
+    dl = _download_dir()
     return {
         "game": game_type, "profile": scope,
-        "mods": [installed_mod_to_dict(m, counts.get(m.id, 0)) for m in mods],
+        "mods": [_mod_dict(m, counts.get(m.id, 0), dl) for m in mods],
     }
 
 
@@ -81,10 +107,28 @@ def get_library_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Que
     mod = manifest.find(mod_id)
     if not mod:
         return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
-    d = installed_mod_to_dict(mod)
+    d = _mod_dict(mod)
     d["deployed_files"] = [asdict(f) for f in mod.deployed_files]
     d["baked_files"] = [asdict(f) for f in mod.baked_files]
     return d
+
+
+@library_router.post("/library/{mod_id}/open-folder")
+def open_mod_folder(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """Open the folder a mod was installed from in the OS file manager."""
+    from backend.fsutil import reveal_path
+    scope, _root, _gt = _resolve(game, profile)
+    manifest = mod_manager.load_manifest(scope)
+    mod = manifest.find(mod_id)
+    if not mod:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
+    folder = _source_folder(mod)
+    if not folder or not folder.exists():
+        return JSONResponse(status_code=404, content={"ok": False, "error": "source_unavailable"})
+    select = folder.is_file()
+    if not reveal_path(folder, select=select):
+        return JSONResponse(status_code=500, content={"ok": False, "error": "open_failed"})
+    return {"ok": True, "path": str(folder)}
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +158,7 @@ def _toggle(mod_id: str, game: str, profile: str, action: str):
     conflicts = mod_manager.compute_conflicts(scope)
     counts = mod_manager.conflict_counts_by_mod(conflicts)
     _publish({"type": "library", "event": "changed", "profile": scope})
-    return {"ok": True, "mod": installed_mod_to_dict(mod, counts.get(mod.id, 0)), "conflicts": conflicts}
+    return {"ok": True, "mod": _mod_dict(mod, counts.get(mod.id, 0)), "conflicts": conflicts}
 
 
 @library_router.post("/library/{mod_id}/enable")
@@ -152,7 +196,7 @@ def reorder_mods(req: ReorderRequest, profile: str = Query("")) -> dict:
     counts = mod_manager.conflict_counts_by_mod(conflicts)
     mods = sorted(manifest.mods, key=lambda m: m.load_order)
     _publish({"type": "library", "event": "changed", "profile": scope})
-    return {"ok": True, "mods": [installed_mod_to_dict(m, counts.get(m.id, 0)) for m in mods], "conflicts": conflicts}
+    return {"ok": True, "mods": [_mod_dict(m, counts.get(m.id, 0)) for m in mods], "conflicts": conflicts}
 
 
 # ---------------------------------------------------------------------------
