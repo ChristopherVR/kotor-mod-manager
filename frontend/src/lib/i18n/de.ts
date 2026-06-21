@@ -143,6 +143,9 @@ export const de: Dict = {
   "settings.general.downloads": "Downloads",
   "settings.general.downloadFolder": "Download-Ordner",
   "settings.general.downloadFolderHint": "Wohin Mod-Archive vor der Installation heruntergeladen werden.",
+  "settings.general.sound": "Ton",
+  "settings.general.uiSounds": "Menü-Klickgeräusche",
+  "settings.general.uiSoundsHint": "Spiele den klassischen KOTOR-Klick bei Schaltflächen und Menüs ab. Standardmäßig aus.",
 
   // Settings → Game installs
   "settings.installs.title": "Spielinstallationen",

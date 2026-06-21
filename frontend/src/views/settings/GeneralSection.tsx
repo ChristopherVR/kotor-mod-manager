@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useLanguage, LOCALES, type Locale } from "@/lib/i18n";
+import { isUiSoundEnabled, setUiSoundEnabled, playClick } from "@/lib/sound";
 
 const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "", language: "en", custom_patcher_path: "", nexus_api_key: "" };
 
@@ -20,6 +22,13 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
   const [s, setS] = useState<Settings>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [soundOn, setSoundOn] = useState(isUiSoundEnabled());
+
+  const toggleSound = (on: boolean) => {
+    setSoundOn(on);
+    setUiSoundEnabled(on);
+    if (on) playClick(); // let the user hear the click they just enabled
+  };
 
   useEffect(() => {
     api.getSettings().then(setS).catch(() => {});
@@ -62,6 +71,19 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
               ))}
             </Select>
             <p className="text-xs text-muted-foreground">{t("settings.general.languageHint")}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>{t("settings.general.sound")}</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="uisound">{t("settings.general.uiSounds")}</Label>
+              <p className="text-xs text-muted-foreground">{t("settings.general.uiSoundsHint")}</p>
+            </div>
+            <Switch id="uisound" checked={soundOn} onCheckedChange={toggleSound} />
           </div>
         </CardContent>
       </Card>
