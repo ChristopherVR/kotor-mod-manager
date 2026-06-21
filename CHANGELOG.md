@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 This project adheres to [Semantic Versioning](https://semver.org) and
 [Conventional Commits](https://www.conventionalcommits.org).
 
+## [0.4.0] - 2026-06-21
+
+### Features
+
+- What's New panel and localization (en/es/de)
+
+### Bug Fixes
+
+- Image proxy, reliable external links, custom patcher, scraper names
+- **ui:** Clickable build mods, screenshot lightbox, links, patcher, sidebar
+- **ui:** Render inline bold in What's New; refresh screenshots
 ## [0.3.0] - 2026-06-21
 
 ### Features
