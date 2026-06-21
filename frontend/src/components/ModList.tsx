@@ -21,7 +21,7 @@ export const DEFAULT_RUNTIME: ModRuntime = {
   progressLabel: "",
 };
 
-function Row({ mod, rt }: { mod: BuildMod; rt: ModRuntime }) {
+function Row({ mod, rt, onOpen }: { mod: BuildMod; rt: ModRuntime; onOpen?: () => void }) {
   const meta = STATUS_META[rt.status];
   const active = ACTIVE_STATUSES.includes(rt.status);
   const showBar = active && (rt.progress > 0 || rt.status !== "WAITING_PATCHER");
@@ -29,9 +29,18 @@ function Row({ mod, rt }: { mod: BuildMod; rt: ModRuntime }) {
   return (
     <div
       data-fileid={mod.file_id}
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={
+        onOpen
+          ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }
+          : undefined
+      }
       className={cn(
         "flex flex-col gap-1 rounded-md border border-transparent px-3 py-2 transition-colors",
-        active ? "bg-accent/40 border-border" : "hover:bg-card/60"
+        active ? "bg-accent/40 border-border" : "hover:bg-card/60",
+        onOpen && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       )}
     >
       <div className="flex items-center gap-3">
@@ -65,10 +74,12 @@ export function ModList({
   mods,
   runtime,
   activeFileId,
+  onOpenMod,
 }: {
   mods: BuildMod[];
   runtime: Record<string, ModRuntime>;
   activeFileId: string | null;
+  onOpenMod?: (mod: BuildMod) => void;
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -91,7 +102,12 @@ export function ModList({
   return (
     <div ref={containerRef} className="h-full space-y-0.5 overflow-auto pr-1">
       {mods.map((m) => (
-        <Row key={m.file_id} mod={m} rt={runtime[m.file_id] ?? DEFAULT_RUNTIME} />
+        <Row
+          key={m.file_id}
+          mod={m}
+          rt={runtime[m.file_id] ?? DEFAULT_RUNTIME}
+          onOpen={onOpenMod ? () => onOpenMod(m) : undefined}
+        />
       ))}
     </div>
   );

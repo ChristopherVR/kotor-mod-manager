@@ -156,12 +156,17 @@ export function GameInstallsSection({
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-medium text-foreground">{p.name}</p>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-foreground" title={p.name}>{p.name}</p>
                       <Badge variant={p.game === "KOTOR1" ? "info" : "secondary"}>
                         {GAME_LABEL[p.game]}
                       </Badge>
+                      {isActive && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--success)/0.15)] px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--success))]">
+                          <CheckCircle2 className="size-3" /> {t("settings.installs.active")}
+                        </span>
+                      )}
                       {p.is_default && (
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("settings.installs.defaultTitle")}>
                           <Star className="size-3" /> {t("settings.installs.default")}
@@ -172,23 +177,21 @@ export function GameInstallsSection({
                       {p.path || t("settings.installs.noPath")}
                     </p>
                   </div>
-                  {isActive ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-[hsl(var(--success))]">
-                      <CheckCircle2 className="size-3.5" /> {t("settings.installs.active")}
-                    </span>
-                  ) : (
-                    <Button variant="ghost" size="sm" onClick={() => makeActive(p.id)}>
-                      {t("settings.installs.setActive")}
+                  <div className="flex shrink-0 items-center gap-1">
+                    {!isActive && (
+                      <Button variant="ghost" size="sm" onClick={() => makeActive(p.id)}>
+                        {t("settings.installs.setActive")}
+                      </Button>
+                    )}
+                    <Button variant="ghost" size="icon" className="size-8" title={t("common.edit")}
+                            onClick={() => startEdit(p)}>
+                      <Pencil />
                     </Button>
-                  )}
-                  <Button variant="ghost" size="icon" className="size-8" title={t("common.edit")}
-                          onClick={() => startEdit(p)}>
-                    <Pencil />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="size-8" title={t("common.delete")}
-                          disabled={p.is_default || busy} onClick={() => remove(p)}>
-                    <Trash2 />
-                  </Button>
+                    <Button variant="ghost" size="icon" className="size-8" title={t("common.delete")}
+                            disabled={p.is_default || busy} onClick={() => remove(p)}>
+                      <Trash2 />
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

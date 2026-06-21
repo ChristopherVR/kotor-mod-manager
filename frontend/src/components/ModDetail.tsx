@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  X, ExternalLink, Trash2, FileText, ImageOff, Loader2,
+  X, ExternalLink, Trash2, FileText, Loader2, AlertTriangle,
 } from "lucide-react";
 import {
   api, type LibraryMod, type ModInfo, type DeployedFile, type BakedFile,
@@ -8,6 +8,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Dialog } from "@/components/ui/dialog";
+import { Screenshots } from "@/components/Screenshots";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
@@ -35,6 +37,7 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
   const [baked, setBaked] = useState<BakedFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(true);
   const [uninstalling, setUninstalling] = useState(false);
+  const [bakedPrompt, setBakedPrompt] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -59,18 +62,30 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
     return () => { alive = false; };
   }, [mod.id, mod.source_ref, mod.source_slug, mod.game, profile]);
 
-  const uninstall = async () => {
-    if (!window.confirm(t("modDetail.uninstallConfirm", { name: mod.name }))) return;
+  const runUninstall = async (force: boolean) => {
+    setBakedPrompt(null);
     setUninstalling(true);
     try {
-      await api.libraryUninstall(profile, mod.id);
+      await api.libraryUninstall(profile, mod.id, force);
       addLog(`Uninstalled ${mod.name}.`, "success");
       onUninstalled();
       onClose();
     } catch (e: any) {
+      // Baked (TSLPatcher/HoloPatcher) mods can't be cleanly removed without a
+      // backup. The backend returns 409 baked_no_backup unless force=true.
+      if (!force && (e?.status === 409 || e?.data?.error === "baked_no_backup")) {
+        setBakedPrompt(e?.data?.message || t("modDetail.bakedMessage"));
+        setUninstalling(false);
+        return;
+      }
       addLog(`Failed to uninstall ${mod.name}: ${e?.message}`, "error");
       setUninstalling(false);
     }
+  };
+
+  const uninstall = () => {
+    if (!window.confirm(t("modDetail.uninstallConfirm", { name: mod.name }))) return;
+    runUninstall(false);
   };
 
   const description = info?.description?.trim();
@@ -120,26 +135,7 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
           </section>
 
           {/* Screenshots */}
-          {!infoLoading && images.length > 0 && (
-            <section className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("modDetail.screenshots")}</h3>
-              <div className="flex flex-wrap gap-2">
-                {images.slice(0, 8).map((src, i) => (
-                  <a key={i} href={src} onClick={(e) => { e.preventDefault(); api.openUrl(src).catch(() => {}); }}
-                     className="group relative block size-24 overflow-hidden rounded-md border bg-muted"
-                     title={t("modDetail.openScreenshot")}>
-                    <img src={src} alt="" loading="lazy"
-                         className="size-full object-cover transition-transform group-hover:scale-105"
-                         onError={(e) => {
-                           e.currentTarget.style.display = "none";
-                           e.currentTarget.parentElement?.classList.add("flex", "items-center", "justify-center");
-                         }} />
-                    <ImageOff className="pointer-events-none absolute inset-0 m-auto hidden size-5 text-muted-foreground group-[.flex]:block" />
-                  </a>
-                ))}
-              </div>
-            </section>
-          )}
+          {!infoLoading && images.length > 0 && <Screenshots images={images} />}
 
           {/* Links */}
           {!infoLoading && links.some((l) => l.url) && (
@@ -201,6 +197,28 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
           </Button>
         </div>
       </aside>
+
+      {/* Baked-mod uninstall confirmation (TSLPatcher/HoloPatcher) */}
+      <Dialog
+        open={!!bakedPrompt}
+        onClose={() => setBakedPrompt(null)}
+        title={t("modDetail.bakedTitle")}
+      >
+        <div className="space-y-4">
+          <div className="flex gap-3">
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-[hsl(var(--warning))]" />
+            <p className="text-sm text-muted-foreground">{bakedPrompt}</p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setBakedPrompt(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button variant="destructive" size="sm" onClick={() => runUninstall(true)}>
+              <Trash2 /> {t("modDetail.removeAnyway")}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

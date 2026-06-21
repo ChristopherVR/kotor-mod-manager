@@ -7,12 +7,15 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {}
 // Native select styled to match shadcn (no Radix dependency).
 const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, children, ...props }, ref) => (
-    <div className="relative inline-flex">
+    // The wrapper carries any sizing className (w-64, max-w-*, etc.) so the
+    // control and chevron size together and don't overflow their container.
+    <div className={cn("relative inline-flex", className)}>
       <select
         ref={ref}
         className={cn(
-          "h-9 w-full appearance-none rounded-md border border-input bg-background/60 pl-3 pr-9 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-          className
+          // `text-foreground` + the `[&>option]` rules keep the native popup
+          // legible on the dark theme (default options render dark-on-dark).
+          "h-9 w-full appearance-none rounded-md border border-input bg-background/60 pl-3 pr-9 text-sm text-foreground shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 [&>option]:bg-card [&>option]:text-foreground"
         )}
         {...props}
       >

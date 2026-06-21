@@ -5,6 +5,7 @@ import {
 import { api, type BuildInfo, type BuildMod } from "@/lib/api";
 import { pickDirectory } from "@/lib/tauri";
 import { ModList, type ModRuntime } from "@/components/ModList";
+import { BuildModDetail } from "@/components/BuildModDetail";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -46,6 +47,7 @@ export function BuildsView(props: BuildsViewProps) {
   const t = useT();
   const [loading, setLoading] = useState(false);
   const [unattended, setUnattended] = useState(false);
+  const [openMod, setOpenMod] = useState<BuildMod | null>(null);
 
   const labelFor = (key: string) => builds.find((b) => b.key === key)?.label ?? key;
   const patcherName = patcherMod ? mods.find((m) => m.file_id === patcherMod)?.name : null;
@@ -158,7 +160,7 @@ export function BuildsView(props: BuildsViewProps) {
       {/* Mod list */}
       <div className="min-h-0 flex-1 p-4">
         <div className="flex h-full flex-col rounded-lg border bg-card/30 p-2">
-          <ModList mods={mods} runtime={runtime} activeFileId={activeFileId} />
+          <ModList mods={mods} runtime={runtime} activeFileId={activeFileId} onOpenMod={setOpenMod} />
         </div>
       </div>
 
@@ -203,6 +205,8 @@ export function BuildsView(props: BuildsViewProps) {
             : t("builds.statusConnecting")}
         </span>
       </footer>
+
+      {openMod && <BuildModDetail mod={openMod} onClose={() => setOpenMod(null)} />}
     </div>
   );
 }

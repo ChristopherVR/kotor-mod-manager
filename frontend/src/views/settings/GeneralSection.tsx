@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { useLanguage, LOCALES, type Locale } from "@/lib/i18n";
 
-const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "", language: "en" };
+const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "", language: "en", custom_patcher_path: "" };
 
 interface GeneralSectionProps {
   addLog: (message: string, tag?: string) => void;

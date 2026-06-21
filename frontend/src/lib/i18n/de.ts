@@ -91,6 +91,10 @@ export const de: Dict = {
   "modDetail.uninstall": "Deinstallieren",
   "modDetail.uninstalling": "Deinstalliert…",
   "modDetail.uninstallConfirm": "\"{name}\" deinstallieren? Dadurch werden seine Dateien aus dem Spiel entfernt.",
+  "modDetail.buildNote": "Build-Hinweis",
+  "modDetail.bakedTitle": "Saubere Deinstallation nicht möglich",
+  "modDetail.bakedMessage": "Dieser Mod wurde mit einem Patcher (TSLPatcher/HoloPatcher) angewendet, der vorhandene Spieldateien direkt bearbeitet. Ohne Sicherung können diese Änderungen nicht automatisch rückgängig gemacht werden. Du kannst ihn aus deiner Bibliothek entfernen (nur Eintrag) — die gepatchten Dateien bleiben im Spiel.",
+  "modDetail.removeAnyway": "Trotzdem entfernen (nur Eintrag)",
 
   // Conflicts view
   "conflicts.title": "Konflikte",
@@ -151,6 +155,19 @@ export const de: Dict = {
     "TSLPatcher-Mods werden automatisch von einer mitgelieferten HoloPatcher-Engine angewendet, sodass du dich nicht durch den Installer jedes Mods klicken musst.",
   "settings.patcher.ready": "Bereit",
   "settings.patcher.notAvailable": "Nicht verfügbar",
+  "settings.patcher.loading": "Patcher-Engine wird geprüft…",
+  "settings.patcher.sourceLabel": "Quelle",
+  "settings.patcher.sourceBundled": "Mitgeliefert",
+  "settings.patcher.sourceCustom": "Benutzerdefiniert",
+  "settings.patcher.sourceSystem": "System",
+  "settings.patcher.sourceNone": "Keine",
+  "settings.patcher.resolvedPath": "Aufgelöster Pfad",
+  "settings.patcher.strategiesTitle": "Wie Mods gepatcht werden",
+  "settings.patcher.strategiesHint": "Die Strategien werden der Reihe nach versucht, bis eine erfolgreich ist:",
+  "settings.patcher.customTitle": "Benutzerdefinierter Patcher",
+  "settings.patcher.customHint": "Gib deine eigene HoloPatcher-/TSLPatcher-Anwendung an, um die mitgelieferte Engine zu überschreiben.",
+  "settings.patcher.customLabel": "Patcher-Anwendung",
+  "settings.patcher.customPlaceholder": "Pfad zur .exe (leer lassen, um die mitgelieferte Engine zu verwenden)",
 
   // Settings → Updates
   "settings.updates.title": "Updates",

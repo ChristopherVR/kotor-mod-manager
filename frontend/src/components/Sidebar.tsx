@@ -39,7 +39,7 @@ export function Sidebar({
         </div>
       </div>
 
-      {/* Nav */}
+      {/* Nav (incl. Settings, all above the account footer) */}
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3">
         {navItems.map((item) => {
           let trailing: React.ReactNode = null;
@@ -61,9 +61,6 @@ export function Sidebar({
             />
           );
         })}
-
-        <div className="mt-auto" />
-        <Separator className="my-1 bg-sidebar-border" />
         <NavItem
           icon={settingsItem.icon}
           label={t(settingsItem.labelKey)}
@@ -72,8 +69,9 @@ export function Sidebar({
         />
       </nav>
 
-      {/* Account */}
-      <div className="border-t border-sidebar-border p-3">
+      {/* Account footer — pinned at the very bottom, below all nav items */}
+      <Separator className="bg-sidebar-border" />
+      <div className="p-3">
         <AccountMenu
           loggedIn={!!status?.logged_in}
           username={username}

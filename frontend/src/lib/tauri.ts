@@ -31,3 +31,24 @@ export async function pickDirectory(): Promise<string | null> {
     return null;
   }
 }
+
+/** Pick a single executable file (used for the custom patcher path). */
+export async function pickFile(
+  extensions: string[] = ["exe"],
+): Promise<string | null> {
+  if (!isTauri()) {
+    const p = window.prompt("Enter file path:");
+    return p && p.trim() ? p.trim() : null;
+  }
+  try {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const result = await open({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "Executable", extensions }],
+    });
+    return typeof result === "string" ? result : null;
+  } catch {
+    return null;
+  }
+}

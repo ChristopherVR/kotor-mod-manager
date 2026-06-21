@@ -89,7 +89,7 @@ export function SettingsView({
                 onSignOut={onSignOut}
               />
             )}
-            {section === "patcher" && <PatcherSection status={status} />}
+            {section === "patcher" && <PatcherSection status={status} addLog={addLog} />}
             {section === "updates" && <UpdatesSection status={status} addLog={addLog} />}
           </div>
         </div>

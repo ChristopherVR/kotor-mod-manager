@@ -91,6 +91,10 @@ export const en: Dict = {
   "modDetail.uninstall": "Uninstall",
   "modDetail.uninstalling": "Uninstalling…",
   "modDetail.uninstallConfirm": "Uninstall \"{name}\"? This removes its files from the game.",
+  "modDetail.buildNote": "Build note",
+  "modDetail.bakedTitle": "Can't cleanly uninstall",
+  "modDetail.bakedMessage": "This mod was applied with a patcher (TSLPatcher/HoloPatcher), which edits existing game files in place. Without a backup, those edits can't be reverted automatically. You can remove it from your library (record only) — the patched files stay in the game.",
+  "modDetail.removeAnyway": "Remove anyway (record only)",
 
   // Conflicts view
   "conflicts.title": "Conflicts",
@@ -151,6 +155,19 @@ export const en: Dict = {
     "TSLPatcher mods are applied automatically by a bundled HoloPatcher engine, so you don't click through each mod's installer.",
   "settings.patcher.ready": "Ready",
   "settings.patcher.notAvailable": "Not available",
+  "settings.patcher.loading": "Checking patcher engine…",
+  "settings.patcher.sourceLabel": "Source",
+  "settings.patcher.sourceBundled": "Bundled",
+  "settings.patcher.sourceCustom": "Custom",
+  "settings.patcher.sourceSystem": "System",
+  "settings.patcher.sourceNone": "None",
+  "settings.patcher.resolvedPath": "Resolved path",
+  "settings.patcher.strategiesTitle": "How mods are patched",
+  "settings.patcher.strategiesHint": "Strategies are tried in order until one succeeds:",
+  "settings.patcher.customTitle": "Custom patcher",
+  "settings.patcher.customHint": "Point to your own HoloPatcher/TSLPatcher executable to override the bundled engine.",
+  "settings.patcher.customLabel": "Patcher executable",
+  "settings.patcher.customPlaceholder": "Path to .exe (leave empty to use the bundled engine)",
 
   // Settings → Updates
   "settings.updates.title": "Updates",

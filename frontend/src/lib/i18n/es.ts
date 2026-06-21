@@ -91,6 +91,10 @@ export const es: Dict = {
   "modDetail.uninstall": "Desinstalar",
   "modDetail.uninstalling": "Desinstalando…",
   "modDetail.uninstallConfirm": "¿Desinstalar \"{name}\"? Esto elimina sus archivos del juego.",
+  "modDetail.buildNote": "Nota de la compilación",
+  "modDetail.bakedTitle": "No se puede desinstalar limpiamente",
+  "modDetail.bakedMessage": "Este mod se aplicó con un parcheador (TSLPatcher/HoloPatcher), que modifica los archivos del juego directamente. Sin una copia de seguridad, esos cambios no se pueden revertir automáticamente. Puedes quitarlo de tu biblioteca (solo registro); los archivos parcheados permanecen en el juego.",
+  "modDetail.removeAnyway": "Quitar de todos modos (solo registro)",
 
   // Conflicts view
   "conflicts.title": "Conflictos",
@@ -151,6 +155,19 @@ export const es: Dict = {
     "Los mods de TSLPatcher se aplican automáticamente mediante un motor HoloPatcher incluido, para que no tengas que pasar por el instalador de cada mod.",
   "settings.patcher.ready": "Listo",
   "settings.patcher.notAvailable": "No disponible",
+  "settings.patcher.loading": "Comprobando el motor del parcheador…",
+  "settings.patcher.sourceLabel": "Origen",
+  "settings.patcher.sourceBundled": "Incluido",
+  "settings.patcher.sourceCustom": "Personalizado",
+  "settings.patcher.sourceSystem": "Sistema",
+  "settings.patcher.sourceNone": "Ninguno",
+  "settings.patcher.resolvedPath": "Ruta resuelta",
+  "settings.patcher.strategiesTitle": "Cómo se parchean los mods",
+  "settings.patcher.strategiesHint": "Las estrategias se prueban en orden hasta que una funcione:",
+  "settings.patcher.customTitle": "Parcheador personalizado",
+  "settings.patcher.customHint": "Indica tu propio ejecutable de HoloPatcher/TSLPatcher para reemplazar el motor incluido.",
+  "settings.patcher.customLabel": "Ejecutable del parcheador",
+  "settings.patcher.customPlaceholder": "Ruta al .exe (déjalo vacío para usar el motor incluido)",
 
   // Settings → Updates
   "settings.updates.title": "Actualizaciones",

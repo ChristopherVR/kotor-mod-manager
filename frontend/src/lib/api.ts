@@ -2,7 +2,7 @@
 
 export const BACKEND_HOST = "127.0.0.1";
 export const BACKEND_PORT = 8756;
-const BASE = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
+export const BASE = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
 const WS_URL = `ws://${BACKEND_HOST}:${BACKEND_PORT}/ws`;
 
 export type ModStatus =
@@ -44,6 +44,15 @@ export interface Settings {
   kotor2_path: string;
   download_dir: string;
   language: string;
+  custom_patcher_path: string;
+}
+
+export interface PatcherStatus {
+  available: boolean;
+  path: string | null;
+  source: "bundled" | "custom" | "system" | "none";
+  custom_patcher_path: string;
+  strategies: string[];
 }
 
 export type GameKey = "KOTOR1" | "KOTOR2";
@@ -187,9 +196,12 @@ export const api = {
   conflicts: (profile: string) =>
     req<{ conflicts: Conflict[] }>(
       `/api/conflicts?profile=${encodeURIComponent(profile)}`),
-  modInfo: (fileId: string, slug: string, game: GameKey) =>
+  modInfo: (fileId: string, slug: string, game: string) =>
     req<ModInfo>(
       `/api/mod/info?file_id=${encodeURIComponent(fileId)}&slug=${encodeURIComponent(slug)}&game=${game}`),
+  imageProxy: (url: string) =>
+    `${BASE}/api/mod/image?url=${encodeURIComponent(url)}`,
+  patcherStatus: () => req<PatcherStatus>("/api/patcher/status"),
   openUrl: (url: string) =>
     req<{ ok: boolean }>(
       `/api/update/open?url=${encodeURIComponent(url)}`, { method: "POST" }),
