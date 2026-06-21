@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 export interface LogLine {
   id: number;
@@ -16,6 +17,7 @@ const TAG_COLOR: Record<string, string> = {
 };
 
 export function LogPanel({ lines }: { lines: LogLine[] }) {
+  const t = useT();
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -24,7 +26,7 @@ export function LogPanel({ lines }: { lines: LogLine[] }) {
   return (
     <div className="h-full overflow-auto rounded-md bg-[hsl(var(--sidebar))] p-3 font-mono text-xs leading-relaxed">
       {lines.length === 0 && (
-        <div className="text-muted-foreground/60">Activity log will appear here…</div>
+        <div className="text-muted-foreground/60">{t("activity.empty")}</div>
       )}
       {lines.map((l) => (
         <div key={l.id} className={cn("whitespace-pre-wrap", TAG_COLOR[l.tag] ?? "text-foreground/90")}>

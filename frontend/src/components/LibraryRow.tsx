@@ -3,6 +3,7 @@ import type { LibraryMod } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface LibraryRowProps {
   mod: LibraryMod;
@@ -19,6 +20,7 @@ function fmtDate(ts: number): string {
 }
 
 export function LibraryRow({ mod, onToggle, onConflictClick, onOpen }: LibraryRowProps) {
+  const t = useT();
   const sub = [mod.game, mod.install_method, fmtDate(mod.install_ts)].filter(Boolean).join(" · ");
 
   return (
@@ -39,10 +41,10 @@ export function LibraryRow({ mod, onToggle, onConflictClick, onOpen }: LibraryRo
         <p className="truncate text-xs text-muted-foreground">{sub}</p>
       </div>
       {mod.has_conflict && (
-        <button onClick={(e) => { e.stopPropagation(); onConflictClick(); }} title="View conflicts">
+        <button onClick={(e) => { e.stopPropagation(); onConflictClick(); }} title={t("library.viewConflicts")}>
           <Badge variant="warning" className="gap-1">
             <AlertTriangle className="size-3" />
-            {mod.conflict_count > 0 ? mod.conflict_count : "conflict"}
+            {mod.conflict_count > 0 ? mod.conflict_count : t("library.conflict")}
           </Badge>
         </button>
       )}

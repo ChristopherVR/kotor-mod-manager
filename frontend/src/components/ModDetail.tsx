@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface ModDetailProps {
   mod: LibraryMod;
@@ -27,6 +28,7 @@ function fmtSize(bytes: number): string {
 }
 
 export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addLog }: ModDetailProps) {
+  const t = useT();
   const [info, setInfo] = useState<ModInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
   const [deployed, setDeployed] = useState<DeployedFile[]>([]);
@@ -58,7 +60,7 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
   }, [mod.id, mod.source_ref, mod.source_slug, mod.game, profile]);
 
   const uninstall = async () => {
-    if (!window.confirm(`Uninstall "${mod.name}"? This removes its files from the game.`)) return;
+    if (!window.confirm(t("modDetail.uninstallConfirm", { name: mod.name }))) return;
     setUninstalling(true);
     try {
       await api.libraryUninstall(profile, mod.id);
@@ -76,8 +78,8 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
   const baked_mode = mod.deploy_kind === "baked" || (deployed.length === 0 && baked.length > 0);
 
   const links: { label: string; url?: string }[] = [
-    { label: "View on DeadlyStream", url: info?.ds_url },
-    { label: "View on Nexus Mods", url: info?.nexus_url },
+    { label: t("modDetail.viewOnDeadlyStream"), url: info?.ds_url },
+    { label: t("modDetail.viewOnNexus"), url: info?.nexus_url },
   ];
 
   return (
@@ -91,7 +93,7 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <Badge variant={mod.game === "KOTOR1" ? "info" : "secondary"}>{mod.game}</Badge>
               {mod.install_method && <Badge variant="muted">{mod.install_method}</Badge>}
-              <Badge variant={mod.enabled ? "success" : "muted"}>{mod.enabled ? "Enabled" : "Disabled"}</Badge>
+              <Badge variant={mod.enabled ? "success" : "muted"}>{mod.enabled ? t("library.enabled") : t("library.disabled")}</Badge>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -108,24 +110,24 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
           <section>
             {infoLoading ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" /> Loading details…
+                <Loader2 className="size-4 animate-spin" /> {t("modDetail.loadingDetails")}
               </p>
             ) : description ? (
               <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{description}</p>
             ) : (
-              <p className="text-sm italic text-muted-foreground">No description available</p>
+              <p className="text-sm italic text-muted-foreground">{t("modDetail.noDescription")}</p>
             )}
           </section>
 
           {/* Screenshots */}
           {!infoLoading && images.length > 0 && (
             <section className="space-y-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Screenshots</h3>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("modDetail.screenshots")}</h3>
               <div className="flex flex-wrap gap-2">
                 {images.slice(0, 8).map((src, i) => (
                   <a key={i} href={src} onClick={(e) => { e.preventDefault(); api.openUrl(src).catch(() => {}); }}
                      className="group relative block size-24 overflow-hidden rounded-md border bg-muted"
-                     title="Open screenshot">
+                     title={t("modDetail.openScreenshot")}>
                     <img src={src} alt="" loading="lazy"
                          className="size-full object-cover transition-transform group-hover:scale-105"
                          onError={(e) => {
@@ -154,35 +156,35 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
           {/* Assets / files */}
           <section className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {baked_mode ? "Modified files" : "Installed files"}
+              {baked_mode ? t("modDetail.modifiedFiles") : t("modDetail.installedFiles")}
             </h3>
             {filesLoading ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" /> Loading files…
+                <Loader2 className="size-4 animate-spin" /> {t("modDetail.loadingFiles")}
               </p>
             ) : baked_mode ? (
               baked.length === 0 ? (
-                <p className="text-sm italic text-muted-foreground">No files recorded.</p>
+                <p className="text-sm italic text-muted-foreground">{t("modDetail.noFiles")}</p>
               ) : (
                 <ul className="max-h-64 space-y-0.5 overflow-auto rounded-md border bg-background/40 p-2">
                   {baked.map((f) => (
                     <li key={f.rel_path} className="flex items-center gap-2 px-1 py-0.5 text-xs">
                       <FileText className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="flex-1 truncate font-mono" title={f.rel_path}>{f.rel_path}</span>
-                      {f.created && <Badge variant="muted" className="text-[10px]">new</Badge>}
+                      {f.created && <Badge variant="muted" className="text-[10px]">{t("modDetail.fileNew")}</Badge>}
                     </li>
                   ))}
                 </ul>
               )
             ) : deployed.length === 0 ? (
-              <p className="text-sm italic text-muted-foreground">No files recorded.</p>
+              <p className="text-sm italic text-muted-foreground">{t("modDetail.noFiles")}</p>
             ) : (
               <ul className="max-h-64 space-y-0.5 overflow-auto rounded-md border bg-background/40 p-2">
                 {deployed.map((f) => (
                   <li key={f.rel_path} className="flex items-center gap-2 px-1 py-0.5 text-xs">
                     <FileText className="size-3.5 shrink-0 text-muted-foreground" />
                     <span className="flex-1 truncate font-mono" title={f.rel_path}>{f.rel_path}</span>
-                    {f.overwrote && <Badge variant="warning" className="text-[10px]">overwrote</Badge>}
+                    {f.overwrote && <Badge variant="warning" className="text-[10px]">{t("modDetail.fileOverwrote")}</Badge>}
                     <span className="shrink-0 text-muted-foreground">{fmtSize(f.size)}</span>
                   </li>
                 ))}
@@ -195,7 +197,7 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
         <div className="flex items-center gap-2 border-t p-4">
           <Button variant="destructive" size="sm" disabled={uninstalling} onClick={uninstall}
                   className={cn(uninstalling && "opacity-70")}>
-            <Trash2 /> {uninstalling ? "Uninstalling…" : "Uninstall"}
+            <Trash2 /> {uninstalling ? t("modDetail.uninstalling") : t("modDetail.uninstall")}
           </Button>
         </div>
       </aside>

@@ -5,6 +5,7 @@ import { applyUpdate, isTauri } from "@/lib/tauri";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { useT } from "@/lib/i18n";
 
 interface UpdatesSectionProps {
   status: AppStatus | null;
@@ -12,6 +13,7 @@ interface UpdatesSectionProps {
 }
 
 export function UpdatesSection({ status, addLog }: UpdatesSectionProps) {
+  const t = useT();
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
@@ -67,11 +69,11 @@ export function UpdatesSection({ status, addLog }: UpdatesSectionProps) {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Updates</CardTitle></CardHeader>
+      <CardHeader><CardTitle>{t("settings.updates.title")}</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <div className="flex items-center gap-3">
           <p className="text-sm text-muted-foreground">
-            KOTOR Mod Installer{" "}
+            {t("settings.updates.appName")}{" "}
             <span className="font-mono text-foreground">
               v{update?.current_version ?? status?.version ?? "?"}
             </span>
@@ -79,29 +81,29 @@ export function UpdatesSection({ status, addLog }: UpdatesSectionProps) {
           <Button variant="outline" size="sm" className="ml-auto"
                   onClick={checkUpdates} disabled={checking}>
             <RefreshCw className={checking ? "animate-spin" : ""} />
-            {checking ? "Checking…" : "Check for updates"}
+            {checking ? t("settings.updates.checking") : t("settings.updates.check")}
           </Button>
         </div>
         {update?.available ? (
           <div className="rounded-md border border-[hsl(var(--info)/0.4)] bg-[hsl(var(--info)/0.1)] p-3">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-[hsl(var(--info))]">
-                Version {update.latest_version} is available
+                {t("settings.updates.available", { version: update.latest_version ?? "" })}
               </span>
               <div className="ml-auto flex items-center gap-2">
                 <Button variant="ghost" size="sm"
                         onClick={() => api.updateOpen(update.url ?? undefined).catch(() => {})}>
-                  <ExternalLink /> Release notes
+                  <ExternalLink /> {t("settings.updates.releaseNotes")}
                 </Button>
                 <Button size="sm" onClick={installUpdate} disabled={installing}>
-                  <Download /> {installing ? "Installing…" : "Download & install"}
+                  <Download /> {installing ? t("settings.updates.installing") : t("settings.updates.install")}
                 </Button>
               </div>
             </div>
             {installing && (
               <div className="mt-2">
                 <Progress value={progress} />
-                <p className="mt-1 text-xs text-muted-foreground">Downloading update… {progress}%</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t("settings.updates.downloading", { pct: progress })}</p>
               </div>
             )}
             {update.notes && !installing && (
@@ -111,7 +113,7 @@ export function UpdatesSection({ status, addLog }: UpdatesSectionProps) {
             )}
           </div>
         ) : update && !update.error ? (
-          <p className="text-xs text-[hsl(var(--success))]">You're on the latest version.</p>
+          <p className="text-xs text-[hsl(var(--success))]">{t("settings.updates.upToDate")}</p>
         ) : null}
       </CardContent>
     </Card>

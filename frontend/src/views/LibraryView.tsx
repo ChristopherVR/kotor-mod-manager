@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useT } from "@/lib/i18n";
 
 interface LibraryViewProps {
   onGoToBuilds: () => void;
@@ -23,6 +24,7 @@ export function LibraryView({
   onGoToBuilds, onGoToConflicts, addLog, refreshTick,
   profiles, activeProfile, setActiveProfile,
 }: LibraryViewProps) {
+  const t = useT();
   const [mods, setMods] = useState<LibraryMod[]>([]);
   const [query, setQuery] = useState("");
   const [enabledOnly, setEnabledOnly] = useState(false);
@@ -82,11 +84,13 @@ export function LibraryView({
       <header className="space-y-3 border-b bg-card/30 px-5 py-3">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-base font-semibold">Library</h1>
-            <p className="text-xs text-muted-foreground">{enabledCount}/{total} enabled</p>
+            <h1 className="text-base font-semibold">{t("library.title")}</h1>
+            <p className="text-xs text-muted-foreground">
+              {t("library.enabledSummary", { enabled: enabledCount, total })}
+            </p>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Enabled only</span>
+            <span className="text-xs text-muted-foreground">{t("library.enabledOnly")}</span>
             <Switch checked={enabledOnly} onCheckedChange={setEnabledOnly} />
           </div>
         </div>
@@ -97,7 +101,7 @@ export function LibraryView({
             className="max-w-[16rem]"
             disabled={profiles.length === 0}
           >
-            {profiles.length === 0 && <option value="">No game installs</option>}
+            {profiles.length === 0 && <option value="">{t("library.noProfiles")}</option>}
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
@@ -105,7 +109,7 @@ export function LibraryView({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search mods…"
+            placeholder={t("library.search")}
             className="max-w-xs"
           />
         </div>
@@ -113,19 +117,19 @@ export function LibraryView({
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading ? (
-          <EmptyState icon={LibraryIcon} title="Loading library…" />
+          <EmptyState icon={LibraryIcon} title={t("library.loading")} />
         ) : errored || total === 0 ? (
           <EmptyState
             icon={LibraryIcon}
-            title="No installed mods"
-            subtitle="Install a build to populate your library."
-            action={{ label: "Go to Mod Builds", onClick: onGoToBuilds }}
+            title={t("library.emptyTitle")}
+            subtitle={t("library.emptySubtitle")}
+            action={{ label: t("library.goToBuilds"), onClick: onGoToBuilds }}
           />
         ) : filtered.length === 0 ? (
           <EmptyState
             icon={LibraryIcon}
-            title="No mods match your filters"
-            subtitle="Try a different search term."
+            title={t("library.noMatchTitle")}
+            subtitle={t("library.noMatchSubtitle")}
           />
         ) : (
           <div className="space-y-0.5">
@@ -144,7 +148,7 @@ export function LibraryView({
 
       {!loading && total > 0 && (
         <footer className="border-t bg-card/40 px-5 py-2">
-          <Button variant="ghost" size="sm" onClick={onGoToBuilds}>Install more mods</Button>
+          <Button variant="ghost" size="sm" onClick={onGoToBuilds}>{t("library.installMore")}</Button>
         </footer>
       )}
 

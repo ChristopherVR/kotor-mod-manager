@@ -19,6 +19,8 @@ DEFAULTS = {
     ],
     "auto_install": False,
     "keep_archives": True,
+    "language": "en",
+    "last_seen_version": "",
     # Game install profiles — supports multiple KOTOR installs on one machine.
     # Each: {id, name, game ("KOTOR1"|"KOTOR2"), path}. The default profile for
     # a game uses id == game so existing manifests map straight across.

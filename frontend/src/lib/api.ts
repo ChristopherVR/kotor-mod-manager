@@ -43,6 +43,7 @@ export interface Settings {
   kotor1_path: string;
   kotor2_path: string;
   download_dir: string;
+  language: string;
 }
 
 export type GameKey = "KOTOR1" | "KOTOR2";
@@ -199,6 +200,8 @@ export const api = {
     }),
   updateDownload: () =>
     req<{ ok: boolean; path?: string; version?: string }>("/api/update/download", { method: "POST" }),
+  whatsNew: () => req<{ version: string; notes: string; show: boolean }>("/api/whatsnew"),
+  whatsNewSeen: () => req<{ ok: boolean }>("/api/whatsnew/seen", { method: "POST" }),
 };
 
 export interface UpdateInfo {

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useT } from "@/lib/i18n";
 
 export function LoginDialog({
   open,
@@ -15,6 +16,7 @@ export function LoginDialog({
   onClose: () => void;
   onLoggedIn: (username: string) => void;
 }) {
+  const t = useT();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [save, setSave] = useState(true);
@@ -33,21 +35,21 @@ export function LoginDialog({
       onLoggedIn(r.username);
       onClose();
     } catch (e: any) {
-      setError(e?.message || "Login failed");
+      setError(e?.message || t("login.failed"));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="DeadlyStream Login">
+    <Dialog open={open} onClose={onClose} title={t("login.title")}>
       <div className="space-y-3">
         <div className="space-y-1.5">
-          <Label htmlFor="u">Username</Label>
+          <Label htmlFor="u">{t("login.username")}</Label>
           <Input id="u" value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="p">Password</Label>
+          <Label htmlFor="p">{t("login.password")}</Label>
           <Input
             id="p"
             type="password"
@@ -58,11 +60,11 @@ export function LoginDialog({
         </div>
         <div className="flex items-center gap-2 pt-1">
           <Switch id="save" checked={save} onCheckedChange={setSave} />
-          <Label htmlFor="save" className="cursor-pointer">Save credentials (Windows Credential Manager)</Label>
+          <Label htmlFor="save" className="cursor-pointer">{t("login.saveCredentials")}</Label>
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button className="w-full" onClick={submit} disabled={busy || !username || !password}>
-          {busy ? "Signing in…" : "Login"}
+          {busy ? t("login.submitting") : t("login.submit")}
         </Button>
       </div>
     </Dialog>

@@ -1,0 +1,179 @@
+import type { Dict } from "./types";
+
+// Spanish translations. Keep keys in sync with en.ts.
+export const es: Dict = {
+  // Brand
+  "brand.title": "Mods de KOTOR",
+
+  // Navigation
+  "nav.builds": "Compilaciones",
+  "nav.library": "Biblioteca",
+  "nav.conflicts": "Conflictos",
+  "nav.activity": "Actividad",
+  "nav.settings": "Ajustes",
+
+  // Common buttons / labels
+  "common.save": "Guardar",
+  "common.saving": "Guardando…",
+  "common.saved": "Guardado",
+  "common.cancel": "Cancelar",
+  "common.browse": "Examinar",
+  "common.add": "Añadir",
+  "common.edit": "Editar",
+  "common.delete": "Eliminar",
+  "common.close": "Cerrar",
+  "common.clear": "Limpiar",
+  "common.signIn": "Iniciar sesión",
+  "common.signOut": "Cerrar sesión",
+  "common.name": "Nombre",
+  "common.path": "Ruta",
+  "common.game": "Juego",
+  "common.dismiss": "Descartar",
+
+  // Account menu (sidebar)
+  "account.account": "Cuenta",
+  "account.signedIn": "Sesión iniciada",
+
+  // Builds view
+  "builds.title": "Compilaciones de mods",
+  "builds.subtitle": "Elige una compilación seleccionada para descargar e instalar",
+  "builds.summary": "{count} mods · {done}/{total} listos",
+  "builds.summaryErrors": "{count} mods · {done}/{total} listos · {errors} error(es)",
+  "builds.overall": "Total",
+  "builds.loadList": "Cargar lista de mods",
+  "builds.loading": "Cargando…",
+  "builds.installAll": "Descargar e instalar todo",
+  "builds.pause": "Pausar",
+  "builds.resume": "Reanudar",
+  "builds.stop": "Detener",
+  "builds.retry": "Reintentar fallidos",
+  "builds.unattended": "Desatendido (nunca preguntar; omitir mods que requieran una interfaz manual)",
+  "builds.statusIdle": "Inactivo",
+  "builds.statusInstalling": "Instalando…",
+  "builds.statusPaused": "En pausa",
+  "builds.statusConnecting": "Conectando con el servidor…",
+  "builds.empty": "Elige una compilación y haz clic en Cargar lista de mods para comenzar.",
+  "builds.loadMore": "Cargar lista de mods",
+  "builds.patcherBanner":
+    "TSLPatcher está abierto para {mod}. La ruta del juego está en tu portapapeles — pégala, haz clic en Instalar y luego cierra la ventana del parcheador.",
+
+  // Library view
+  "library.title": "Biblioteca",
+  "library.enabledSummary": "{enabled}/{total} activados",
+  "library.enabledOnly": "Solo activados",
+  "library.search": "Buscar mods…",
+  "library.noProfiles": "Sin instalaciones de juego",
+  "library.loading": "Cargando biblioteca…",
+  "library.emptyTitle": "Sin mods instalados",
+  "library.emptySubtitle": "Instala una compilación para llenar tu biblioteca.",
+  "library.goToBuilds": "Ir a Compilaciones",
+  "library.noMatchTitle": "Ningún mod coincide con tus filtros",
+  "library.noMatchSubtitle": "Prueba con otro término de búsqueda.",
+  "library.installMore": "Instalar más mods",
+  "library.viewConflicts": "Ver conflictos",
+  "library.conflict": "conflicto",
+  "library.enabled": "Activado",
+  "library.disabled": "Desactivado",
+
+  // Mod detail
+  "modDetail.loadingDetails": "Cargando detalles…",
+  "modDetail.noDescription": "No hay descripción disponible",
+  "modDetail.screenshots": "Capturas",
+  "modDetail.openScreenshot": "Abrir captura",
+  "modDetail.viewOnDeadlyStream": "Ver en DeadlyStream",
+  "modDetail.viewOnNexus": "Ver en Nexus Mods",
+  "modDetail.modifiedFiles": "Archivos modificados",
+  "modDetail.installedFiles": "Archivos instalados",
+  "modDetail.loadingFiles": "Cargando archivos…",
+  "modDetail.noFiles": "No hay archivos registrados.",
+  "modDetail.fileNew": "nuevo",
+  "modDetail.fileOverwrote": "sobrescrito",
+  "modDetail.uninstall": "Desinstalar",
+  "modDetail.uninstalling": "Desinstalando…",
+  "modDetail.uninstallConfirm": "¿Desinstalar \"{name}\"? Esto elimina sus archivos del juego.",
+
+  // Conflicts view
+  "conflicts.title": "Conflictos",
+  "conflicts.summaryOne": "{count} recurso en disputa",
+  "conflicts.summaryMany": "{count} recursos en disputa",
+  "conflicts.noProfiles": "Sin instalaciones de juego",
+  "conflicts.checking": "Buscando conflictos…",
+  "conflicts.noneTitle": "No se detectaron conflictos.",
+  "conflicts.noneSubtitle": "Todos los mods instalados conviven sin problemas.",
+  "conflicts.recommendation": "Recomendación: ",
+  "conflicts.wins": "gana",
+  "conflicts.disabled": "desactivado",
+
+  // Activity view
+  "activity.title": "Actividad",
+  "activity.entries": "{count} entradas de registro",
+  "activity.empty": "El registro de actividad aparecerá aquí…",
+
+  // Settings shell
+  "settings.title": "Ajustes",
+  "settings.subtitle": "Instalaciones de juego, descargas, cuenta y actualizaciones",
+  "settings.section.general": "General",
+  "settings.section.installs": "Instalaciones",
+  "settings.section.account": "Cuenta",
+  "settings.section.patcher": "Parcheador",
+  "settings.section.updates": "Actualizaciones",
+
+  // Settings → General
+  "settings.general.language": "Idioma",
+  "settings.general.languageHint": "Elige el idioma de visualización de la aplicación.",
+  "settings.general.downloads": "Descargas",
+  "settings.general.downloadFolder": "Carpeta de descargas",
+  "settings.general.downloadFolderHint": "Dónde se descargan los archivos de mods antes de instalarlos.",
+
+  // Settings → Game installs
+  "settings.installs.title": "Instalaciones de juego",
+  "settings.installs.add": "Añadir instalación",
+  "settings.installs.empty": "Aún no hay instalaciones de juego configuradas.",
+  "settings.installs.namePlaceholder": "p. ej. KOTOR 1 (Steam)",
+  "settings.installs.pathPlaceholder": "Carpeta de instalación del juego",
+  "settings.installs.noPath": "(sin ruta definida)",
+  "settings.installs.default": "predeterminada",
+  "settings.installs.defaultTitle": "Instalación predeterminada",
+  "settings.installs.active": "Activa",
+  "settings.installs.setActive": "Activar",
+  "settings.installs.deleteConfirm": "¿Eliminar la instalación \"{name}\"? Esto no modifica los archivos del juego.",
+
+  // Settings → Account
+  "settings.account.title": "DeadlyStream",
+  "settings.account.signedInName": "Sesión iniciada",
+  "settings.account.signedInHint": "Sesión iniciada en DeadlyStream. Las descargas premium están disponibles.",
+  "settings.account.notSignedIn": "Sin sesión iniciada",
+  "settings.account.notSignedInHint": "Inicia sesión en DeadlyStream para descargar mods que requieran una cuenta.",
+
+  // Settings → Patcher
+  "settings.patcher.title": "Motor del parcheador",
+  "settings.patcher.description":
+    "Los mods de TSLPatcher se aplican automáticamente mediante un motor HoloPatcher incluido, para que no tengas que pasar por el instalador de cada mod.",
+  "settings.patcher.ready": "Listo",
+  "settings.patcher.notAvailable": "No disponible",
+
+  // Settings → Updates
+  "settings.updates.title": "Actualizaciones",
+  "settings.updates.appName": "Instalador de Mods de KOTOR",
+  "settings.updates.check": "Buscar actualizaciones",
+  "settings.updates.checking": "Buscando…",
+  "settings.updates.available": "La versión {version} está disponible",
+  "settings.updates.releaseNotes": "Notas de la versión",
+  "settings.updates.install": "Descargar e instalar",
+  "settings.updates.installing": "Instalando…",
+  "settings.updates.downloading": "Descargando actualización… {pct}%",
+  "settings.updates.upToDate": "Tienes la última versión.",
+
+  // Login dialog
+  "login.title": "Inicio de sesión en DeadlyStream",
+  "login.username": "Usuario",
+  "login.password": "Contraseña",
+  "login.saveCredentials": "Guardar credenciales (Administrador de credenciales de Windows)",
+  "login.submit": "Iniciar sesión",
+  "login.submitting": "Iniciando sesión…",
+  "login.failed": "Error al iniciar sesión",
+
+  // What's New
+  "whatsNew.title": "Novedades de la v{version}",
+  "whatsNew.gotIt": "Entendido",
+};

@@ -16,6 +16,9 @@ from PyInstaller.utils.hooks import collect_all, collect_submodules
 datas = [
     ("installer/installer_config.json", "installer"),
 ]
+# Bundle the changelog so the "What's New" panel works offline.
+if os.path.exists("CHANGELOG.md"):
+    datas += [("CHANGELOG.md", ".")]
 binaries = []
 hiddenimports = []
 

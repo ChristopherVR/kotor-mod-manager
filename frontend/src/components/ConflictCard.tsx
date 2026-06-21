@@ -2,6 +2,7 @@ import { Lightbulb } from "lucide-react";
 import type { Conflict } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 const SEVERITY_DOT: Record<Conflict["severity"], string> = {
   info: "bg-[hsl(var(--info))]",
@@ -24,6 +25,7 @@ const TYPE_VARIANT: Record<Conflict["type"], "info" | "warning" | "muted" | "sec
 };
 
 export function ConflictCard({ conflict }: { conflict: Conflict }) {
+  const t = useT();
   return (
     <div className="rounded-lg border bg-card/40 p-4">
       <div className="flex items-center gap-2">
@@ -43,7 +45,7 @@ export function ConflictCard({ conflict }: { conflict: Conflict }) {
         <div className="mt-2.5 flex items-start gap-2 rounded-md border border-[hsl(var(--info)/0.3)] bg-[hsl(var(--info)/0.08)] p-2.5">
           <Lightbulb className="mt-0.5 size-4 shrink-0 text-[hsl(var(--info))]" />
           <p className="text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">Recommendation: </span>
+            <span className="font-medium text-foreground">{t("conflicts.recommendation")}</span>
             {conflict.recommendation}
           </p>
         </div>
@@ -64,8 +66,8 @@ export function ConflictCard({ conflict }: { conflict: Conflict }) {
               >
                 {p.mod_name}
               </span>
-              {winner && <Badge variant="success">wins</Badge>}
-              {!p.enabled && <Badge variant="muted">disabled</Badge>}
+              {winner && <Badge variant="success">{t("conflicts.wins")}</Badge>}
+              {!p.enabled && <Badge variant="muted">{t("conflicts.disabled")}</Badge>}
             </li>
           );
         })}

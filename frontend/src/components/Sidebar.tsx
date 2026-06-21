@@ -5,6 +5,7 @@ import { NavItem } from "@/components/NavItem";
 import { AccountMenu } from "@/components/AccountMenu";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useT } from "@/lib/i18n";
 
 interface SidebarProps {
   active: ViewId;
@@ -21,6 +22,7 @@ interface SidebarProps {
 export function Sidebar({
   active, onNavigate, status, username, running, overallPct, conflictCount, onSignIn, onSignOut,
 }: SidebarProps) {
+  const t = useT();
   const navItems = NAV_ITEMS.filter((n) => n.id !== "settings");
   const settingsItem = NAV_ITEMS.find((n) => n.id === "settings")!;
 
@@ -32,7 +34,7 @@ export function Sidebar({
           <Zap className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">KOTOR Mods</p>
+          <p className="truncate text-sm font-semibold text-foreground">{t("brand.title")}</p>
           {status && <p className="text-xs text-muted-foreground">v{status.version}</p>}
         </div>
       </div>
@@ -52,7 +54,7 @@ export function Sidebar({
             <NavItem
               key={item.id}
               icon={item.icon}
-              label={item.label}
+              label={t(item.labelKey)}
               active={active === item.id}
               onClick={() => onNavigate(item.id)}
               trailing={trailing}
@@ -64,7 +66,7 @@ export function Sidebar({
         <Separator className="my-1 bg-sidebar-border" />
         <NavItem
           icon={settingsItem.icon}
-          label={settingsItem.label}
+          label={t(settingsItem.labelKey)}
           active={active === "settings"}
           onClick={() => onNavigate("settings")}
         />

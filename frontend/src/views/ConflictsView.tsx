@@ -4,6 +4,7 @@ import { api, type Conflict, type Profile } from "@/lib/api";
 import { ConflictCard } from "@/components/ConflictCard";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useT } from "@/lib/i18n";
 
 interface ConflictsViewProps {
   refreshTick: number;
@@ -13,6 +14,7 @@ interface ConflictsViewProps {
 }
 
 export function ConflictsView({ refreshTick, profiles, activeProfile, setActiveProfile }: ConflictsViewProps) {
+  const t = useT();
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -40,9 +42,11 @@ export function ConflictsView({ refreshTick, profiles, activeProfile, setActiveP
     <div className="flex h-full flex-col">
       <header className="flex items-center gap-3 border-b bg-card/30 px-5 py-3">
         <div>
-          <h1 className="text-base font-semibold">Conflicts</h1>
+          <h1 className="text-base font-semibold">{t("conflicts.title")}</h1>
           <p className="text-xs text-muted-foreground">
-            {conflicts.length} contested {conflicts.length === 1 ? "resource" : "resources"}
+            {conflicts.length === 1
+              ? t("conflicts.summaryOne", { count: conflicts.length })
+              : t("conflicts.summaryMany", { count: conflicts.length })}
           </p>
         </div>
         <Select
@@ -51,7 +55,7 @@ export function ConflictsView({ refreshTick, profiles, activeProfile, setActiveP
           className="ml-auto max-w-[16rem]"
           disabled={profiles.length === 0}
         >
-          {profiles.length === 0 && <option value="">No game installs</option>}
+          {profiles.length === 0 && <option value="">{t("conflicts.noProfiles")}</option>}
           {profiles.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
@@ -60,9 +64,9 @@ export function ConflictsView({ refreshTick, profiles, activeProfile, setActiveP
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading ? (
-          <EmptyState icon={GitMerge} title="Checking for conflicts…" />
+          <EmptyState icon={GitMerge} title={t("conflicts.checking")} />
         ) : conflicts.length === 0 ? (
-          <EmptyState icon={CheckCircle2} title="No conflicts detected." subtitle="All installed mods coexist cleanly." />
+          <EmptyState icon={CheckCircle2} title={t("conflicts.noneTitle")} subtitle={t("conflicts.noneSubtitle")} />
         ) : (
           <div className="mx-auto max-w-3xl space-y-3">
             {conflicts.map((c) => (

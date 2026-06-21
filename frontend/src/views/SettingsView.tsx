@@ -9,15 +9,16 @@ import { GameInstallsSection } from "@/views/settings/GameInstallsSection";
 import { AccountSection } from "@/views/settings/AccountSection";
 import { PatcherSection } from "@/views/settings/PatcherSection";
 import { UpdatesSection } from "@/views/settings/UpdatesSection";
+import { useT } from "@/lib/i18n";
 
 type SectionId = "general" | "installs" | "account" | "patcher" | "updates";
 
-const SECTIONS: { id: SectionId; label: string; icon: LucideIcon }[] = [
-  { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "installs", label: "Game Installs", icon: Gamepad2 },
-  { id: "account", label: "Account", icon: User },
-  { id: "patcher", label: "Patcher", icon: Zap },
-  { id: "updates", label: "Updates", icon: RefreshCw },
+const SECTIONS: { id: SectionId; labelKey: string; icon: LucideIcon }[] = [
+  { id: "general", labelKey: "settings.section.general", icon: SlidersHorizontal },
+  { id: "installs", labelKey: "settings.section.installs", icon: Gamepad2 },
+  { id: "account", labelKey: "settings.section.account", icon: User },
+  { id: "patcher", labelKey: "settings.section.patcher", icon: Zap },
+  { id: "updates", labelKey: "settings.section.updates", icon: RefreshCw },
 ];
 
 interface SettingsViewProps {
@@ -36,19 +37,20 @@ export function SettingsView({
   status, username, onSignIn, onSignOut, addLog,
   profiles, activeProfile, setActiveProfile, refreshProfiles,
 }: SettingsViewProps) {
+  const t = useT();
   const [section, setSection] = useState<SectionId>("general");
 
   return (
     <div className="flex h-full flex-col">
       <header className="border-b bg-card/30 px-5 py-3">
-        <h1 className="text-base font-semibold">Settings</h1>
-        <p className="text-xs text-muted-foreground">Game installs, downloads, account, and updates</p>
+        <h1 className="text-base font-semibold">{t("settings.title")}</h1>
+        <p className="text-xs text-muted-foreground">{t("settings.subtitle")}</p>
       </header>
 
       <div className="flex min-h-0 flex-1">
         {/* Secondary sidebar */}
         <nav className="w-52 shrink-0 space-y-1 overflow-y-auto border-r bg-card/20 p-3">
-          {SECTIONS.map(({ id, label, icon: Icon }) => (
+          {SECTIONS.map(({ id, labelKey, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -61,7 +63,7 @@ export function SettingsView({
               )}
             >
               <Icon className="size-4 shrink-0" />
-              <span className="flex-1 truncate text-left">{label}</span>
+              <span className="flex-1 truncate text-left">{t(labelKey)}</span>
             </button>
           ))}
         </nav>

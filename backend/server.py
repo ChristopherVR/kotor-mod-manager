@@ -264,6 +264,53 @@ def update_open(url: str = "") -> dict:
         return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
 
 
+# ---------------------------------------------------------------------------
+# What's New (changelog for the current version)
+# ---------------------------------------------------------------------------
+
+def _changelog_section(version: str) -> str:
+    """Extract the '## [version]' section from the bundled/repo CHANGELOG.md."""
+    import re
+    from installer.config_loader import _bundle_root
+    candidates = [
+        _bundle_root() / "CHANGELOG.md",
+        Path(__file__).resolve().parent.parent / "CHANGELOG.md",
+    ]
+    text = ""
+    for c in candidates:
+        try:
+            if c.exists():
+                text = c.read_text(encoding="utf-8")
+                break
+        except OSError:
+            continue
+    if not text:
+        return ""
+    m = re.search(rf"^## \[{re.escape(version)}\].*?(?=^## \[|\Z)", text, re.M | re.S)
+    return m.group(0).strip() if m else ""
+
+
+@app.get("/api/whatsnew")
+def whatsnew() -> dict:
+    """Return the changelog for the running version and whether to show it."""
+    conf = cfg.load()
+    last_seen = conf.get("last_seen_version", "")
+    notes = _changelog_section(__version__)
+    return {
+        "version": __version__,
+        "notes": notes,
+        "show": bool(notes) and last_seen != __version__,
+    }
+
+
+@app.post("/api/whatsnew/seen")
+def whatsnew_seen() -> dict:
+    conf = cfg.load()
+    conf["last_seen_version"] = __version__
+    cfg.save(conf)
+    return {"ok": True}
+
+
 @app.post("/api/update/download")
 def update_download() -> dict:
     """
@@ -316,6 +363,7 @@ def get_settings() -> dict:
         "kotor1_path": conf.get("kotor1_path", ""),
         "kotor2_path": conf.get("kotor2_path", ""),
         "download_dir": conf.get("download_dir", ""),
+        "language": conf.get("language", "en"),
     }
 
 

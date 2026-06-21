@@ -4,6 +4,7 @@ import { STATUS_META, ACTIVE_STATUSES } from "@/lib/status";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 export interface ModRuntime {
   status: ModStatus;
@@ -69,6 +70,7 @@ export function ModList({
   runtime: Record<string, ModRuntime>;
   activeFileId: string | null;
 }) {
+  const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll the active mod into view.
@@ -81,7 +83,7 @@ export function ModList({
   if (mods.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Choose a build and click <span className="mx-1 font-medium text-foreground">Load Mod List</span> to begin.
+        {t("builds.empty")}
       </div>
     );
   }

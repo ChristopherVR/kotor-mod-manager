@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface GameInstallsSectionProps {
   profiles: Profile[];
@@ -25,6 +26,7 @@ const GAME_LABEL: Record<GameKey, string> = { KOTOR1: "KOTOR 1", KOTOR2: "KOTOR 
 export function GameInstallsSection({
   profiles, activeProfile, setActiveProfile, refreshProfiles, addLog,
 }: GameInstallsSectionProps) {
+  const t = useT();
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -87,7 +89,7 @@ export function GameInstallsSection({
   };
 
   const remove = async (p: Profile) => {
-    if (!window.confirm(`Delete game install "${p.name}"? This does not modify the game files.`)) return;
+    if (!window.confirm(t("settings.installs.deleteConfirm", { name: p.name }))) return;
     setBusy(true);
     try {
       await api.deleteProfile(p.id);
@@ -103,16 +105,16 @@ export function GameInstallsSection({
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle>Game installs</CardTitle>
+        <CardTitle>{t("settings.installs.title")}</CardTitle>
         {!adding && (
           <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-            <Plus /> Add install
+            <Plus /> {t("settings.installs.add")}
           </Button>
         )}
       </CardHeader>
       <CardContent className="space-y-2">
         {profiles.length === 0 && !adding && (
-          <p className="text-sm text-muted-foreground">No game installs configured yet.</p>
+          <p className="text-sm text-muted-foreground">{t("settings.installs.empty")}</p>
         )}
 
         {profiles.map((p) => {
@@ -129,14 +131,14 @@ export function GameInstallsSection({
               {isEditing ? (
                 <div className="space-y-2">
                   <div className="space-y-1.5">
-                    <Label>Name</Label>
+                    <Label>{t("common.name")}</Label>
                     <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Path</Label>
+                    <Label>{t("common.path")}</Label>
                     <div className="flex gap-2">
                       <Input value={editPath} onChange={(e) => setEditPath(e.target.value)} />
-                      <Button variant="outline" size="icon" title="Browse"
+                      <Button variant="outline" size="icon" title={t("common.browse")}
                               onClick={async () => { const d = await pickDirectory(); if (d) setEditPath(d); }}>
                         <FolderOpen />
                       </Button>
@@ -145,10 +147,10 @@ export function GameInstallsSection({
                   <div className="flex gap-2">
                     <Button size="sm" disabled={busy || !editName.trim() || !editPath.trim()}
                             onClick={() => saveEdit(p.id)}>
-                      <Check /> Save
+                      <Check /> {t("common.save")}
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => setEditId(null)}>
-                      <X /> Cancel
+                      <X /> {t("common.cancel")}
                     </Button>
                   </div>
                 </div>
@@ -161,29 +163,29 @@ export function GameInstallsSection({
                         {GAME_LABEL[p.game]}
                       </Badge>
                       {p.is_default && (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title="Default install">
-                          <Star className="size-3" /> default
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("settings.installs.defaultTitle")}>
+                          <Star className="size-3" /> {t("settings.installs.default")}
                         </span>
                       )}
                     </div>
                     <p className="truncate font-mono text-xs text-muted-foreground" title={p.path}>
-                      {p.path || "(no path set)"}
+                      {p.path || t("settings.installs.noPath")}
                     </p>
                   </div>
                   {isActive ? (
                     <span className="inline-flex items-center gap-1 text-xs font-medium text-[hsl(var(--success))]">
-                      <CheckCircle2 className="size-3.5" /> Active
+                      <CheckCircle2 className="size-3.5" /> {t("settings.installs.active")}
                     </span>
                   ) : (
                     <Button variant="ghost" size="sm" onClick={() => makeActive(p.id)}>
-                      Set active
+                      {t("settings.installs.setActive")}
                     </Button>
                   )}
-                  <Button variant="ghost" size="icon" className="size-8" title="Edit"
+                  <Button variant="ghost" size="icon" className="size-8" title={t("common.edit")}
                           onClick={() => startEdit(p)}>
                     <Pencil />
                   </Button>
-                  <Button variant="ghost" size="icon" className="size-8" title="Delete"
+                  <Button variant="ghost" size="icon" className="size-8" title={t("common.delete")}
                           disabled={p.is_default || busy} onClick={() => remove(p)}>
                     <Trash2 />
                   </Button>
@@ -198,12 +200,12 @@ export function GameInstallsSection({
             <div className="space-y-2">
               <div className="flex gap-2">
                 <div className="flex-1 space-y-1.5">
-                  <Label>Name</Label>
-                  <Input value={newName} placeholder="e.g. KOTOR 1 (Steam)"
+                  <Label>{t("common.name")}</Label>
+                  <Input value={newName} placeholder={t("settings.installs.namePlaceholder")}
                          onChange={(e) => setNewName(e.target.value)} />
                 </div>
                 <div className="w-40 space-y-1.5">
-                  <Label>Game</Label>
+                  <Label>{t("common.game")}</Label>
                   <Select value={newGame} onChange={(e) => setNewGame(e.target.value as GameKey)}>
                     <option value="KOTOR1">KOTOR 1</option>
                     <option value="KOTOR2">KOTOR 2</option>
@@ -211,11 +213,11 @@ export function GameInstallsSection({
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Path</Label>
+                <Label>{t("common.path")}</Label>
                 <div className="flex gap-2">
-                  <Input value={newPath} placeholder="Game installation folder"
+                  <Input value={newPath} placeholder={t("settings.installs.pathPlaceholder")}
                          onChange={(e) => setNewPath(e.target.value)} />
-                  <Button variant="outline" size="icon" title="Browse"
+                  <Button variant="outline" size="icon" title={t("common.browse")}
                           onClick={async () => { const d = await pickDirectory(); if (d) setNewPath(d); }}>
                     <FolderOpen />
                   </Button>
@@ -223,10 +225,10 @@ export function GameInstallsSection({
               </div>
               <div className="flex gap-2">
                 <Button size="sm" disabled={busy || !newName.trim() || !newPath.trim()} onClick={create}>
-                  <Check /> Add
+                  <Check /> {t("common.add")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={resetAdd}>
-                  <X /> Cancel
+                  <X /> {t("common.cancel")}
                 </Button>
               </div>
             </div>

@@ -6,7 +6,9 @@ import {
 import { DEFAULT_RUNTIME, type ModRuntime } from "@/components/ModList";
 import { type LogLine } from "@/components/LogPanel";
 import { LoginDialog } from "@/components/LoginDialog";
+import { WhatsNew } from "@/components/WhatsNew";
 import { AppShell } from "@/layouts/AppShell";
+import { useT } from "@/lib/i18n";
 import { BuildsView } from "@/views/BuildsView";
 import { LibraryView } from "@/views/LibraryView";
 import { ConflictsView } from "@/views/ConflictsView";
@@ -19,6 +21,7 @@ const FINAL = new Set(["DONE", "SKIPPED", "ERROR"]);
 const VIEW_IDS: ViewId[] = ["builds", "library", "conflicts", "activity", "settings"];
 
 export default function App() {
+  const t = useT();
   const [view, setViewState] = useState<ViewId>(() => {
     const h = typeof location !== "undefined" ? (location.hash.replace("#", "") as ViewId) : "builds";
     return VIEW_IDS.includes(h) ? h : "builds";
@@ -45,6 +48,7 @@ export default function App() {
   const [dataTick, setDataTick] = useState(0);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeProfile, setActiveProfile] = useState<string>("");
+  const [whatsNew, setWhatsNew] = useState<{ version: string; notes: string } | null>(null);
 
   const logId = useRef(0);
   const addLog = useCallback((message: string, tag = "") => {
@@ -110,8 +114,19 @@ export default function App() {
           if (u.available) addLog(`Update available: v${u.latest_version} — see Settings.`, "info");
         })
         .catch(() => {});
+      // Show the "What's New" dialog once per version (backend tracks "seen").
+      api.whatsNew()
+        .then((w) => {
+          if (w.show && w.notes) setWhatsNew({ version: w.version, notes: w.notes });
+        })
+        .catch(() => { /* gracefully skip if unavailable */ });
     })();
   }, [addLog, refreshProfiles]);
+
+  const closeWhatsNew = useCallback(() => {
+    setWhatsNew(null);
+    api.whatsNewSeen().catch(() => {});
+  }, []);
 
   // Refresh conflict count whenever the active profile changes.
   useEffect(() => {
@@ -277,6 +292,13 @@ export default function App() {
         open={showLogin}
         onClose={() => setShowLogin(false)}
         onLoggedIn={(u) => { setUsername(u); refreshStatus(); }}
+      />
+
+      <WhatsNew
+        open={!!whatsNew}
+        version={whatsNew?.version ?? ""}
+        notes={whatsNew?.notes ?? ""}
+        onClose={closeWhatsNew}
       />
     </AppShell>
   );

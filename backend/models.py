@@ -19,6 +19,7 @@ class SettingsModel(BaseModel):
     kotor1_path: str = ""
     kotor2_path: str = ""
     download_dir: str = ""
+    language: str = "en"
 
 
 class StartInstallRequest(BaseModel):

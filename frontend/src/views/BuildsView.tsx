@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface BuildsViewProps {
   ready: boolean;
@@ -42,6 +43,7 @@ export function BuildsView(props: BuildsViewProps) {
     setRunning, setPaused, requestLogin,
   } = props;
 
+  const t = useT();
   const [loading, setLoading] = useState(false);
   const [unattended, setUnattended] = useState(false);
 
@@ -103,15 +105,17 @@ export function BuildsView(props: BuildsViewProps) {
       {/* Header */}
       <header className="flex items-center gap-3 border-b bg-card/30 px-5 py-3">
         <div>
-          <h1 className="text-base font-semibold">Mod Builds</h1>
+          <h1 className="text-base font-semibold">{t("builds.title")}</h1>
           <p className="text-xs text-muted-foreground">
             {mods.length > 0
-              ? `${mods.length} mods · ${done}/${mods.length} done${errors ? ` · ${errors} error(s)` : ""}`
-              : "Choose a curated build to download and install"}
+              ? errors
+                ? t("builds.summaryErrors", { count: mods.length, done, total: mods.length, errors })
+                : t("builds.summary", { count: mods.length, done, total: mods.length })
+              : t("builds.subtitle")}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">Overall</span>
+          <span className="text-xs text-muted-foreground">{t("builds.overall")}</span>
           <Progress value={overall} className="w-40" />
           <span className="w-10 text-right font-mono text-xs text-muted-foreground">
             {Math.round(overall)}%
@@ -123,14 +127,11 @@ export function BuildsView(props: BuildsViewProps) {
       {showBanner && (
         <div className="flex items-center gap-2 border-b border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.1)] px-5 py-2.5 text-sm text-[hsl(var(--warning))] animate-fade-in">
           <AlertTriangle className="size-4 shrink-0" />
-          <span className="flex-1">
-            TSLPatcher is open for <b>{patcherName}</b>. The game path is on your clipboard — paste it,
-            click Install, then close the patcher window.
-          </span>
+          <span className="flex-1">{t("builds.patcherBanner", { mod: patcherName ?? "" })}</span>
           <button
             onClick={clearPatcher}
             className="rounded-sm text-[hsl(var(--warning))]/80 transition-colors hover:text-[hsl(var(--warning))]"
-            title="Dismiss"
+            title={t("common.dismiss")}
           >
             <X className="size-4" />
           </button>
@@ -150,7 +151,7 @@ export function BuildsView(props: BuildsViewProps) {
           ))}
         </Select>
         <Button variant="secondary" size="sm" onClick={loadBuild} disabled={loading || running}>
-          <Download /> {loading ? "Loading…" : "Load Mod List"}
+          <Download /> {loading ? t("builds.loading") : t("builds.loadList")}
         </Button>
       </div>
 
@@ -165,37 +166,41 @@ export function BuildsView(props: BuildsViewProps) {
       <footer className="flex items-center gap-3 border-t bg-card/40 px-5 py-3">
         {!running ? (
           <Button onClick={startInstall} disabled={!ready || mods.length === 0}>
-            <Play /> Download &amp; Install All
+            <Play /> {t("builds.installAll")}
           </Button>
         ) : (
           <>
             {!paused ? (
               <Button variant="secondary" onClick={() => control("pause")}>
-                <Pause /> Pause
+                <Pause /> {t("builds.pause")}
               </Button>
             ) : (
               <Button variant="secondary" onClick={() => control("resume")}>
-                <Play /> Resume
+                <Play /> {t("builds.resume")}
               </Button>
             )}
             <Button variant="destructive" onClick={() => control("stop")}>
-              <Square /> Stop
+              <Square /> {t("builds.stop")}
             </Button>
           </>
         )}
         {!running && errors > 0 && (
           <Button variant="outline" onClick={() => control("retry").then(startInstall)}>
-            <RotateCcw /> Retry failed
+            <RotateCcw /> {t("builds.retry")}
           </Button>
         )}
         <div className="ml-auto flex items-center gap-2">
           <Switch id="un" checked={unattended} onCheckedChange={setUnattended} disabled={running} />
           <label htmlFor="un" className="cursor-pointer text-xs text-muted-foreground">
-            Unattended (never prompt; skip mods needing a manual GUI)
+            {t("builds.unattended")}
           </label>
         </div>
         <span className={cn("text-xs", ready ? "text-muted-foreground" : "text-destructive")}>
-          {ready ? (running ? (paused ? "Paused" : "Installing…") : "Idle") : "Connecting to backend…"}
+          {ready
+            ? running
+              ? paused ? t("builds.statusPaused") : t("builds.statusInstalling")
+              : t("builds.statusIdle")
+            : t("builds.statusConnecting")}
         </span>
       </footer>
     </div>
