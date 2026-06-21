@@ -194,6 +194,58 @@ class DeadlyStreamClient:
     def get_file_info(self, file_id: str, slug: str = "") -> dict:
         return self._get_file_info(file_id, slug)
 
+    def get_mod_details(self, file_id: str, slug: str = "") -> dict:
+        """
+        Rich detail for a mod page: title, description, screenshot image URLs,
+        author, and the canonical DeadlyStream URL. Best-effort (returns what it
+        can parse).
+        """
+        page_url = self._file_page_url(file_id, slug)
+        try:
+            resp = self._session.get(page_url, timeout=20)
+            resp.raise_for_status()
+        except (requests.RequestException, OSError) as e:
+            return {"error": str(e), "ds_url": page_url}
+
+        soup = BeautifulSoup(resp.text, "lxml")
+
+        title_tag = soup.find("h1") or soup.find("title")
+        title = title_tag.get_text(strip=True) if title_tag else f"Mod {file_id}"
+        title = re.sub(r"\s*-\s*DeadlyStream.*$", "", title, flags=re.IGNORECASE).strip()
+
+        desc_tag = soup.find("div", class_=re.compile("ipsType_richText|file_description|cFileDescription", re.I))
+        description = desc_tag.get_text("\n", strip=True)[:2000] if desc_tag else ""
+
+        # Screenshots: og:image + images inside the description / gallery.
+        images: list[str] = []
+        og = soup.find("meta", property="og:image")
+        if og and og.get("content"):
+            images.append(og["content"])
+        for img in soup.find_all("img"):
+            src = img.get("data-src") or img.get("src") or ""
+            if not src:
+                continue
+            low = src.lower()
+            if any(k in low for k in ("/uploads/", "monthly_", "/gallery/", "screenshot")):
+                if src.startswith("//"):
+                    src = "https:" + src
+                elif src.startswith("/"):
+                    src = BASE + src
+                if src not in images:
+                    images.append(src)
+        images = images[:8]
+
+        author = ""
+        a_tag = soup.find("a", href=re.compile(r"/profile/"))
+        if a_tag:
+            author = a_tag.get_text(strip=True)
+
+        return {
+            "file_id": file_id, "slug": slug, "title": title,
+            "description": description, "images": images, "author": author,
+            "ds_url": page_url,
+        }
+
     # ------------------------------------------------------------------
     # Multi-file submissions
     # ------------------------------------------------------------------

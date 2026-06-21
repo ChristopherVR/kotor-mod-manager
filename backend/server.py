@@ -23,7 +23,10 @@ from fastapi.responses import JSONResponse
 
 import config as cfg
 from backend.models import (
+    ActiveProfileRequest,
     LoginRequest,
+    ProfileCreate,
+    ProfileUpdate,
     SettingsModel,
     StartInstallRequest,
     build_mod_to_dict,
@@ -279,6 +282,73 @@ def set_settings(s: SettingsModel) -> dict:
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# Game install profiles (multiple KOTOR installs on one machine)
+# ---------------------------------------------------------------------------
+
+def _profile_dict(p: dict) -> dict:
+    return {**p, "is_default": p["id"] in ("KOTOR1", "KOTOR2")}
+
+
+@app.get("/api/profiles")
+def get_profiles() -> dict:
+    conf = cfg.load()
+    return {
+        "profiles": [_profile_dict(p) for p in cfg.get_profiles(conf)],
+        "active": conf.get("active_profile", ""),
+    }
+
+
+@app.post("/api/profiles")
+def create_profile(req: ProfileCreate) -> dict:
+    if req.game not in ("KOTOR1", "KOTOR2"):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "invalid_game"})
+    prof = cfg.add_profile(req.name, req.game, req.path)
+    return {"ok": True, "profile": _profile_dict(prof)}
+
+
+@app.patch("/api/profiles/{profile_id}")
+def patch_profile(profile_id: str, req: ProfileUpdate) -> dict:
+    prof = cfg.update_profile(profile_id, name=req.name, path=req.path)
+    if not prof:
+        return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
+    return {"ok": True, "profile": _profile_dict(prof)}
+
+
+@app.delete("/api/profiles/{profile_id}")
+def delete_profile(profile_id: str) -> dict:
+    if profile_id in ("KOTOR1", "KOTOR2"):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "cannot_delete_default"})
+    ok = cfg.remove_profile(profile_id)
+    return {"ok": ok}
+
+
+@app.post("/api/profiles/active")
+def set_active(req: ActiveProfileRequest) -> dict:
+    ok = cfg.set_active_profile(req.id)
+    return {"ok": ok}
+
+
+# ---------------------------------------------------------------------------
+# Mod details (description / screenshots / Nexus link)
+# ---------------------------------------------------------------------------
+
+_NEXUS_DOMAIN = {"KOTOR1": "kotor", "KOTOR2": "kotor2"}
+
+
+@app.get("/api/mod/info")
+def mod_info(file_id: str, slug: str = "", game: str = "KOTOR1") -> dict:
+    details = state.client.get_mod_details(file_id, slug)
+    name = details.get("title", "")
+    domain = _NEXUS_DOMAIN.get(game, "kotor")
+    from urllib.parse import quote_plus
+    details["nexus_url"] = (
+        f"https://www.nexusmods.com/{domain}/search/?gsearch={quote_plus(name)}&gsearchtype=mods"
+        if name else f"https://www.nexusmods.com/{domain}/mods/"
+    )
+    return details
+
+
 @app.post("/api/builds/{build_key}/load")
 def load_build(build_key: str) -> dict:
     if build_key not in BUILD_URLS:
@@ -308,20 +378,28 @@ def install_start(req: StartInstallRequest) -> dict:
     if not state.client._logged_in:
         return JSONResponse(status_code=401, content={"ok": False, "error": "Not logged in"})
 
+    game = BUILD_GAME.get(req.build_key, "KOTOR1")
+    # Resolve the target install: a chosen profile, else the game default.
+    scope = game
+    if req.profile:
+        prof = cfg.get_profile(req.profile)
+        if prof:
+            scope = req.profile
+            if not req.game_path:
+                req.game_path = prof.get("path", "")
     game_path = state.game_path_for(req.build_key, req.game_path)
     if not game_path or not game_path.exists():
         return JSONResponse(
             status_code=400,
-            content={"ok": False, "error": "game_path_required",
-                     "game": BUILD_GAME.get(req.build_key, "")},
+            content={"ok": False, "error": "game_path_required", "game": game},
         )
 
     conf = cfg.load()
     dl_dir = Path(conf.get("download_dir") or (Path.home() / "Downloads" / "KOTOR_Mods"))
 
     # Persist a game_path override into settings for convenience.
-    if req.game_path:
-        key = "kotor1_path" if BUILD_GAME.get(req.build_key) == "KOTOR1" else "kotor2_path"
+    if req.game_path and scope == game:
+        key = "kotor1_path" if game == "KOTOR1" else "kotor2_path"
         conf[key] = req.game_path
         cfg.save(conf)
 
@@ -352,7 +430,8 @@ def install_start(req: StartInstallRequest) -> dict:
         on_progress=on_progress,
         on_install_progress=on_install_progress,
         auto_unattended=req.unattended,
-        game_key=BUILD_GAME.get(req.build_key, ""),
+        game_key=scope,
+        game_type=game,
     )
     state.pipeline.start()
     hub.publish({"type": "pipeline", "event": "started",

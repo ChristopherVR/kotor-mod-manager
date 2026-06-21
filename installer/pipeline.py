@@ -81,6 +81,7 @@ class Pipeline:
         on_install_progress: Optional[InstallProgressCB] = None,
         auto_unattended: bool = False,
         game_key: str = "",
+        game_type: str = "",
         record_to_library: bool = True,
     ):
         self._mods = [PipelineMod(m) for m in mods]
@@ -93,8 +94,11 @@ class Pipeline:
         self._on_install_progress = on_install_progress
         # When True, never fall back to a manual GUI click (fully unattended).
         self._auto_unattended = auto_unattended
-        # Mod-manager recording (e.g. "KOTOR1"); empty disables recording.
+        # Mod-manager recording. game_key is the manifest scope (profile id or
+        # game); game_type is the actual game ("KOTOR1"/"KOTOR2"). Empty key
+        # disables recording.
         self._game_key = game_key
+        self._game_type = game_type or game_key
         self._record_to_library = record_to_library and bool(game_key)
 
         self._stop_event = threading.Event()
@@ -393,7 +397,8 @@ class Pipeline:
                     deploy_kind=mod_manager.DeployKind.BAKED.value,
                     snapshot_before=pre.get("before"), snapshot_after=after,
                     build_key=mod.build_key, option_hint=mod.option_hint,
-                    readme_text=plan.readme_text,
+                    readme_text=plan.readme_text, game_type=self._game_type,
+                    source_slug=mod.slug,
                 )
             else:
                 mod_manager.record_install(
@@ -404,7 +409,8 @@ class Pipeline:
                     plan_file_mappings=pre.get("mappings"),
                     pre_existing=pre.get("pre_existing"),
                     build_key=mod.build_key, option_hint=mod.option_hint,
-                    readme_text=plan.readme_text,
+                    readme_text=plan.readme_text, game_type=self._game_type,
+                    source_slug=mod.slug,
                 )
         except Exception as e:  # recording must never fail an install
             self._log(f"    (library record skipped: {e})", "muted")

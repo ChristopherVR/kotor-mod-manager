@@ -100,6 +100,7 @@ class InstalledMod:
     install_ts: float = field(default_factory=time.time)
     build_key: Optional[str] = None
     option_hint: str = ""
+    source_slug: str = ""
     deployed_files: list[DeployedFile] = field(default_factory=list)
     baked_files: list[BakedFile] = field(default_factory=list)
     # Incompatibilities the mod declares about ITSELF (parsed from its readme).
@@ -290,6 +291,8 @@ def record_install(
     build_key: Optional[str] = None,
     option_hint: str = "",
     readme_text: str = "",
+    game_type: str = "",
+    source_slug: str = "",
 ) -> InstalledMod:
     """
     Record a completed install into the per-game manifest.
@@ -347,11 +350,11 @@ def record_install(
             enabled = True
 
         mod = InstalledMod(
-            id=mod_id, name=name, game=game,
+            id=mod_id, name=name, game=(game_type or game),
             source_type=source_type, source_ref=source_ref,
             install_method=install_method, deploy_kind=deploy_kind,
             state=state, enabled=enabled, load_order=load_order,
-            build_key=build_key, option_hint=option_hint,
+            build_key=build_key, option_hint=option_hint, source_slug=source_slug,
             deployed_files=deployed, baked_files=baked,
             incompatibilities=parse_incompatibilities(readme_text),
         )
@@ -478,6 +481,40 @@ def reorder(game: str, ordered_ids: list[str]) -> GameManifest:
 # Conflict detection
 # ---------------------------------------------------------------------------
 
+def _conflict_explanation(ctype: str, kinds: set, winner: str, losers: list[str]) -> tuple[str, str]:
+    """Return (description, recommendation) explaining a file conflict in plain terms."""
+    others = ", ".join(f"“{n}”" for n in losers) or "another mod"
+    if kinds == {"baked"}:
+        return (
+            f"Two patcher mods both modify this file. TSLPatcher/HoloPatcher "
+            f"usually merge their changes, so this is often fine — but review it "
+            f"if you see odd behaviour.",
+            "Usually safe to leave as-is; install order can still matter.",
+        )
+    base = {
+        "2da": (
+            f"Both mods ship a copy of this 2DA table. Only one file can sit in "
+            f"Override, so “{winner}” wins and the changes from {others} are "
+            f"overwritten and lost."
+        ),
+        "dialog": (
+            f"Both mods provide a dialog.tlk (the game's text/string table). Only "
+            f"one can be active — “{winner}” wins and {others}'s text is ignored."
+        ),
+        "module": (
+            f"Both mods change the same module/area file. “{winner}” wins; {others} "
+            f"may not work correctly."
+        ),
+        "override": (
+            f"Both mods install a file with the same name into Override. “{winner}” "
+            f"wins and the version from {others} is shadowed."
+        ),
+    }.get(ctype, f"“{winner}” and {others} both write the same file; one overrides the other.")
+    rec = ("Decide which mod should provide this file: keep it enabled and disable "
+           "the other, or set load order so the intended mod wins.")
+    return base, rec
+
+
 def _resource_type(rel_lower: str) -> str:
     if rel_lower.endswith("dialog.tlk"):
         return "dialog"
@@ -533,13 +570,18 @@ def compute_conflicts(game: str) -> list[dict]:
                 continue
             seen_ids.add(m.id)
             participants.append({"mod_id": m.id, "mod_name": m.name, "enabled": m.enabled})
+        ctype = _resource_type(key)
+        desc, rec = _conflict_explanation(ctype, kinds, winner.name,
+                                          [p["mod_name"] for p in participants if p["mod_id"] != winner.id])
         conflicts.append({
             "id": key,
             "resource": display[key],
-            "type": _resource_type(key),
+            "type": ctype,
             "severity": severity,
             "participants": participants,
             "winner_mod_id": winner.id,
+            "description": desc,
+            "recommendation": rec,
         })
 
     # ---- Declared incompatibilities (from the mods' own readmes) ----
@@ -567,6 +609,12 @@ def compute_conflicts(game: str) -> list[dict]:
                     {"mod_id": b.id, "mod_name": b.name, "enabled": b.enabled},
                 ],
                 "winner_mod_id": None,
+                "description": (
+                    f"“{a.name}” states in its own readme that it is "
+                    f"incompatible with “{b.name}”. Running both enabled can "
+                    f"cause crashes, missing content, or broken scripting."
+                ),
+                "recommendation": "Disable one of these two mods.",
             })
 
     sev_rank = {"error": 0, "warning": 1, "info": 2}

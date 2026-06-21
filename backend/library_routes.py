@@ -34,13 +34,20 @@ def bind_state(state) -> None:
     _state = state
 
 
-def _game_root(game: str, override: Optional[str] = None) -> Optional[Path]:
-    if override:
-        return Path(override)
+def _resolve(game: str = "KOTOR1", profile: str = "", override: Optional[str] = None):
+    """
+    Resolve a request to (scope, root_path, game_type).
+    `scope` is the manifest key (profile id, or the game for the default profile).
+    """
+    if profile:
+        prof = cfg.get_profile(profile)
+        if prof:
+            raw = override or prof.get("path", "")
+            return profile, (Path(raw) if raw else None), prof.get("game", game)
     conf = cfg.load()
     key = "kotor1_path" if game == "KOTOR1" else "kotor2_path"
-    p = conf.get(key, "")
-    return Path(p) if p else None
+    raw = override or conf.get(key, "")
+    return game, (Path(raw) if raw else None), game
 
 
 def _publish(event: dict) -> None:
@@ -53,21 +60,23 @@ def _publish(event: dict) -> None:
 # ---------------------------------------------------------------------------
 
 @library_router.get("/library")
-def get_library(game: str = Query("KOTOR1")) -> dict:
-    manifest = mod_manager.load_manifest(game)
-    conflicts = mod_manager.compute_conflicts(game)
+def get_library(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    scope, _root, game_type = _resolve(game, profile)
+    manifest = mod_manager.load_manifest(scope)
+    conflicts = mod_manager.compute_conflicts(scope)
     counts = mod_manager.conflict_counts_by_mod(conflicts)
     mods = sorted(manifest.mods, key=lambda m: m.load_order)
     return {
-        "game": game,
+        "game": game_type, "profile": scope,
         "mods": [installed_mod_to_dict(m, counts.get(m.id, 0)) for m in mods],
     }
 
 
 @library_router.get("/library/{mod_id}")
-def get_library_mod(mod_id: str, game: str = Query("KOTOR1")) -> dict:
+def get_library_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     from dataclasses import asdict
-    manifest = mod_manager.load_manifest(game)
+    scope, _root, _gt = _resolve(game, profile)
+    manifest = mod_manager.load_manifest(scope)
     mod = manifest.find(mod_id)
     if not mod:
         return JSONResponse(status_code=404, content={"ok": False, "error": "not_found"})
@@ -87,69 +96,61 @@ def _guard_not_running():
     return None
 
 
-@library_router.post("/library/{mod_id}/enable")
-def enable_mod(mod_id: str, game: str = Query("KOTOR1")) -> dict:
+def _toggle(mod_id: str, game: str, profile: str, action: str):
     busy = _guard_not_running()
     if busy:
         return busy
-    root = _game_root(game)
+    scope, root, _gt = _resolve(game, profile)
     if not root or not root.exists():
         return JSONResponse(status_code=400, content={"ok": False, "error": "game_path_required"})
     try:
-        mod = mod_manager.enable(game, root, mod_id)
+        fn = mod_manager.enable if action == "enable" else mod_manager.disable
+        mod = fn(scope, root, mod_id)
     except mod_manager.ModNotToggleableError as e:
         return JSONResponse(status_code=409, content={"ok": False, "error": "not_toggleable", "message": str(e)})
     except mod_manager.ModManagerError as e:
         return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
-    conflicts = mod_manager.compute_conflicts(game)
+    conflicts = mod_manager.compute_conflicts(scope)
     counts = mod_manager.conflict_counts_by_mod(conflicts)
-    _publish({"type": "library", "event": "changed", "game": game})
+    _publish({"type": "library", "event": "changed", "profile": scope})
     return {"ok": True, "mod": installed_mod_to_dict(mod, counts.get(mod.id, 0)), "conflicts": conflicts}
+
+
+@library_router.post("/library/{mod_id}/enable")
+def enable_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    return _toggle(mod_id, game, profile, "enable")
 
 
 @library_router.post("/library/{mod_id}/disable")
-def disable_mod(mod_id: str, game: str = Query("KOTOR1")) -> dict:
-    busy = _guard_not_running()
-    if busy:
-        return busy
-    root = _game_root(game)
-    if not root or not root.exists():
-        return JSONResponse(status_code=400, content={"ok": False, "error": "game_path_required"})
-    try:
-        mod = mod_manager.disable(game, root, mod_id)
-    except mod_manager.ModNotToggleableError as e:
-        return JSONResponse(status_code=409, content={"ok": False, "error": "not_toggleable", "message": str(e)})
-    except mod_manager.ModManagerError as e:
-        return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
-    conflicts = mod_manager.compute_conflicts(game)
-    counts = mod_manager.conflict_counts_by_mod(conflicts)
-    _publish({"type": "library", "event": "changed", "game": game})
-    return {"ok": True, "mod": installed_mod_to_dict(mod, counts.get(mod.id, 0)), "conflicts": conflicts}
+def disable_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    return _toggle(mod_id, game, profile, "disable")
 
 
 @library_router.post("/library/{mod_id}/uninstall")
-def uninstall_mod(mod_id: str, req: UninstallRequest, game: str = Query("KOTOR1")) -> dict:
+def uninstall_mod(mod_id: str, req: UninstallRequest,
+                  game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     busy = _guard_not_running()
     if busy:
         return busy
-    root = _game_root(game)
+    scope, root, _gt = _resolve(game, profile)
     if not root or not root.exists():
         return JSONResponse(status_code=400, content={"ok": False, "error": "game_path_required"})
     try:
-        mod_manager.uninstall(game, root, mod_id, force=req.force)
+        mod_manager.uninstall(scope, root, mod_id, force=req.force)
     except mod_manager.ModManagerError as e:
         return JSONResponse(status_code=409, content={"ok": False, "error": "baked_no_backup", "message": str(e)})
-    _publish({"type": "library", "event": "changed", "game": game})
+    _publish({"type": "library", "event": "changed", "profile": scope})
     return {"ok": True}
 
 
 @library_router.post("/library/reorder")
-def reorder_mods(req: ReorderRequest) -> dict:
-    manifest = mod_manager.reorder(req.game, req.ordered_ids)
-    conflicts = mod_manager.compute_conflicts(req.game)
+def reorder_mods(req: ReorderRequest, profile: str = Query("")) -> dict:
+    scope, _root, _gt = _resolve(req.game, profile)
+    manifest = mod_manager.reorder(scope, req.ordered_ids)
+    conflicts = mod_manager.compute_conflicts(scope)
     counts = mod_manager.conflict_counts_by_mod(conflicts)
     mods = sorted(manifest.mods, key=lambda m: m.load_order)
-    _publish({"type": "library", "event": "changed", "game": req.game})
+    _publish({"type": "library", "event": "changed", "profile": scope})
     return {"ok": True, "mods": [installed_mod_to_dict(m, counts.get(m.id, 0)) for m in mods], "conflicts": conflicts}
 
 
@@ -158,8 +159,9 @@ def reorder_mods(req: ReorderRequest) -> dict:
 # ---------------------------------------------------------------------------
 
 @library_router.get("/conflicts")
-def get_conflicts(game: str = Query("KOTOR1")) -> dict:
-    return {"conflicts": mod_manager.compute_conflicts(game)}
+def get_conflicts(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    scope, _root, _gt = _resolve(game, profile)
+    return {"conflicts": mod_manager.compute_conflicts(scope)}
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +170,7 @@ def get_conflicts(game: str = Query("KOTOR1")) -> dict:
 
 @library_router.post("/library/import")
 def import_mod(req: ImportRequest) -> dict:
-    root = _game_root(req.game, req.game_path)
+    scope, root, game_type = _resolve(req.game, req.profile, req.game_path)
     if not root or not root.exists():
         return JSONResponse(status_code=400, content={"ok": False, "error": "game_path_required", "game": req.game})
 
@@ -214,25 +216,26 @@ def import_mod(req: ImportRequest) -> dict:
                     )
                 after = mod_manager.snapshot_targets(root)
                 rec = mod_manager.record_install(
-                    req.game, root, name=name, install_method=plan.method.name,
+                    scope, root, name=name, install_method=plan.method.name,
                     source_type="import", source_ref=str(src),
                     deploy_kind=mod_manager.DeployKind.BAKED.value,
                     snapshot_before=before, snapshot_after=after, option_hint=req.option_hint,
-                    readme_text=plan.readme_text,
+                    readme_text=plan.readme_text, game_type=game_type,
                 )
             else:
                 mappings = loose_mappings(plan)
                 pre_existing = {rel for (rel, _s) in mappings if (root / rel).exists()}
                 install(plan, root, lambda m: log(f"  {m}", "muted"))
                 rec = mod_manager.record_install(
-                    req.game, root, name=name, install_method=plan.method.name,
+                    scope, root, name=name, install_method=plan.method.name,
                     source_type="import", source_ref=str(src),
                     deploy_kind=mod_manager.DeployKind.LOOSE.value,
                     plan_file_mappings=mappings, pre_existing=pre_existing,
                     option_hint=req.option_hint, readme_text=plan.readme_text,
+                    game_type=game_type,
                 )
             log(f"Imported '{name}'.", "success")
-            _publish({"type": "library", "event": "imported", "game": req.game,
+            _publish({"type": "library", "event": "imported", "profile": scope,
                       "mod": installed_mod_to_dict(rec)})
         except Exception as e:
             log(f"Import failed: {e}", "error")

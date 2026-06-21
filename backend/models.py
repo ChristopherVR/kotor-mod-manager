@@ -25,6 +25,7 @@ class StartInstallRequest(BaseModel):
     build_key: str
     unattended: bool = False
     game_path: Optional[str] = None   # override; otherwise resolved from settings
+    profile: str = ""                 # target install profile id (optional)
 
 
 class ImportRequest(BaseModel):
@@ -34,6 +35,7 @@ class ImportRequest(BaseModel):
     option_hint: str = ""
     unattended: bool = True
     game_path: Optional[str] = None
+    profile: str = ""
 
 
 class UninstallRequest(BaseModel):
@@ -43,6 +45,21 @@ class UninstallRequest(BaseModel):
 class ReorderRequest(BaseModel):
     game: str
     ordered_ids: list[str]
+
+
+class ProfileCreate(BaseModel):
+    name: str
+    game: str            # "KOTOR1" | "KOTOR2"
+    path: str = ""
+
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    path: Optional[str] = None
+
+
+class ActiveProfileRequest(BaseModel):
+    id: str
 
 
 def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0) -> dict:
@@ -58,6 +75,7 @@ def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0) -> dict:
         "load_order": m.load_order,
         "source_type": m.source_type,
         "source_ref": m.source_ref,
+        "source_slug": m.source_slug,
         "build_key": m.build_key,
         "option_hint": m.option_hint,
         "file_count": len(m.deployed_files),
