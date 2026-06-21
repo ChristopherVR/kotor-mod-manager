@@ -31,9 +31,11 @@ def reveal_path(path: PathLike, select: bool = False) -> bool:
     try:
         if sys.platform == "win32":
             if select and p.is_file():
-                # explorer returns a non-zero exit code even on success, so we
-                # fire and forget. The comma after /select is required.
-                subprocess.Popen(f'explorer /select,"{p}"')
+                # Pass args as a list so the path is never interpolated into a
+                # command string. explorer wants the path glued to the flag as a
+                # single argument ("/select,<path>"), and returns a non-zero exit
+                # code even on success, so we fire and forget.
+                subprocess.Popen(["explorer", f"/select,{p}"])
             else:
                 target = p if p.is_dir() else p.parent
                 os.startfile(str(target))  # noqa: S606
