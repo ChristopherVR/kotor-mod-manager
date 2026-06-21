@@ -8,6 +8,10 @@ interaction as possible.
 
 ## Features
 
+- **Full mod manager** — a persistent per-game library of every installed mod:
+  enable/disable (files move in/out of the game tree), uninstall, load order,
+  and **file-level conflict detection** across enabled mods. Import **any** KOTOR
+  mod (arbitrary archive or folder), not just the curated builds.
 - **Ordered, sequential install** following the neocities build order.
 - **Headless TSLPatcher installs** via a universal HoloPatcher shim (see below) —
   no per-mod clicking. Falls back to automating the TSLPatcher GUI, then to a
@@ -19,8 +23,19 @@ interaction as possible.
 - DeadlyStream login with credentials stored in Windows Credential Manager.
 - Data-driven installer config (`installer/installer_config.json`) — add new
   patcher types / legacy exe names without code changes.
-- Modern **Tauri + React + shadcn/ui** desktop frontend over a **Python (FastAPI)**
-  backend. The whole Python pipeline is reused unchanged behind the API.
+- **Claude-desktop-style UI**: a left sidebar (Mod Builds · Library · Conflicts ·
+  Activity · Settings), warm charcoal/clay theme, settings as a dedicated view.
+  Built with **Tauri + React + shadcn/ui** over a **Python (FastAPI)** backend.
+
+## Mod manager
+
+Loose-file mods (Override/Modules/`dialog.tlk`) are fully reversible — disabling
+moves their exact deployed files into a per-mod disabled store and restores them
+on enable. TSLPatcher/HoloPatcher mods *patch shared files in place*, so they are
+recorded as **baked** (captured via a before/after snapshot delta) and flagged as
+not cleanly toggleable. Conflicts are computed from file overlap across enabled
+mods: loose-vs-loose overwrites are warnings; baked-vs-baked merges are info.
+State lives under `~/.kotor_mod_installer/` (`library/`, `disabled/`, `backups/`).
 
 ## Architecture
 

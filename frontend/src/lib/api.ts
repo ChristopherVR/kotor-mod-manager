@@ -98,6 +98,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ username, password, save }),
     }),
+  logout: () => req<{ ok: boolean }>("/api/logout", { method: "POST" }),
   getSettings: () => req<Settings>("/api/settings"),
   setSettings: (s: Settings) =>
     req<{ ok: boolean }>("/api/settings", { method: "POST", body: JSON.stringify(s) }),

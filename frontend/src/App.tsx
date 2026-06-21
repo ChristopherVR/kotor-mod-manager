@@ -157,6 +157,7 @@ export default function App() {
   }, [mods, runtime]);
 
   const handleSignOut = useCallback(() => {
+    api.logout().catch(() => {});
     setUsername("");
     setStatus((prev) => (prev ? { ...prev, logged_in: false } : prev));
     addLog("Signed out.", "muted");

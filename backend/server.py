@@ -192,6 +192,14 @@ def login(req: LoginRequest) -> dict:
     return {"ok": True, "username": req.username}
 
 
+@app.post("/api/logout")
+def logout() -> dict:
+    """Reset the in-memory DeadlyStream session (keeps saved credentials)."""
+    state.client = DeadlyStreamClient()
+    state.hub.publish({"type": "auth", "logged_in": False, "username": ""})
+    return {"ok": True}
+
+
 @app.get("/api/settings")
 def get_settings() -> dict:
     conf = cfg.load()
