@@ -122,18 +122,29 @@ class DeadlyStreamClient:
     # CSRF key retrieval (refreshed from file page when needed)
     # ------------------------------------------------------------------
 
-    def _get_csrf_for_file(self, file_id: str) -> str:
-        url = f"{BASE}/files/file/{file_id}/"
+    @staticmethod
+    def _file_page_url(file_id: str, slug: str = "") -> str:
+        """
+        Slugged file page URL. DeadlyStream (IPS/Invision) 404s on
+        /files/file/{id}/ without the slug, which breaks CSRF extraction and
+        the download links. Always prefer the {file_id}-{slug} form.
+        """
+        if slug:
+            return f"{BASE}/files/file/{file_id}-{slug}/"
+        return f"{BASE}/files/file/{file_id}/"   # legacy fallback (will 404 on DS)
+
+    def _get_csrf_for_file(self, file_id: str, slug: str = "") -> str:
+        url = self._file_page_url(file_id, slug)
         resp = self._session.get(url, timeout=20)
         resp.raise_for_status()
         csrf = self._extract_csrf(resp.text)
         if not csrf:
-            raise DownloadError(f"Could not extract CSRF key from file page {file_id}.")
+            raise DownloadError(f"Could not extract CSRF key from file page {file_id}-{slug}.")
         return csrf
 
-    def _get_file_info(self, file_id: str) -> dict:
+    def _get_file_info(self, file_id: str, slug: str = "") -> dict:
         """Fetch title, description, category from the mod page."""
-        url = f"{BASE}/files/file/{file_id}/"
+        url = self._file_page_url(file_id, slug)
         resp = self._session.get(url, timeout=20)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
@@ -157,59 +168,37 @@ class DeadlyStreamClient:
         self,
         file_id: str,
         dest_dir: Path,
+        slug: str = "",
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> Path:
         """
-        Download a file from deadlystream.
+        Download a (single-file) submission from deadlystream.
 
         progress_callback(bytes_downloaded, total_bytes, filename)
         cancel_event: set() to abort mid-download
         Returns the local path of the downloaded file.
         """
+        page_url = self._file_page_url(file_id, slug)
         with self._lock:
-            csrf = self._get_csrf_for_file(file_id)
+            csrf = self._get_csrf_for_file(file_id, slug)
 
-        download_url = f"{BASE}/files/file/{file_id}/?do=download&csrfKey={csrf}"
-        resp = self._session.get(download_url, stream=True, timeout=60, allow_redirects=True)
-        resp.raise_for_status()
+        download_url = f"{page_url}?do=download&csrfKey={csrf}"
+        return self._download_from_url(
+            download_url, dest_dir, file_id,
+            progress_callback=progress_callback,
+            cancel_event=cancel_event,
+            referer=page_url,
+        )
 
-        # Determine filename from Content-Disposition or URL
-        cd = resp.headers.get("Content-Disposition", "")
-        filename_match = re.search(r'filename[*]?=["\']?([^"\';\r\n]+)["\']?', cd)
-        if filename_match:
-            filename = filename_match.group(1).strip().strip('"\'')
-        else:
-            filename = f"mod_{file_id}.zip"
-
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest_path = dest_dir / filename
-
-        total = int(resp.headers.get("Content-Length", 0))
-        downloaded = 0
-        chunk_size = 65536  # 64 KB
-
-        with open(dest_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=chunk_size):
-                if cancel_event and cancel_event.is_set():
-                    dest_path.unlink(missing_ok=True)
-                    raise DownloadError("Download cancelled.")
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if progress_callback:
-                        progress_callback(downloaded, total, filename)
-
-        return dest_path
-
-    def get_file_info(self, file_id: str) -> dict:
-        return self._get_file_info(file_id)
+    def get_file_info(self, file_id: str, slug: str = "") -> dict:
+        return self._get_file_info(file_id, slug)
 
     # ------------------------------------------------------------------
     # Multi-file submissions
     # ------------------------------------------------------------------
 
-    def list_download_records(self, file_id: str) -> list[dict]:
+    def list_download_records(self, file_id: str, slug: str = "") -> list[dict]:
         """
         Inspect a mod's download page and return every downloadable record.
 
@@ -218,15 +207,16 @@ class DeadlyStreamClient:
         {"name": str, "url": str, "record_id": str|None}. Always returns at
         least one entry (the primary download) so callers can iterate uniformly.
         """
+        page_url = self._file_page_url(file_id, slug)
         with self._lock:
-            csrf = self._get_csrf_for_file(file_id)
+            csrf = self._get_csrf_for_file(file_id, slug)
 
         # The /?do=download page (without confirm) lists individual files when
-        # a submission has more than one.
-        list_url = f"{BASE}/files/file/{file_id}/?do=download"
+        # a submission has more than one. Send the file page as Referer.
+        list_url = f"{page_url}?do=download"
         records: list[dict] = []
         try:
-            resp = self._session.get(list_url, timeout=20)
+            resp = self._session.get(list_url, timeout=20, headers={"Referer": page_url})
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "lxml")
 
@@ -252,7 +242,7 @@ class DeadlyStreamClient:
             # Single-file submission — fall back to the primary download URL.
             records.append({
                 "name": f"mod_{file_id}",
-                "url": f"{BASE}/files/file/{file_id}/?do=download&csrfKey={csrf}",
+                "url": f"{page_url}?do=download&csrfKey={csrf}",
                 "record_id": None,
             })
         return records
@@ -261,6 +251,7 @@ class DeadlyStreamClient:
         self,
         file_id: str,
         dest_dir: Path,
+        slug: str = "",
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         cancel_event: Optional[threading.Event] = None,
     ) -> list[Path]:
@@ -268,7 +259,8 @@ class DeadlyStreamClient:
         Download every file in a (possibly multi-file) submission.
         Returns the list of downloaded local paths in page order.
         """
-        records = self.list_download_records(file_id)
+        records = self.list_download_records(file_id, slug)
+        referer = self._file_page_url(file_id, slug)
         paths: list[Path] = []
         for idx, rec in enumerate(records):
             if cancel_event and cancel_event.is_set():
@@ -278,6 +270,7 @@ class DeadlyStreamClient:
                 progress_callback=progress_callback,
                 cancel_event=cancel_event,
                 fallback_name=rec["name"],
+                referer=referer,
             )
             paths.append(path)
         return paths
@@ -290,9 +283,22 @@ class DeadlyStreamClient:
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         cancel_event: Optional[threading.Event] = None,
         fallback_name: str = "",
+        referer: str = "",
     ) -> Path:
-        resp = self._session.get(download_url, stream=True, timeout=60, allow_redirects=True)
+        headers = {"Referer": referer} if referer else {}
+        resp = self._session.get(
+            download_url, stream=True, timeout=60, allow_redirects=True, headers=headers
+        )
         resp.raise_for_status()
+
+        # Guard: a logged-out / bad-CSRF / confirm-interstitial response comes
+        # back as HTML (HTTP 200). Don't write an HTML page into a .zip.
+        ctype = resp.headers.get("Content-Type", "").lower()
+        if "text/html" in ctype:
+            raise DownloadError(
+                "Expected a file but received an HTML page (login, CSRF, or "
+                f"download-confirm issue) for {download_url}"
+            )
 
         cd = resp.headers.get("Content-Disposition", "")
         filename_match = re.search(r'filename[*]?=["\']?([^"\';\r\n]+)["\']?', cd)
