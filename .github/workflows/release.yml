@@ -45,6 +45,11 @@ jobs:
           RAW="${RAW#v}"
           [ -z "$RAW" ] && RAW="$CUR"
           TAG="v$RAW"
+          # Validate strict semver before it ever reaches a shell sink.
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "Refusing non-semver version: '$TAG'" >&2
+            exit 1
+          fi
           LAST="$(git describe --tags --abbrev=0 2>/dev/null || echo '')"
           echo "next=$TAG" >> "$GITHUB_OUTPUT"
           if [ -z "$LAST" ]; then
@@ -60,14 +65,18 @@ jobs:
 
       - name: Regenerate changelog
         if: steps.ver.outputs.release == 'true'
-        # Use --tag (we already computed the version) instead of --bump, which
-        # errors on a repo with no existing tags.
-        run: git cliff --tag "${{ steps.ver.outputs.next }}" -o CHANGELOG.md
+        # Bind through env so shell quoting (not GHA macro expansion) protects the
+        # value. Use --tag (we already computed the version) instead of --bump,
+        # which errors on a repo with no existing tags.
+        env:
+          NEXT: ${{ steps.ver.outputs.next }}
+        run: git cliff --tag "$NEXT" -o CHANGELOG.md
 
       - name: Bump version across the project
         if: steps.ver.outputs.release == 'true'
+        env:
+          NEXT: ${{ steps.ver.outputs.next }}
         run: |
-          NEXT="${{ steps.ver.outputs.next }}"
           VER="${NEXT#v}"
           # Python backend version (shown in app + API)
           cat > installer/_version.py <<EOF
@@ -89,8 +98,9 @@ jobs:
 
       - name: Commit, tag, and push
         if: steps.ver.outputs.release == 'true'
+        env:
+          NEXT: ${{ steps.ver.outputs.next }}
         run: |
-          NEXT="${{ steps.ver.outputs.next }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add CHANGELOG.md installer/_version.py \
