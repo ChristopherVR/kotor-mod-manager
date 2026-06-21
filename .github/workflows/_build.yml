@@ -49,6 +49,11 @@ jobs:
       - name: Backend sanity check
         run: python -c "import backend.server, installer.pipeline, installer.patcher_strategy; print('backend imports OK')"
 
+      - name: Run offline tests
+        run: |
+          python tests/test_deadlystream_urls.py
+          python tests/test_install_methods.py
+
       - name: Fetch HoloPatcher shim
         run: python tools/setup_holopatcher.py
 
@@ -56,7 +61,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "tools/HoloPatcher/HoloPatcher.exe")) {
-            Write-Error "HoloPatcher.exe missing — sidecar would not be self-contained."; exit 1
+            Write-Error "HoloPatcher.exe missing - sidecar would not be self-contained."; exit 1
           }
 
       - name: Build backend sidecar (PyInstaller)
