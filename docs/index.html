@@ -58,6 +58,22 @@
         box-shadow:0 18px 50px rgba(0,0,0,.45); background:var(--card2)}
   .shot img{display:block; width:100%}
   .shot.big{margin:18px 0 0}
+  /* Click any screenshot to enlarge it. */
+  .shot img.zoomable{cursor:zoom-in; transition:transform .15s, filter .15s}
+  .shot:hover img.zoomable{filter:brightness(1.04)}
+  .cap{margin:8px 2px 0; color:var(--muted); font-size:13.5px}
+
+  /* Lightbox overlay */
+  .lb{position:fixed; inset:0; z-index:50; display:none; place-items:center;
+      background:rgba(8,6,4,.86); backdrop-filter:blur(4px); padding:32px; cursor:zoom-out}
+  .lb.open{display:grid}
+  .lb img{max-width:96vw; max-height:88vh; border-radius:12px;
+          border:1px solid var(--border); box-shadow:0 30px 80px rgba(0,0,0,.6)}
+  .lb .cap2{position:absolute; bottom:20px; left:0; right:0; text-align:center;
+            color:var(--fg); font-size:14px; opacity:.85}
+  .lb .x{position:absolute; top:18px; right:24px; color:var(--fg); font-size:30px;
+         line-height:1; opacity:.8; cursor:pointer; user-select:none}
+  .lb .x:hover{opacity:1}
 
   .features{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px}
   .feat{background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px}
@@ -95,6 +111,7 @@
     <div class="logo"><span class="bolt">⚡</span> KOTOR Mod Manager</div>
     <nav>
       <a href="#screens">Screens</a>
+      <a href="#demo">Demo</a>
       <a href="#how">How to use</a>
       <a href="#features">Features</a>
       <a href="https://github.com/ChristopherVR/kotor-mod-manager">GitHub</a>
@@ -121,11 +138,28 @@
 
   <section id="screens">
     <h2>What it looks like</h2>
-    <p class="sub">A clean, Claude-desktop-style interface with a sidebar for each part of the workflow.</p>
-    <div class="shot big"><img src="images/02-library.png" alt="Library view - installed mods with enable/disable toggles"></div>
+    <p class="sub">A clean, Claude-desktop-style interface with a sidebar for each part of the workflow. Click any screenshot to enlarge it.</p>
+    <div class="shot big"><img src="images/01-builds.png" alt="Mod Builds - a full recommended build loaded and ready to install" data-cap="Mod Builds - pick a curated build and install every mod in the right order."></div>
     <div class="gallery" style="margin-top:16px">
-      <div class="shot"><img src="images/03-conflicts.png" alt="Conflicts view"></div>
-      <div class="shot"><img src="images/04-settings.png" alt="Settings view"></div>
+      <div class="shot"><img src="images/02-library.png" alt="Library - installed mods with thumbnails, search, and on/off switches" data-cap="Library - every installed mod, with thumbnails, search, filters, and on/off switches."></div>
+      <div class="shot"><img src="images/03-conflicts.png" alt="Conflicts - checks that installed mods coexist cleanly" data-cap="Conflicts - flags mods that fight over the same files before they break your game."></div>
+      <div class="shot"><img src="images/04-settings.png" alt="Settings - language, sound, and download folder" data-cap="Settings - language, sounds, download folder, account, and updates."></div>
+      <div class="shot"><img src="images/06-activity.png" alt="Activity - a live log with copy and export" data-cap="Activity - a live log of everything the app does, with copy and export."></div>
+    </div>
+  </section>
+
+  <section id="demo">
+    <h2>See it in action</h2>
+    <p class="sub">A quick tour through the main screens, and searching the mod library.</p>
+    <div class="gallery">
+      <div>
+        <div class="shot"><img src="images/tour.gif" alt="Animated tour moving through the Mod Builds, Library, Conflicts, and Settings screens"></div>
+        <p class="cap">Touring Mod Builds, Library, Conflicts, and Settings.</p>
+      </div>
+      <div>
+        <div class="shot"><img src="images/library-search.gif" alt="Animated demo of searching and filtering the mod library by name"></div>
+        <p class="cap">Searching and filtering your installed mods.</p>
+      </div>
     </div>
   </section>
 
@@ -141,9 +175,10 @@
           <p>Grab <code>KOTOR-Mod-Installer.exe</code> from the
           <a href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest">latest release</a>
           and run it - that's the whole app, one file. On first launch, open
-          <strong>Settings</strong> and point it at your KOTOR&nbsp;1 / KOTOR&nbsp;2 install
-          folders, then sign in to your DeadlyStream account.</p>
-          <div class="shot"><img src="images/04-settings.png" alt="Settings - game paths and account"></div>
+          <strong>Settings &rarr; Game Installs</strong> and point it at your
+          KOTOR&nbsp;1 / KOTOR&nbsp;2 install folders, then sign in to your
+          DeadlyStream account.</p>
+          <div class="shot"><img src="images/05-game-installs.png" alt="Settings - add your KOTOR 1 and KOTOR 2 game folders" data-cap="Settings - tell the app where your KOTOR 1 and KOTOR 2 games are installed."></div>
         </div>
       </div>
 
@@ -216,6 +251,49 @@
     <a href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest">Releases</a>
   </div>
 </footer>
+
+<!-- Lightbox: click any screenshot to enlarge it -->
+<div class="lb" id="lightbox" role="dialog" aria-modal="true" aria-label="Enlarged screenshot">
+  <span class="x" id="lbClose" aria-label="Close">&times;</span>
+  <img id="lbImg" src="" alt="">
+  <div class="cap2" id="lbCap"></div>
+</div>
+
+<script>
+(function(){
+  var lb = document.getElementById('lightbox');
+  var lbImg = document.getElementById('lbImg');
+  var lbCap = document.getElementById('lbCap');
+
+  // Make every screenshot inside a .shot clickable to enlarge.
+  document.querySelectorAll('.shot img').forEach(function(img){
+    img.classList.add('zoomable');
+    img.addEventListener('click', function(){
+      open(img.getAttribute('src'), img.getAttribute('data-cap') || img.getAttribute('alt') || '');
+    });
+  });
+
+  function open(src, cap){
+    lbImg.setAttribute('src', src);
+    lbImg.setAttribute('alt', cap);
+    lbCap.textContent = cap;
+    lb.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function close(){
+    lb.classList.remove('open');
+    lbImg.setAttribute('src', '');
+    document.body.style.overflow = '';
+  }
+
+  lb.addEventListener('click', close);
+  document.getElementById('lbClose').addEventListener('click', close);
+  // Keep clicks on the image itself from closing only when it is the zoom target.
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape') close();
+  });
+})();
+</script>
 
 </body>
 </html>
