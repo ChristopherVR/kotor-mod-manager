@@ -65,7 +65,9 @@ app ships as one self-contained file.
 Grab the latest `KOTOR-Mod-Installer.exe` from the [Releases](../../releases)
 page and run it — that's the whole app. It is a single self-contained file: the
 Python backend and HoloPatcher are embedded; no Python, Node, Rust, or installer
-needed. The app checks GitHub for newer releases on startup.
+needed. The app checks GitHub for newer releases on startup and can **update
+itself with one click** (Settings → Updates → Download & install — it downloads
+the new exe, swaps itself, and relaunches).
 
 📖 **Usage guide & screenshots:** see the [project site](https://christophervr.github.io/kotor-mod-manager/)
 (published from `docs/` via GitHub Pages).

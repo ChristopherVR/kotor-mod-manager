@@ -54,10 +54,51 @@ fn spawn_backend() -> Option<Child> {
     }
 }
 
+/// Apply a downloaded update: write a swapper that waits for us to exit, copies
+/// the new exe over the current one, relaunches it, and cleans up. Then kill the
+/// backend (so it releases the port) and exit so the swap can proceed.
+#[tauri::command]
+fn apply_update(app: tauri::AppHandle, new_path: String) -> Result<(), String> {
+    let cur = std::env::current_exe().map_err(|e| e.to_string())?;
+    let cur_s = cur.display().to_string().replace('\'', "''");
+    let new_s = new_path.replace('\'', "''");
+    let pid = std::process::id();
+
+    let tmp = std::env::temp_dir().join("kotor-mod-installer-update");
+    let _ = std::fs::create_dir_all(&tmp);
+    let script = tmp.join("swap.ps1");
+    let content = format!(
+        "try {{ Wait-Process -Id {pid} -Timeout 30 }} catch {{}}\n\
+         Start-Sleep -Milliseconds 800\n\
+         for ($i=0; $i -lt 10; $i++) {{ try {{ Copy-Item -LiteralPath '{new}' -Destination '{cur}' -Force; break }} catch {{ Start-Sleep -Milliseconds 700 }} }}\n\
+         Start-Process -FilePath '{cur}'\n\
+         Remove-Item -LiteralPath '{new}' -Force -ErrorAction SilentlyContinue\n",
+        pid = pid, new = new_s, cur = cur_s
+    );
+    std::fs::write(&script, &content).map_err(|e| e.to_string())?;
+
+    let mut cmd = Command::new("powershell");
+    cmd.args([
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+        "-File", script.to_str().ok_or("bad script path")?,
+    ]);
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd.spawn().map_err(|e| e.to_string())?;
+
+    // Kill the backend so it frees port 8756 before the relaunched app starts.
+    if let Some(mut child) = app.state::<BackendChild>().0.lock().unwrap().take() {
+        let _ = child.kill();
+    }
+    app.exit(0);
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(BackendChild(Mutex::new(spawn_backend())))
+        .invoke_handler(tauri::generate_handler![apply_update])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(mut child) = window

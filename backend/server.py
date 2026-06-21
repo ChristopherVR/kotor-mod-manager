@@ -264,6 +264,51 @@ def update_open(url: str = "") -> dict:
         return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
 
 
+@app.post("/api/update/download")
+def update_download() -> dict:
+    """
+    Download the latest release exe to a temp file, streaming progress over the
+    WebSocket, and return its local path. The Tauri shell then swaps it in.
+    """
+    import tempfile
+    import urllib.request
+
+    info = update_check()
+    asset = info.get("asset_url")
+    if not asset:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "no_exe_asset"})
+
+    dest_dir = Path(tempfile.gettempdir()) / "kotor-mod-installer-update"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "KOTOR-Mod-Installer-new.exe"
+
+    try:
+        req = urllib.request.Request(asset, headers={"User-Agent": "kotor-mod-installer"})
+        with urllib.request.urlopen(req, timeout=300) as r, open(dest, "wb") as f:
+            total = int(r.headers.get("Content-Length", 0))
+            done = 0
+            last_pct = -1
+            while True:
+                chunk = r.read(1 << 16)
+                if not chunk:
+                    break
+                f.write(chunk)
+                done += len(chunk)
+                if total:
+                    pct = int(done * 100 / total)
+                    if pct != last_pct:
+                        last_pct = pct
+                        state.hub.publish({"type": "update_progress", "pct": pct,
+                                           "downloaded": done, "total": total})
+        state.hub.publish({"type": "log", "message": "Update downloaded — restarting to apply.",
+                           "tag": "success"})
+        return {"ok": True, "path": str(dest), "version": info.get("latest_version")}
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        state.hub.publish({"type": "log", "message": f"Update download failed: {e}", "tag": "error"})
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+
 @app.get("/api/settings")
 def get_settings() -> dict:
     conf = cfg.load()

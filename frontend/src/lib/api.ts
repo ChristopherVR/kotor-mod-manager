@@ -100,6 +100,7 @@ export type WsEvent =
   | { type: "status"; file_id: string; status: ModStatus; status_label: string; detail: string }
   | { type: "progress"; file_id: string; pct: number; kb: number; total_kb: number }
   | { type: "install_progress"; file_id: string; pct: number; label: string }
+  | { type: "update_progress"; pct: number; downloaded: number; total: number }
   | { type: "pipeline"; event: "started" | "finished"; [k: string]: unknown };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -196,6 +197,8 @@ export const api = {
     req<{ ok: boolean }>(`/api/update/open${url ? `?url=${encodeURIComponent(url)}` : ""}`, {
       method: "POST",
     }),
+  updateDownload: () =>
+    req<{ ok: boolean; path?: string; version?: string }>("/api/update/download", { method: "POST" }),
 };
 
 export interface UpdateInfo {

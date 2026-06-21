@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { Download, RefreshCw } from "lucide-react";
-import { api, type AppStatus, type UpdateInfo } from "@/lib/api";
+import { Download, RefreshCw, ExternalLink } from "lucide-react";
+import { api, connectEvents, type AppStatus, type UpdateInfo } from "@/lib/api";
+import { applyUpdate, isTauri } from "@/lib/tauri";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 
 interface UpdatesSectionProps {
   status: AppStatus | null;
@@ -12,10 +14,42 @@ interface UpdatesSectionProps {
 export function UpdatesSection({ status, addLog }: UpdatesSectionProps) {
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     api.updateCheck().then(setUpdate).catch(() => {});
   }, []);
+
+  const installUpdate = async () => {
+    setInstalling(true);
+    setProgress(0);
+    // Watch download progress over the WS while the backend fetches the exe.
+    const disconnect = connectEvents((e) => {
+      if (e.type === "update_progress") setProgress(e.pct);
+    });
+    try {
+      const r = await api.updateDownload();
+      disconnect();
+      if (r.ok && r.path && isTauri()) {
+        addLog(`Update v${r.version} downloaded — restarting to apply…`, "success");
+        const ok = await applyUpdate(r.path);
+        if (!ok) {
+          addLog("Could not apply the update automatically; opening the release page.", "warning");
+          api.updateOpen(update?.url ?? undefined).catch(() => {});
+        }
+        // On success the app exits and relaunches; nothing more to do here.
+      } else if (r.ok && !isTauri()) {
+        addLog("Update downloaded. Open the release page to install manually.", "info");
+        api.updateOpen(update?.url ?? undefined).catch(() => {});
+      }
+    } catch (e: any) {
+      disconnect();
+      addLog(`Update failed: ${e?.message}`, "error");
+    } finally {
+      setInstalling(false);
+    }
+  };
 
   const checkUpdates = async () => {
     setChecking(true);
@@ -54,12 +88,23 @@ export function UpdatesSection({ status, addLog }: UpdatesSectionProps) {
               <span className="text-sm font-medium text-[hsl(var(--info))]">
                 Version {update.latest_version} is available
               </span>
-              <Button size="sm" className="ml-auto"
-                      onClick={() => api.updateOpen(update.url ?? undefined).catch(() => {})}>
-                <Download /> Get update
-              </Button>
+              <div className="ml-auto flex items-center gap-2">
+                <Button variant="ghost" size="sm"
+                        onClick={() => api.updateOpen(update.url ?? undefined).catch(() => {})}>
+                  <ExternalLink /> Release notes
+                </Button>
+                <Button size="sm" onClick={installUpdate} disabled={installing}>
+                  <Download /> {installing ? "Installing…" : "Download & install"}
+                </Button>
+              </div>
             </div>
-            {update.notes && (
+            {installing && (
+              <div className="mt-2">
+                <Progress value={progress} />
+                <p className="mt-1 text-xs text-muted-foreground">Downloading update… {progress}%</p>
+              </div>
+            )}
+            {update.notes && !installing && (
               <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap font-sans text-xs text-muted-foreground">
                 {update.notes}
               </pre>

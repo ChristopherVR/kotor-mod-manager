@@ -5,6 +5,18 @@ export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+/** Invoke the Rust apply_update command (download swap + relaunch). */
+export async function applyUpdate(newPath: string): Promise<boolean> {
+  if (!isTauri()) return false;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("apply_update", { newPath });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function pickDirectory(): Promise<string | null> {
   if (!isTauri()) {
     // Browser fallback: prompt for a path.
