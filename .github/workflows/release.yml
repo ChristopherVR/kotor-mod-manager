@@ -60,7 +60,9 @@ jobs:
 
       - name: Regenerate changelog
         if: steps.ver.outputs.release == 'true'
-        run: git cliff --bump -o CHANGELOG.md
+        # Use --tag (we already computed the version) instead of --bump, which
+        # errors on a repo with no existing tags.
+        run: git cliff --tag "${{ steps.ver.outputs.next }}" -o CHANGELOG.md
 
       - name: Bump version across the project
         if: steps.ver.outputs.release == 'true'
