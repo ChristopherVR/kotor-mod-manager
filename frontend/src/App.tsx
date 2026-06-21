@@ -76,6 +76,11 @@ export default function App() {
         addLog(`Startup error: ${e?.message}`, "error");
       }
       refreshConflicts();
+      api.updateCheck()
+        .then((u) => {
+          if (u.available) addLog(`Update available: v${u.latest_version} — see Settings.`, "info");
+        })
+        .catch(() => {});
     })();
   }, [addLog, refreshConflicts]);
 

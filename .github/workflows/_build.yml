@@ -62,14 +62,12 @@ jobs:
       - name: Build backend sidecar (PyInstaller)
         run: pyinstaller backend.spec --noconfirm
 
-      - name: Stage sidecar for Tauri (target-triple name)
+      - name: Stage backend for embedding into the single exe
         shell: pwsh
         run: |
-          $triple = (rustc -Vv | Select-String 'host:').ToString().Split(' ')[1]
-          if (-not $triple) { $triple = "x86_64-pc-windows-msvc" }
           New-Item -ItemType Directory -Force "frontend/src-tauri/binaries" | Out-Null
-          Copy-Item "dist/kotor-backend.exe" "frontend/src-tauri/binaries/kotor-backend-$triple.exe" -Force
-          Get-Item "frontend/src-tauri/binaries/kotor-backend-$triple.exe" | Select-Object Name, Length
+          Copy-Item "dist/kotor-backend.exe" "frontend/src-tauri/binaries/kotor-backend.exe" -Force
+          Get-Item "frontend/src-tauri/binaries/kotor-backend.exe" | Select-Object Name, Length
 
       # ---- Frontend (React) + Tauri (Rust) -------------------------------
       - name: Set up Node
@@ -91,23 +89,26 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build Tauri app + installer
+      - name: Build single self-contained exe (backend embedded)
         working-directory: frontend
         run: npx tauri build
 
-      - name: Locate installer
+      - name: Locate + name the exe
         id: artifact
         shell: pwsh
         run: |
-          $nsis = Get-ChildItem "frontend/src-tauri/target/release/bundle/nsis/*-setup.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $nsis) { Write-Error "NSIS installer not found."; exit 1 }
-          Write-Output "Installer: $($nsis.FullName) ($([math]::Round($nsis.Length/1MB,1)) MB)"
-          "path=$($nsis.FullName)" >> $env:GITHUB_OUTPUT
+          $exe = "frontend/src-tauri/target/release/kotor-mod-installer.exe"
+          if (-not (Test-Path $exe)) { Write-Error "Single exe not found at $exe"; exit 1 }
+          $out = "KOTOR-Mod-Installer.exe"
+          Copy-Item $exe $out -Force
+          $f = Get-Item $out
+          Write-Output "Single exe: $($f.FullName) ($([math]::Round($f.Length/1MB,1)) MB)"
+          "path=$($f.FullName)" >> $env:GITHUB_OUTPUT
 
-      - name: Upload installer artifact
+      - name: Upload exe artifact
         uses: actions/upload-artifact@v4
         with:
-          name: KOTOR-Mod-Installer-Setup
+          name: KOTOR-Mod-Installer
           path: ${{ steps.artifact.outputs.path }}
           retention-days: 30
 

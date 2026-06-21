@@ -102,6 +102,8 @@ class InstalledMod:
     option_hint: str = ""
     deployed_files: list[DeployedFile] = field(default_factory=list)
     baked_files: list[BakedFile] = field(default_factory=list)
+    # Incompatibilities the mod declares about ITSELF (parsed from its readme).
+    incompatibilities: list[str] = field(default_factory=list)
     notes: str = ""
 
     @property
@@ -212,6 +214,39 @@ def _rel_posix(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
 
+import re
+
+# Phrases a mod readme uses to declare it conflicts with another mod.
+_INCOMPAT_PATTERNS = [
+    r"incompatible with[:\s]+([^\n.;()]+)",
+    r"not compatible with[:\s]+([^\n.;()]+)",
+    r"do(?:es)?\s*n[o']t\s+work\s+with[:\s]+([^\n.;()]+)",
+    r"conflicts?\s+with[:\s]+([^\n.;()]+)",
+    r"do not (?:use|install)\s+(?:this\s+)?with[:\s]+([^\n.;()]+)",
+]
+
+
+def parse_incompatibilities(readme_text: str) -> list[str]:
+    """
+    Extract declared-incompatibility keywords from a mod's own readme so the
+    manager can flag conflicts the mod itself warns about. Heuristic: capture
+    the phrase after common 'incompatible with X' wordings.
+    """
+    if not readme_text:
+        return []
+    found: list[str] = []
+    low = readme_text
+    for pat in _INCOMPAT_PATTERNS:
+        for m in re.finditer(pat, low, re.IGNORECASE):
+            name = m.group(1).strip(" \t-–—\"'")
+            # Trim trailing connective words and over-long captures.
+            name = re.split(r"\b(?:and|or|but|because|since|as|if|when)\b", name, 1)[0].strip()
+            name = name[:80].strip()
+            if len(name) >= 4 and name.lower() not in (x.lower() for x in found):
+                found.append(name)
+    return found[:20]
+
+
 def snapshot_targets(game_root: Path) -> dict[str, str]:
     """
     Cheap signature snapshot of patch-target areas: rel_posix -> "size:mtime_ns".
@@ -254,6 +289,7 @@ def record_install(
     snapshot_after: Optional[dict[str, str]] = None,
     build_key: Optional[str] = None,
     option_hint: str = "",
+    readme_text: str = "",
 ) -> InstalledMod:
     """
     Record a completed install into the per-game manifest.
@@ -317,6 +353,7 @@ def record_install(
             state=state, enabled=enabled, load_order=load_order,
             build_key=build_key, option_hint=option_hint,
             deployed_files=deployed, baked_files=baked,
+            incompatibilities=parse_incompatibilities(readme_text),
         )
         manifest.mods.append(mod)
         save_manifest(manifest)
@@ -505,8 +542,59 @@ def compute_conflicts(game: str) -> list[dict]:
             "winner_mod_id": winner.id,
         })
 
-    conflicts.sort(key=lambda c: (c["severity"] != "warning", c["resource"]))
+    # ---- Declared incompatibilities (from the mods' own readmes) ----
+    enabled_mods = [m for m in manifest.mods if m.enabled]
+    seen_pairs: set[tuple[str, str]] = set()
+    for a in enabled_mods:
+        if not a.incompatibilities:
+            continue
+        for b in enabled_mods:
+            if a.id == b.id:
+                continue
+            if not _name_matches(b.name, a.incompatibilities):
+                continue
+            pair = tuple(sorted((a.id, b.id)))
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            conflicts.append({
+                "id": f"declared:{pair[0]}:{pair[1]}",
+                "resource": f"{a.name}  ↔  {b.name}",
+                "type": "declared",
+                "severity": "error",
+                "participants": [
+                    {"mod_id": a.id, "mod_name": a.name, "enabled": a.enabled},
+                    {"mod_id": b.id, "mod_name": b.name, "enabled": b.enabled},
+                ],
+                "winner_mod_id": None,
+            })
+
+    sev_rank = {"error": 0, "warning": 1, "info": 2}
+    conflicts.sort(key=lambda c: (sev_rank.get(c["severity"], 3), c["resource"]))
     return conflicts
+
+
+def _normalize(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+def _name_matches(name: str, keywords: list[str]) -> bool:
+    """True if any declared-incompatibility keyword refers to `name`."""
+    nn = _normalize(name)
+    if not nn:
+        return False
+    for kw in keywords:
+        nk = _normalize(kw)
+        if len(nk) < 4:
+            continue
+        if nk in nn or nn in nk:
+            return True
+        # token overlap: most significant words shared
+        ntoks = {t for t in nn.split() if len(t) > 3}
+        ktoks = {t for t in nk.split() if len(t) > 3}
+        if ntoks and ktoks and len(ntoks & ktoks) >= 2:
+            return True
+    return False
 
 
 def conflict_counts_by_mod(conflicts: list[dict]) -> dict[str, int]:

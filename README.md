@@ -40,27 +40,32 @@ State lives under `~/.kotor_mod_installer/` (`library/`, `disabled/`, `backups/`
 ## Architecture
 
 ```
-Tauri shell (Rust)  ──spawns──▶  Python sidecar (PyInstaller exe)
-  React + shadcn UI                FastAPI: REST + WebSocket
-       │  http/ws 127.0.0.1:8756        │
-       └───────────────────────────────┘
+Tauri shell (Rust, single .exe)  ──embeds + spawns──▶  Python backend
+  React + shadcn UI                    FastAPI: REST + WebSocket
+       │  http/ws 127.0.0.1:8756              │
+       └─────────────────────────────────────┘
                                    pipeline / scraper / detector /
-                                   patcher_strategy  (+ bundled HoloPatcher)
+                                   patcher_strategy / mod_manager
+                                   (+ bundled HoloPatcher)
 ```
 
+The backend exe is **embedded inside the main `.exe`** (`include_bytes!`),
+extracted to a temp dir and launched on startup, then killed on exit. The whole
+app ships as one self-contained file.
+
 - `frontend/` — Tauri v2 app (React, Vite, Tailwind, shadcn/ui). `src-tauri/` is
-  the Rust shell that spawns the backend sidecar on launch and kills it on exit.
-- `backend/server.py` — FastAPI wrapper exposing the pipeline; streams live
-  status/log/progress over a WebSocket.
-- `installer/`, `scraper/`, `config.py` — unchanged Python backend logic.
-- `legacy/` — the original CustomTkinter UI, kept as a no-frills fallback
-  (`python -m legacy.main_tkinter`).
+  the Rust shell that embeds + spawns the backend and kills it on exit.
+- `backend/server.py` — FastAPI wrapper exposing the pipeline + mod manager;
+  streams live status/log/progress over a WebSocket.
+- `installer/`, `scraper/`, `config.py` — Python backend logic.
+- `scripts/` — one-off dev/analysis scripts (not part of the app).
 
 ## Download & run (no dependencies needed)
 
-Grab the latest `*-setup.exe` from the [Releases](../../releases) page and run
-it. The installer is fully self-contained — the Python backend and HoloPatcher
-are bundled; no Python, Node, or Rust required on the target machine.
+Grab the latest `KOTOR-Mod-Installer.exe` from the [Releases](../../releases)
+page and run it — that's the whole app. It is a single self-contained file: the
+Python backend and HoloPatcher are embedded; no Python, Node, Rust, or installer
+needed. The app checks GitHub for newer releases on startup.
 
 ## The HoloPatcher shim ("dynamic patcher")
 
@@ -92,25 +97,26 @@ npm install
 npm run tauri dev                          # spawns its own backend + opens the app
 ```
 
-`npm run tauri dev` launches the Rust shell, which itself spawns the backend
-sidecar — so for a pure dev loop you usually only need step 2. Run the backend
-manually (step 1) when iterating on Python, or to use the UI in a plain browser
-at `http://localhost:5173`.
+`npm run tauri dev` launches the Rust shell, which embeds + spawns the backend —
+so for a pure dev loop you usually only need step 2. Run the backend manually
+(step 1) when iterating on Python, or to use the UI in a plain browser at
+`http://localhost:5173`. (The Rust build embeds the backend exe at compile time,
+so `frontend/src-tauri/binaries/kotor-backend.exe` must exist before building —
+see below.)
 
-The legacy Tkinter UI still works: `python -m legacy.main_tkinter`.
-
-## Build the installer locally
+## Build the single .exe locally
 
 ```bash
-# Build the Python sidecar, stage it for Tauri, then build the app.
+# 1. Build the Python backend exe and stage it for embedding.
 pip install pyinstaller
 python tools/setup_holopatcher.py
 pyinstaller backend.spec --noconfirm
 mkdir -p frontend/src-tauri/binaries
-cp dist/kotor-backend.exe \
-   "frontend/src-tauri/binaries/kotor-backend-$(rustc -vV | sed -n 's/host: //p').exe"
+cp dist/kotor-backend.exe frontend/src-tauri/binaries/kotor-backend.exe
+
+# 2. Build the Tauri app — the backend is embedded into the single .exe.
 cd frontend && npm install && npx tauri build
-# → frontend/src-tauri/target/release/bundle/nsis/*-setup.exe
+# → frontend/src-tauri/target/release/kotor-mod-installer.exe   (one self-contained file)
 ```
 
 ## Versioning & releases

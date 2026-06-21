@@ -8,11 +8,12 @@ const SEVERITY_DOT: Record<Conflict["severity"], string> = {
   error: "bg-destructive",
 };
 
-const TYPE_VARIANT: Record<Conflict["type"], "info" | "warning" | "muted" | "secondary"> = {
+const TYPE_VARIANT: Record<Conflict["type"], "info" | "warning" | "muted" | "secondary" | "destructive"> = {
   override: "secondary",
   "2da": "info",
   dialog: "warning",
   module: "muted",
+  declared: "destructive",
 };
 
 export function ConflictCard({ conflict }: { conflict: Conflict }) {

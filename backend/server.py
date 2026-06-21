@@ -200,6 +200,67 @@ def logout() -> dict:
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# Self-update check (GitHub Releases)
+# ---------------------------------------------------------------------------
+
+UPDATE_REPO = "ChristopherVR/kotor-mod-manager"
+
+
+def _version_tuple(v: str) -> tuple:
+    import re
+    return tuple(int(x) for x in re.findall(r"\d+", v or "")[:3])
+
+
+@app.get("/api/update/check")
+def update_check() -> dict:
+    """Compare the running version against the latest GitHub release."""
+    import json
+    import urllib.request
+
+    api_url = f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest"
+    req = urllib.request.Request(
+        api_url,
+        headers={"User-Agent": "kotor-mod-installer",
+                 "Accept": "application/vnd.github+json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = json.loads(r.read().decode("utf-8"))
+    except Exception as e:
+        return {"available": False, "current_version": __version__, "error": str(e)}
+
+    tag = data.get("tag_name", "") or ""
+    latest = tag.lstrip("vV")
+    available = bool(latest) and _version_tuple(latest) > _version_tuple(__version__)
+    asset_url = None
+    for a in data.get("assets", []):
+        if a.get("name", "").lower().endswith(".exe"):
+            asset_url = a.get("browser_download_url")
+            break
+    return {
+        "available": available,
+        "current_version": __version__,
+        "latest_version": latest,
+        "url": data.get("html_url"),
+        "asset_url": asset_url,
+        "notes": (data.get("body") or "")[:2000],
+        "repo": UPDATE_REPO,
+    }
+
+
+@app.post("/api/update/open")
+def update_open(url: str = "") -> dict:
+    """Open a release URL in the user's default browser."""
+    import webbrowser
+    target = url or f"https://github.com/{UPDATE_REPO}/releases/latest"
+    try:
+        webbrowser.open(target)
+        return {"ok": True}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
+
+
 @app.get("/api/settings")
 def get_settings() -> dict:
     conf = cfg.load()

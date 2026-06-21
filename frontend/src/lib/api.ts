@@ -58,7 +58,8 @@ export interface LibraryMod {
 export interface ConflictParticipant { mod_id: string; mod_name: string; enabled: boolean; }
 
 export interface Conflict {
-  id: string; resource: string; type: "override" | "2da" | "dialog" | "module";
+  id: string; resource: string;
+  type: "override" | "2da" | "dialog" | "module" | "declared";
   severity: "info" | "warning" | "error"; participants: ConflictParticipant[];
   winner_mod_id: string | null;
 }
@@ -127,7 +128,23 @@ export const api = {
     }),
   conflicts: (game: GameKey) =>
     req<{ conflicts: Conflict[] }>(`/api/conflicts?game=${game}`),
+  updateCheck: () => req<UpdateInfo>("/api/update/check"),
+  updateOpen: (url?: string) =>
+    req<{ ok: boolean }>(`/api/update/open${url ? `?url=${encodeURIComponent(url)}` : ""}`, {
+      method: "POST",
+    }),
 };
+
+export interface UpdateInfo {
+  available: boolean;
+  current_version: string;
+  latest_version?: string;
+  url?: string | null;
+  asset_url?: string | null;
+  notes?: string;
+  repo?: string;
+  error?: string;
+}
 
 // Resilient WebSocket with auto-reconnect.
 export function connectEvents(

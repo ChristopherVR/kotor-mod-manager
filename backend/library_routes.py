@@ -218,6 +218,7 @@ def import_mod(req: ImportRequest) -> dict:
                     source_type="import", source_ref=str(src),
                     deploy_kind=mod_manager.DeployKind.BAKED.value,
                     snapshot_before=before, snapshot_after=after, option_hint=req.option_hint,
+                    readme_text=plan.readme_text,
                 )
             else:
                 mappings = loose_mappings(plan)
@@ -228,7 +229,7 @@ def import_mod(req: ImportRequest) -> dict:
                     source_type="import", source_ref=str(src),
                     deploy_kind=mod_manager.DeployKind.LOOSE.value,
                     plan_file_mappings=mappings, pre_existing=pre_existing,
-                    option_hint=req.option_hint,
+                    option_hint=req.option_hint, readme_text=plan.readme_text,
                 )
             log(f"Imported '{name}'.", "success")
             _publish({"type": "library", "event": "imported", "game": req.game,

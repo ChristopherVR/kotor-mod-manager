@@ -393,6 +393,7 @@ class Pipeline:
                     deploy_kind=mod_manager.DeployKind.BAKED.value,
                     snapshot_before=pre.get("before"), snapshot_after=after,
                     build_key=mod.build_key, option_hint=mod.option_hint,
+                    readme_text=plan.readme_text,
                 )
             else:
                 mod_manager.record_install(
@@ -403,6 +404,7 @@ class Pipeline:
                     plan_file_mappings=pre.get("mappings"),
                     pre_existing=pre.get("pre_existing"),
                     build_key=mod.build_key, option_hint=mod.option_hint,
+                    readme_text=plan.readme_text,
                 )
         except Exception as e:  # recording must never fail an install
             self._log(f"    (library record skipped: {e})", "muted")
