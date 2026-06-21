@@ -157,13 +157,12 @@ export const api = {
       `/api/builds/${key}/load`, { method: "POST" }),
   startInstall: (
     build_key: string,
-    unattended: boolean,
     game_path?: string,
     selected_file_ids?: string[],
   ) =>
     req<{ ok: boolean; total: number; game_path: string }>("/api/install/start", {
       method: "POST",
-      body: JSON.stringify({ build_key, unattended, game_path, selected_file_ids }),
+      body: JSON.stringify({ build_key, unattended: true, game_path, selected_file_ids }),
     }),
   control: (action: "pause" | "resume" | "stop" | "retry") =>
     req<{ ok: boolean; action: string }>(`/api/install/${action}`, { method: "POST" }),

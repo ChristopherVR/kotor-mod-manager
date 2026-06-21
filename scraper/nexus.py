@@ -3,7 +3,7 @@ Nexus Mods integration.
 
 The official public API (api.nexusmods.com/v1) has no name-search endpoint, so
 to resolve a mod *name* to its actual Nexus page we use the site search
-autocomplete (search.nexusmods.com) — best-effort, with graceful fallback to a
+autocomplete (search.nexusmods.com) - best-effort, with graceful fallback to a
 search URL. The officially-supported accurate lookup is by file MD5, exposed
 here as `lookup_by_md5` for callers that have the downloaded file.
 

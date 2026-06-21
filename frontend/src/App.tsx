@@ -111,7 +111,7 @@ export default function App() {
       await refreshProfiles();
       api.updateCheck()
         .then((u) => {
-          if (u.available) addLog(`Update available: v${u.latest_version} — see Settings.`, "info");
+          if (u.available) addLog(`Update available: v${u.latest_version} - see Settings.`, "info");
         })
         .catch(() => {});
       // Show the "What's New" dialog once per version (backend tracks "seen").

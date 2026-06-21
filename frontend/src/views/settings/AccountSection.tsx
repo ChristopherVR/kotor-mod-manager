@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, LogIn, LogOut, ExternalLink, AlertTriangle } from "lucide-react";
+import { CheckCircle2, LogIn, LogOut, ExternalLink, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { api, type AppStatus, type Settings, type NexusValidation } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export function AccountSection({ status, username, onSignIn, onSignOut, addLog }
   const t = useT();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [nexusKey, setNexusKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [validation, setValidation] = useState<NexusValidation | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -102,13 +103,25 @@ export function AccountSection({ status, username, onSignIn, onSignOut, addLog }
           <div className="space-y-1.5">
             <Label htmlFor="nexuskey">{t("settings.nexus.label")}</Label>
             <div className="flex gap-2">
-              <Input
-                id="nexuskey"
-                type="password"
-                value={nexusKey}
-                placeholder={t("settings.nexus.placeholder")}
-                onChange={(e) => { setValidation(null); setNexusKey(e.target.value); }}
-              />
+              <div className="relative flex-1">
+                <Input
+                  id="nexuskey"
+                  type={showKey ? "text" : "password"}
+                  value={nexusKey}
+                  placeholder={t("settings.nexus.placeholder")}
+                  onChange={(e) => { setValidation(null); setNexusKey(e.target.value); }}
+                  className="pr-9"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey((v) => !v)}
+                  className="absolute inset-y-0 right-0 flex items-center px-2.5 text-muted-foreground hover:text-foreground"
+                  aria-label={showKey ? t("settings.nexus.hideKey") : t("settings.nexus.showKey")}
+                  title={showKey ? t("settings.nexus.hideKey") : t("settings.nexus.showKey")}
+                >
+                  {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
               <Button onClick={saveNexus} disabled={busy}>
                 {busy ? t("settings.nexus.saving") : t("common.save")}
               </Button>

@@ -8,7 +8,6 @@ import { ModList, type ModRuntime } from "@/components/ModList";
 import { BuildModDetail } from "@/components/BuildModDetail";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
@@ -47,7 +46,6 @@ export function BuildsView(props: BuildsViewProps) {
 
   const t = useT();
   const [loading, setLoading] = useState(false);
-  const [unattended, setUnattended] = useState(false);
   const [openMod, setOpenMod] = useState<BuildMod | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dragActive, setDragActive] = useState(false);
@@ -141,7 +139,7 @@ export function BuildsView(props: BuildsViewProps) {
     if (selectedCount === 0) { addLog(t("builds.selectNoneWarn"), "warning"); return; }
     const fileIds = Array.from(selected);
     try {
-      await api.startInstall(selectedBuild, unattended, undefined, fileIds);
+      await api.startInstall(selectedBuild, undefined, fileIds);
       setRunning(true);
     } catch (e: any) {
       if (e?.data?.error === "game_path_required") {
@@ -149,7 +147,7 @@ export function BuildsView(props: BuildsViewProps) {
         const dir = await pickDirectory();
         if (!dir) return;
         try {
-          await api.startInstall(selectedBuild, unattended, dir, fileIds);
+          await api.startInstall(selectedBuild, dir, fileIds);
           setRunning(true);
         } catch (e2: any) {
           addLog(`Start failed: ${e2?.message}`, "error");
@@ -299,13 +297,7 @@ export function BuildsView(props: BuildsViewProps) {
             <RotateCcw /> {t("builds.retry")}
           </Button>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          <Switch id="un" checked={unattended} onCheckedChange={setUnattended} disabled={running} />
-          <label htmlFor="un" className="cursor-pointer text-xs text-muted-foreground">
-            {t("builds.unattended")}
-          </label>
-        </div>
-        <span className={cn("text-xs", ready ? "text-muted-foreground" : "text-destructive")}>
+        <span className={cn("ml-auto text-xs", ready ? "text-muted-foreground" : "text-destructive")}>
           {ready
             ? running
               ? paused ? t("builds.statusPaused") : t("builds.statusInstalling")

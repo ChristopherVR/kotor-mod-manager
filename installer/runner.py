@@ -21,7 +21,7 @@ def _log(msg: str, cb: Optional[ProgressCallback]) -> None:
 
 
 # ------------------------------------------------------------------
-# HoloPatcher — fully headless
+# HoloPatcher - fully headless
 # ------------------------------------------------------------------
 
 def run_holopatcher(
@@ -84,7 +84,7 @@ def run_holopatcher(
 
 
 # ------------------------------------------------------------------
-# TSLPatcher — GUI (unavoidable), game path pre-filled + clipboard
+# TSLPatcher - GUI (unavoidable), game path pre-filled + clipboard
 # ------------------------------------------------------------------
 
 def run_tslpatcher(

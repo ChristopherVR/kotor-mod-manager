@@ -45,7 +45,7 @@ function parseNotes(notes: string): Block[] {
     if (!line) { flushList(); continue; }
 
     if (line.startsWith("## ")) {
-      // Top-level version heading — the dialog title already shows the version.
+      // Top-level version heading - the dialog title already shows the version.
       flushList();
       continue;
     }

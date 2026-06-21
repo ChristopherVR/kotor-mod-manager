@@ -4,18 +4,18 @@ Patcher execution strategy cascade.
 For a TSLPatcher-style mod we try a sequence of strategies, falling through to
 the next whenever one is unavailable or fails:
 
-  1. holopatcher_shim     — run a system HoloPatcher.exe headlessly against the
+  1. holopatcher_shim     - run a system HoloPatcher.exe headlessly against the
                             mod's tslpatchdata/ (HoloPatcher is a headless
                             reimplementation of TSLPatcher and reads the exact
                             same changes.ini / namespaces.ini format). This is
                             the "dynamic patcher": one universal engine that
-                            installs ANY TSLPatcher mod — old or new — with no
+                            installs ANY TSLPatcher mod - old or new - with no
                             GUI and no per-mod clicking.
-  2. win32_automation     — drive the real TSLPatcher.exe GUI via raw Win32 API
+  2. win32_automation     - drive the real TSLPatcher.exe GUI via raw Win32 API
                             (ctypes): fill the path field, click Install, watch
                             the log, dismiss the completion dialog.
-  3. pywinauto_automation — same idea via pywinauto (handles .NET / UIA GUIs).
-  4. gui_manual           — launch the GUI, copy the path to clipboard, and let
+  3. pywinauto_automation - same idea via pywinauto (handles .NET / UIA GUIs).
+  4. gui_manual           - launch the GUI, copy the path to clipboard, and let
                             the user click once (the original behaviour).
 
 Everything is configured from installer_config.json so new patcher quirks /
@@ -239,7 +239,7 @@ def run_tslpatcher_cascade(
             elif strategy == "gui_manual":
                 return _try_gui_manual(exe, game_dir, cb, on_waiting)
             else:
-                _log(f"  Unknown strategy '{strategy}' — skipping", cb)
+                _log(f"  Unknown strategy '{strategy}' - skipping", cb)
         except ui_automation.AutomationError as e:
             errors.append(f"{strategy}: {e}")
             _log(f"  ✗ {strategy} failed: {e}", cb)

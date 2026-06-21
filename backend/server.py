@@ -40,15 +40,15 @@ from scraper.build_scraper import BUILD_GAME, BUILD_URLS, scrape_build
 from scraper.deadlystream import AuthError, DeadlyStreamClient
 
 BUILD_LABELS = {
-    "k1_full":        "KOTOR 1 — Full Build",
-    "k1_spoilerfree": "KOTOR 1 — Spoiler-Free",
-    "k2_full":        "KOTOR 2 — Full Build",
-    "k2_spoilerfree": "KOTOR 2 — Spoiler-Free",
+    "k1_full":        "KOTOR 1 - Full Build",
+    "k1_spoilerfree": "KOTOR 1 - Spoiler-Free",
+    "k2_full":        "KOTOR 2 - Full Build",
+    "k2_spoilerfree": "KOTOR 2 - Spoiler-Free",
 }
 
 
 # ---------------------------------------------------------------------------
-# Event hub — bridges background-thread pipeline callbacks to WebSocket clients
+# Event hub - bridges background-thread pipeline callbacks to WebSocket clients
 # ---------------------------------------------------------------------------
 
 class EventHub:
@@ -356,7 +356,7 @@ def update_download() -> dict:
                         last_pct = pct
                         state.hub.publish({"type": "update_progress", "pct": pct,
                                            "downloaded": done, "total": total})
-        state.hub.publish({"type": "log", "message": "Update downloaded — restarting to apply.",
+        state.hub.publish({"type": "log", "message": "Update downloaded - restarting to apply.",
                            "tag": "success"})
         return {"ok": True, "path": str(dest), "version": info.get("latest_version")}
     except Exception as e:

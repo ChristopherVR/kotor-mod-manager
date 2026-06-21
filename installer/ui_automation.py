@@ -1,10 +1,10 @@
 """
 TSLPatcher GUI automation via Win32 API (ctypes) and optional pywinauto.
 
-Primary strategy: Win32 ctypes — zero extra dependencies, works on all
+Primary strategy: Win32 ctypes - zero extra dependencies, works on all
 VB6/Delphi/Win32 patcher versions.
 
-Secondary strategy: pywinauto — better for .NET/UIA-based patchers.
+Secondary strategy: pywinauto - better for .NET/UIA-based patchers.
 Falls back gracefully if pywinauto is not installed.
 """
 
@@ -119,7 +119,7 @@ def _is_window_alive(hwnd: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Win32 automation (primary — no extra dependencies)
+# Win32 automation (primary - no extra dependencies)
 # ---------------------------------------------------------------------------
 
 def automate_win32(
@@ -163,7 +163,7 @@ def automate_win32(
         raise AutomationError(f"Could not launch {exe.name}: {e}")
 
     pid = proc.pid
-    _cb(f"  PID {pid} — waiting for window...", cb)
+    _cb(f"  PID {pid} - waiting for window...", cb)
 
     # Wait for the patcher window to appear
     patcher_hwnd: Optional[int] = None
@@ -194,7 +194,7 @@ def automate_win32(
         _set_control_text(path_controls[path_index], str(game_dir))
         _cb(f"  Set game path in {_get_class_name(path_controls[path_index])}", cb)
     else:
-        _cb("  Could not find path field — relying on positional arg / clipboard.", cb)
+        _cb("  Could not find path field - relying on positional arg / clipboard.", cb)
 
     time.sleep(0.3)
 
@@ -293,7 +293,7 @@ def automate_win32(
                             break
                 break
     else:
-        # Timed out — kill the process
+        # Timed out - kill the process
         try:
             proc.kill()
         except Exception:
@@ -319,7 +319,7 @@ def automate_win32(
 
 
 # ---------------------------------------------------------------------------
-# pywinauto automation (secondary — better for .NET / UIA patchers)
+# pywinauto automation (secondary - better for .NET / UIA patchers)
 # ---------------------------------------------------------------------------
 
 def automate_pywinauto(

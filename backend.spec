@@ -28,7 +28,7 @@ if os.path.exists(_holo):
     datas += [(_holo, os.path.join("tools", "HoloPatcher"))]
     print(f"[backend.spec] Bundling HoloPatcher shim: {_holo}")
 else:
-    print("[backend.spec] WARNING: HoloPatcher.exe not found — run tools/setup_holopatcher.py first.")
+    print("[backend.spec] WARNING: HoloPatcher.exe not found - run tools/setup_holopatcher.py first.")
 
 # uvicorn/fastapi pull a lot of implementations dynamically.
 for pkg in ("uvicorn", "fastapi", "starlette", "anyio"):

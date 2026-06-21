@@ -308,7 +308,7 @@ class Pipeline:
                 self._set_status(pm, ModStatus.WAITING_PATCHER)
                 self._log(
                     f"  [TSLPatcher] Manual step for: {mod.name}\n"
-                    f"    Game path is on your clipboard — paste it, click Install, close the window.",
+                    f"    Game path is on your clipboard - paste it, click Install, close the window.",
                     "warning"
                 )
 

@@ -1,7 +1,7 @@
 # Dev / analysis scripts
 
 One-off scripts used while building and analysing the KOTOR mod data. They are
-**not** part of the shipped app — the application scrapes live at runtime.
+**not** part of the shipped app - the application scrapes live at runtime.
 
 | Script | Purpose |
 |---|---|

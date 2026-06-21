@@ -30,7 +30,7 @@ def _extract_zip(archive: Path, dest: Path) -> None:
 
 def _extract_7z(archive: Path, dest: Path) -> None:
     if not HAS_7Z:
-        raise ExtractionError("py7zr is not installed — cannot extract .7z files.")
+        raise ExtractionError("py7zr is not installed - cannot extract .7z files.")
     with py7zr.SevenZipFile(archive, mode="r") as z:
         z.extractall(path=dest)
 
@@ -141,7 +141,7 @@ def extract(archive: Path, dest: Optional[Path] = None) -> Path:
     Returns the extraction directory.
     """
     if dest is None:
-        # Strip extension(s) — handle .tar.gz etc
+        # Strip extension(s) - handle .tar.gz etc
         stem = archive.stem
         if stem.endswith(".tar"):
             stem = stem[:-4]

@@ -59,7 +59,6 @@ export const en: Dict = {
   "builds.resume": "Resume",
   "builds.stop": "Stop",
   "builds.retry": "Retry failed",
-  "builds.unattended": "Unattended (never prompt; skip mods needing a manual GUI)",
   "builds.statusIdle": "Idle",
   "builds.statusInstalling": "Installing…",
   "builds.statusPaused": "Paused",
@@ -67,7 +66,7 @@ export const en: Dict = {
   "builds.empty": "Choose a build and click Load Mod List to begin.",
   "builds.loadMore": "Load Mod List",
   "builds.patcherBanner":
-    "TSLPatcher is open for {mod}. The game path is on your clipboard — paste it, click Install, then close the patcher window.",
+    "TSLPatcher is open for {mod}. The game path is on your clipboard - paste it, click Install, then close the patcher window.",
 
   // Library view
   "library.title": "Library",
@@ -105,7 +104,7 @@ export const en: Dict = {
   "modDetail.uninstallConfirm": "Uninstall \"{name}\"? This removes its files from the game.",
   "modDetail.buildNote": "Build note",
   "modDetail.bakedTitle": "Can't cleanly uninstall",
-  "modDetail.bakedMessage": "This mod was applied with a patcher (TSLPatcher/HoloPatcher), which edits existing game files in place. Without a backup, those edits can't be reverted automatically. You can remove it from your library (record only) — the patched files stay in the game.",
+  "modDetail.bakedMessage": "This mod was applied with a patcher (TSLPatcher/HoloPatcher), which edits existing game files in place. Without a backup, those edits can't be reverted automatically. You can remove it from your library (record only) - the patched files stay in the game.",
   "modDetail.removeAnyway": "Remove anyway (record only)",
 
   // Conflicts view
@@ -169,10 +168,12 @@ export const en: Dict = {
   "settings.nexus.title": "Nexus Mods",
   "settings.nexus.hint": "Add your personal Nexus API key to link mods to their real Nexus page.",
   "settings.nexus.getKey": "Get your API key",
+  "settings.nexus.showKey": "Show API key",
+  "settings.nexus.hideKey": "Hide API key",
   "settings.nexus.label": "API key",
   "settings.nexus.placeholder": "Paste your Nexus personal API key",
   "settings.nexus.saving": "Saving…",
-  "settings.nexus.valid": "Key valid — signed in as {name}",
+  "settings.nexus.valid": "Key valid - signed in as {name}",
   "settings.nexus.invalid": "Key invalid or could not be verified.",
 
   // Settings → Patcher

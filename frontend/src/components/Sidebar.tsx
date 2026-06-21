@@ -69,7 +69,7 @@ export function Sidebar({
         />
       </nav>
 
-      {/* Account footer — pinned at the very bottom, below all nav items */}
+      {/* Account footer - pinned at the very bottom, below all nav items */}
       <Separator className="bg-sidebar-border" />
       <div className="p-3">
         <AccountMenu

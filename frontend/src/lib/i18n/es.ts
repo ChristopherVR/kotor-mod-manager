@@ -59,7 +59,6 @@ export const es: Dict = {
   "builds.resume": "Reanudar",
   "builds.stop": "Detener",
   "builds.retry": "Reintentar fallidos",
-  "builds.unattended": "Desatendido (nunca preguntar; omitir mods que requieran una interfaz manual)",
   "builds.statusIdle": "Inactivo",
   "builds.statusInstalling": "Instalando…",
   "builds.statusPaused": "En pausa",
@@ -67,7 +66,7 @@ export const es: Dict = {
   "builds.empty": "Elige una compilación y haz clic en Cargar lista de mods para comenzar.",
   "builds.loadMore": "Cargar lista de mods",
   "builds.patcherBanner":
-    "TSLPatcher está abierto para {mod}. La ruta del juego está en tu portapapeles — pégala, haz clic en Instalar y luego cierra la ventana del parcheador.",
+    "TSLPatcher está abierto para {mod}. La ruta del juego está en tu portapapeles - pégala, haz clic en Instalar y luego cierra la ventana del parcheador.",
 
   // Library view
   "library.title": "Biblioteca",
@@ -169,10 +168,12 @@ export const es: Dict = {
   "settings.nexus.title": "Nexus Mods",
   "settings.nexus.hint": "Añade tu clave de API personal de Nexus para enlazar los mods a su página real de Nexus.",
   "settings.nexus.getKey": "Obtén tu clave de API",
+  "settings.nexus.showKey": "Mostrar clave de API",
+  "settings.nexus.hideKey": "Ocultar clave de API",
   "settings.nexus.label": "Clave de API",
   "settings.nexus.placeholder": "Pega tu clave de API personal de Nexus",
   "settings.nexus.saving": "Guardando…",
-  "settings.nexus.valid": "Clave válida — sesión iniciada como {name}",
+  "settings.nexus.valid": "Clave válida - sesión iniciada como {name}",
   "settings.nexus.invalid": "Clave no válida o no se pudo verificar.",
 
   // Settings → Patcher

@@ -6,7 +6,7 @@ the distributed .exe, so end users never touch the tools/ folder.
 HoloPatcher (part of the PyKotor project) is a headless, open-source
 reimplementation of TSLPatcher. Because it reads the exact same tslpatchdata /
 changes.ini / namespaces.ini format, one HoloPatcher.exe can install ANY
-TSLPatcher mod — old or new — with no GUI and no clicking. This is the
+TSLPatcher mod - old or new - with no GUI and no clicking. This is the
 "dynamic patcher" the installer relies on.
 
 The PyKotor release assets are zips (e.g. HoloPatcher_Windows_x64.zip) that

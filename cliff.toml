@@ -1,14 +1,10 @@
-# git-cliff configuration — https://git-cliff.org
+# git-cliff configuration - https://git-cliff.org
 # Generates CHANGELOG.md from Conventional Commits and computes the next semver
 # (`git cliff --bumped-version`). Drives the auto version-bump release pipeline.
 
 [changelog]
 header = """
-# Changelog
-
-All notable changes to this project are documented here.
-This project adheres to [Semantic Versioning](https://semver.org) and
-[Conventional Commits](https://www.conventionalcommits.org).\n
+# Changelog\n
 """
 body = """
 {% if version %}## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}{% else %}## [Unreleased]{% endif %}

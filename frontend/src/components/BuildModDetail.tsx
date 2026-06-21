@@ -11,7 +11,7 @@ interface BuildModDetailProps {
   onClose: () => void;
 }
 
-// Lightweight detail drawer for a build mod (no installed-file data — that's
+// Lightweight detail drawer for a build mod (no installed-file data - that's
 // only available once a mod is in the library).
 export function BuildModDetail({ mod, onClose }: BuildModDetailProps) {
   const t = useT();

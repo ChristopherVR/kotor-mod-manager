@@ -14,7 +14,7 @@
 
     "holopatcher": {
       "priority": 1,
-      "description": "HoloPatcher — fully headless CLI patcher (preferred)",
+      "description": "HoloPatcher - fully headless CLI patcher (preferred)",
       "detection": {
         "exe_names": ["HoloPatcher.exe"],
         "any_exe_required": true
@@ -35,7 +35,7 @@
 
     "tslpatcher": {
       "priority": 2,
-      "description": "TSLPatcher — all versions including legacy VB6 builds",
+      "description": "TSLPatcher - all versions including legacy VB6 builds",
       "detection": {
         "requires_dir": "tslpatchdata",
         "exe_names": [
@@ -83,7 +83,7 @@
 
     "tlk_replace": {
       "priority": 3,
-      "description": "dialog.tlk file replacement — goes to game root",
+      "description": "dialog.tlk file replacement - goes to game root",
       "detection": {
         "file_patterns": ["dialog.tlk", "dialogm.tlk"]
       },

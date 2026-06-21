@@ -104,7 +104,7 @@ if DS_USER and DS_PASS:
                 print("  Login may have failed. Checking response snippet:")
                 print(auth_r.text[:500])
 else:
-    print("No credentials in keyring — proceeding without login.")
+    print("No credentials in keyring - proceeding without login.")
 
 
 def download_mod(file_id: str, slug: str, label: str) -> Path | None:
@@ -129,7 +129,7 @@ def download_mod(file_id: str, slug: str, label: str) -> Path | None:
     r2 = s.get(dl_url, stream=True, timeout=120, allow_redirects=True)
 
     if r2.status_code in (403, 401):
-        print(f"  Access denied — login required")
+        print(f"  Access denied - login required")
         return None
     if r2.status_code != 200:
         print(f"  Download failed: HTTP {r2.status_code}")

@@ -4,7 +4,7 @@ reversible (enable/disable/uninstall) and conflicts are computable.
 
 Two install classes:
   - LOOSE  (Override/Modules/Movies copies, dialog.tlk): a finite, known file
-    set — fully reversible by moving files in/out of the game tree.
+    set - fully reversible by moving files in/out of the game tree.
   - BAKED  (TSLPatcher/HoloPatcher): the patcher mutates shared files in place.
     Captured via a before/after snapshot delta; recorded but not cleanly
     toggleable (removal would need a full backup/restore).
@@ -239,7 +239,7 @@ def parse_incompatibilities(readme_text: str) -> list[str]:
     low = readme_text
     for pat in _INCOMPAT_PATTERNS:
         for m in re.finditer(pat, low, re.IGNORECASE):
-            name = m.group(1).strip(" \t-–—\"'")
+            name = m.group(1).strip(" \t-–-\"'")
             # Trim trailing connective words and over-long captures.
             name = re.split(r"\b(?:and|or|but|because|since|as|if|when)\b", name, 1)[0].strip()
             name = name[:80].strip()
@@ -443,7 +443,7 @@ def uninstall(game: str, game_root: Path, mod_id: str, *, force: bool = False) -
                 f"'{mod.name}' was installed by a patcher (TSLPatcher/HoloPatcher) "
                 "and modified shared game files in place; it can't be cleanly "
                 "removed. Pass force=true to drop the record (patched files "
-                "remain — a clean reinstall/verify of the game is recommended)."
+                "remain - a clean reinstall/verify of the game is recommended)."
             )
 
         if mod.deploy_kind == DeployKind.LOOSE.value:
@@ -487,7 +487,7 @@ def _conflict_explanation(ctype: str, kinds: set, winner: str, losers: list[str]
     if kinds == {"baked"}:
         return (
             f"Two patcher mods both modify this file. TSLPatcher/HoloPatcher "
-            f"usually merge their changes, so this is often fine — but review it "
+            f"usually merge their changes, so this is often fine - but review it "
             f"if you see odd behaviour.",
             "Usually safe to leave as-is; install order can still matter.",
         )
@@ -499,7 +499,7 @@ def _conflict_explanation(ctype: str, kinds: set, winner: str, losers: list[str]
         ),
         "dialog": (
             f"Both mods provide a dialog.tlk (the game's text/string table). Only "
-            f"one can be active — “{winner}” wins and {others}'s text is ignored."
+            f"one can be active - “{winner}” wins and {others}'s text is ignored."
         ),
         "module": (
             f"Both mods change the same module/area file. “{winner}” wins; {others} "

@@ -46,7 +46,7 @@ def _run_patcher(
         _log(f"  When prompted for game folder, enter:\n    {game_path}", cb)
 
     proc = subprocess.Popen([str(exe)], cwd=str(exe.parent))
-    _log(f"  PID {proc.pid} — complete the GUI prompts, then close the patcher.", cb)
+    _log(f"  PID {proc.pid} - complete the GUI prompts, then close the patcher.", cb)
     proc.wait()
     _log(f"  Patcher exited.", cb)
 
@@ -95,7 +95,7 @@ def install(
         if plan.namespaces and namespace_chooser:
             chosen = namespace_chooser(plan.namespaces)
             if chosen is None:
-                raise InstallError("No namespace selected — installation cancelled.")
+                raise InstallError("No namespace selected - installation cancelled.")
             _log(f"  Namespace: {chosen.name}", cb)
 
         _run_patcher(exe, cb, game_path)
@@ -110,7 +110,7 @@ def install(
         if len(variants) > 1 and tlk_variant_chooser:
             result = tlk_variant_chooser(variants)
             if result is None:
-                raise InstallError("No variant selected — installation cancelled.")
+                raise InstallError("No variant selected - installation cancelled.")
             chosen_label, chosen_path = result
 
         dest = game_path / "dialog.tlk"
@@ -120,7 +120,7 @@ def install(
                 _log(f"  Backing up existing dialog.tlk → dialog.tlk.bak", cb)
                 shutil.copy2(dest, backup)
             else:
-                _log(f"  dialog.tlk.bak already exists — skipping additional backup", cb)
+                _log(f"  dialog.tlk.bak already exists - skipping additional backup", cb)
 
         _log(f"  Installing variant: {chosen_label}", cb)
         shutil.copy2(chosen_path, dest)
@@ -133,7 +133,7 @@ def install(
         if len(variants) > 1 and tlk_variant_chooser:
             result = tlk_variant_chooser(variants)
             if result is None:
-                raise InstallError("No variant selected — installation cancelled.")
+                raise InstallError("No variant selected - installation cancelled.")
             chosen_label, chosen_path = result
 
         dest = game_path / "dialog.tlk"

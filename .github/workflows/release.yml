@@ -40,7 +40,7 @@ jobs:
         run: |
           # Current version from the single source of truth.
           CUR="$(grep -oP '__version__ = "\K[^"]+' installer/_version.py || echo '0.1.0')"
-          # git-cliff returns empty on a repo with zero tags — fall back to CUR.
+          # git-cliff returns empty on a repo with zero tags - fall back to CUR.
           RAW="$(git cliff --bumped-version 2>/dev/null | tr -d '[:space:]')"
           RAW="${RAW#v}"
           [ -z "$RAW" ] && RAW="$CUR"

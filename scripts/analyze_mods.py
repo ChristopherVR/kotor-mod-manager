@@ -59,7 +59,7 @@ def scrape_build_page(url: str, build_key: str) -> list[dict]:
             desc = parent.get_text(" ", strip=True)[:300] if parent else ""
 
             name = el.get_text(strip=True) or slug.replace("-", " ").title()
-            # Clean up name — remove trailing URL artifacts
+            # Clean up name - remove trailing URL artifacts
             name = re.sub(r"\s*https?://.*", "", name).strip() or slug.replace("-", " ").title()
 
             mods.append({

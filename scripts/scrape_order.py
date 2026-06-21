@@ -125,7 +125,7 @@ with open(out_path, "w", encoding="utf-8") as f:
 print(f"\nSaved to {out_path}")
 
 # Print K1 Full build order as a sample
-print("\n=== K1 FULL BUILD — INSTALLATION ORDER ===")
+print("\n=== K1 FULL BUILD - INSTALLATION ORDER ===")
 for m in all_builds["k1_full"]:
     sec = " > ".join(filter(None, [m["section_h2"], m["section_h3"], m["section_h4"]]))
     print(f"  {m['install_order']:3d}. [{m['file_id']:5s}] {m['name'][:55]:<55s}  ({sec[:60]})")

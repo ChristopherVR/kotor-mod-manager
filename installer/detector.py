@@ -27,7 +27,7 @@ OVERRIDE_EXTENSIONS = {
 
 MODULE_EXTENSIONS = {".mod", ".sav", ".rim", ".erf"}
 MOVIE_EXTENSIONS  = {".bik", ".avi", ".mpg"}
-# Files that belong in the GAME ROOT (next to swkotor.exe), not Override —
+# Files that belong in the GAME ROOT (next to swkotor.exe), not Override -
 # e.g. Miles Sound System fixes for the Amazon/modern releases.
 ROOT_EXTENSIONS   = {".asi", ".flt", ".m3d"}
 ROOT_FILENAMES    = {"swkotor.ini", "swkotor2.ini", "miles32.dll", "mss32.dll",

@@ -70,7 +70,7 @@ def _extract_links_from_page(html: str, page_url: str) -> list[ModEntry]:
         if file_id in mods:
             continue
 
-        # Try to find a name — use link text, or nearby heading
+        # Try to find a name - use link text, or nearby heading
         name = a.get_text(strip=True)
         if not name or name.lower().startswith("http"):
             # Walk up to find a better label

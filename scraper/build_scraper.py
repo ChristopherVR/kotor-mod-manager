@@ -64,7 +64,7 @@ def _clean_mod_name(el, slug: str) -> str:
     """
     Derive a reliable mod name. The anchor text is preferred, but many build
     pages use generic link text ("Download", "here") or wrap the name in a
-    nearby heading/bold — fall back to those, then to the slug.
+    nearby heading/bold - fall back to those, then to the slug.
     """
     raw = el.get_text(" ", strip=True)
     raw = re.sub(r"https?://\S+", "", raw).strip()

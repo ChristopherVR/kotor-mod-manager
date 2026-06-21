@@ -34,7 +34,7 @@ export function UpdatesSection({ status, addLog }: UpdatesSectionProps) {
       const r = await api.updateDownload();
       disconnect();
       if (r.ok && r.path && isTauri()) {
-        addLog(`Update v${r.version} downloaded — restarting to apply…`, "success");
+        addLog(`Update v${r.version} downloaded - restarting to apply…`, "success");
         const ok = await applyUpdate(r.path);
         if (!ok) {
           addLog("Could not apply the update automatically; opening the release page.", "warning");

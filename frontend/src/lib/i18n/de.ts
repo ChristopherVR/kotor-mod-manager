@@ -59,7 +59,6 @@ export const de: Dict = {
   "builds.resume": "Fortsetzen",
   "builds.stop": "Stoppen",
   "builds.retry": "Fehlgeschlagene wiederholen",
-  "builds.unattended": "Unbeaufsichtigt (nie nachfragen; Mods mit manueller Oberfläche überspringen)",
   "builds.statusIdle": "Inaktiv",
   "builds.statusInstalling": "Installiert…",
   "builds.statusPaused": "Pausiert",
@@ -67,7 +66,7 @@ export const de: Dict = {
   "builds.empty": "Wähle ein Paket und klicke auf Mod-Liste laden, um zu beginnen.",
   "builds.loadMore": "Mod-Liste laden",
   "builds.patcherBanner":
-    "TSLPatcher ist für {mod} geöffnet. Der Spielpfad liegt in deiner Zwischenablage — füge ihn ein, klicke auf Installieren und schließe dann das Patcher-Fenster.",
+    "TSLPatcher ist für {mod} geöffnet. Der Spielpfad liegt in deiner Zwischenablage - füge ihn ein, klicke auf Installieren und schließe dann das Patcher-Fenster.",
 
   // Library view
   "library.title": "Bibliothek",
@@ -105,7 +104,7 @@ export const de: Dict = {
   "modDetail.uninstallConfirm": "\"{name}\" deinstallieren? Dadurch werden seine Dateien aus dem Spiel entfernt.",
   "modDetail.buildNote": "Build-Hinweis",
   "modDetail.bakedTitle": "Saubere Deinstallation nicht möglich",
-  "modDetail.bakedMessage": "Dieser Mod wurde mit einem Patcher (TSLPatcher/HoloPatcher) angewendet, der vorhandene Spieldateien direkt bearbeitet. Ohne Sicherung können diese Änderungen nicht automatisch rückgängig gemacht werden. Du kannst ihn aus deiner Bibliothek entfernen (nur Eintrag) — die gepatchten Dateien bleiben im Spiel.",
+  "modDetail.bakedMessage": "Dieser Mod wurde mit einem Patcher (TSLPatcher/HoloPatcher) angewendet, der vorhandene Spieldateien direkt bearbeitet. Ohne Sicherung können diese Änderungen nicht automatisch rückgängig gemacht werden. Du kannst ihn aus deiner Bibliothek entfernen (nur Eintrag) - die gepatchten Dateien bleiben im Spiel.",
   "modDetail.removeAnyway": "Trotzdem entfernen (nur Eintrag)",
 
   // Conflicts view
@@ -169,10 +168,12 @@ export const de: Dict = {
   "settings.nexus.title": "Nexus Mods",
   "settings.nexus.hint": "Füge deinen persönlichen Nexus-API-Schlüssel hinzu, um Mods mit ihrer echten Nexus-Seite zu verknüpfen.",
   "settings.nexus.getKey": "API-Schlüssel holen",
+  "settings.nexus.showKey": "API-Schlüssel anzeigen",
+  "settings.nexus.hideKey": "API-Schlüssel verbergen",
   "settings.nexus.label": "API-Schlüssel",
   "settings.nexus.placeholder": "Füge deinen persönlichen Nexus-API-Schlüssel ein",
   "settings.nexus.saving": "Wird gespeichert…",
-  "settings.nexus.valid": "Schlüssel gültig — angemeldet als {name}",
+  "settings.nexus.valid": "Schlüssel gültig - angemeldet als {name}",
   "settings.nexus.invalid": "Schlüssel ungültig oder nicht überprüfbar.",
 
   // Settings → Patcher

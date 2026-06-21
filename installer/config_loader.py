@@ -103,7 +103,7 @@ def legacy_tslpatcher_exe_names() -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# HoloPatcher shim discovery — the universal headless engine
+# HoloPatcher shim discovery - the universal headless engine
 # ---------------------------------------------------------------------------
 
 # Allow an environment override for power users / portable installs.
@@ -141,8 +141,8 @@ def find_system_holopatcher() -> Optional[Path]:
     search = config.get("holopatcher_search_paths", [])
 
     # Roots to resolve relative search paths against, in priority order:
-    #   1. _bundle_root() — HoloPatcher bundled INSIDE the frozen exe (_MEIPASS)
-    #   2. app_dir()      — a copy dropped next to the .exe
+    #   1. _bundle_root() - HoloPatcher bundled INSIDE the frozen exe (_MEIPASS)
+    #   2. app_dir()      - a copy dropped next to the .exe
     #   3. user data dir
     base = app_dir()
     bundle = _bundle_root()
