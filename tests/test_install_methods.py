@@ -197,6 +197,77 @@ def test_multi_archive_loose():
         _rm(tmp)
 
 
+def _make_build_mod(instructions: str):
+    """A minimal BuildMod carrying build-guide instructions for selection tests."""
+    from scraper.build_scraper import BuildMod
+    return BuildMod(
+        install_order=1, file_id="0", slug="x", name="Test Mod",
+        url="", game="KOTOR1", section="", category="", note="",
+        option_hint="", install_method_hint="loose", build_key="k1_full",
+        instructions=instructions,
+    )
+
+
+def _bare_pipeline(game: Path):
+    from installer.pipeline import Pipeline
+    return Pipeline(mods=[], game_path=game, download_dir=game, client=None,
+                    on_log=lambda *a, **k: None)
+
+
+def test_selective_copy_excludes_named_files():
+    """A 'move everything EXCEPT N_SithComM.*' instruction must skip those files."""
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        modsrc = tmp / "modsrc" / "Things what bother me"
+        modsrc.mkdir(parents=True)
+        (modsrc / "N_SithComM.mdl").write_bytes(b"X")
+        (modsrc / "N_SithComM.mdx").write_bytes(b"X")
+        (modsrc / "MAN26aa.utc").write_bytes(b"X")
+        archive = _zip(tmp / "modsrc", tmp / "jc.zip")
+
+        game = _fake_game(tmp / "game")
+        plan = detect(extract(archive))
+        mod = _make_build_mod(
+            "Installation Instructions Move everything to your Override, EXCEPT the "
+            "files for the Sith uniform changes: N_SithComM.mdl, N_SithComM.mdx."
+        )
+        _bare_pipeline(game)._apply_file_selection(plan, mod.directives)
+        install(plan, game)
+
+        assert (game / "Override" / "MAN26aa.utc").exists(), "kept file should install"
+        assert not (game / "Override" / "N_SithComM.mdl").exists(), "excluded .mdl should be skipped"
+        assert not (game / "Override" / "N_SithComM.mdx").exists(), "excluded .mdx should be skipped"
+        print("PASS: selective copy excludes the named files end-to-end")
+    finally:
+        _rm(tmp)
+
+
+def test_patch_first_reorders_components():
+    """'the patch is run first' must put the patcher plan ahead of the copy plan."""
+    from installer.detector import InstallPlan, InstallMethod
+    from installer.pipeline import PipelineMod
+
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        game = _fake_game(tmp / "game")
+        mod = _make_build_mod(
+            "Installation Instructions For this specific mod only, the patch is "
+            "actually run first! Run the patch and apply its changes, then open the main mod."
+        )
+        assert mod.directives.patch_first
+        pm = PipelineMod(mod)
+        # Default detection order: loose copy first, patcher second.
+        pm.plans = [
+            InstallPlan(method=InstallMethod.DIRECT_COPY, mod_root=tmp / "a"),
+            InstallPlan(method=InstallMethod.TSLPATCHER, mod_root=tmp / "b"),
+        ]
+        _bare_pipeline(game)._apply_build_guide_order(pm, mod.directives)
+        assert pm.plans[0].method == InstallMethod.TSLPATCHER, "patcher should run first"
+        print("PASS: patch-first reorders the patcher ahead of the copy")
+    finally:
+        _rm(tmp)
+
+
 def _rm(p: Path) -> None:
     import shutil
     shutil.rmtree(p, ignore_errors=True)
@@ -210,6 +281,8 @@ if __name__ == "__main__":
         test_tlk_replace_install,
         test_tslpatcher_detected_and_headless_route,
         test_multi_archive_loose,
+        test_selective_copy_excludes_named_files,
+        test_patch_first_reorders_components,
     ]:
         try:
             fn()
