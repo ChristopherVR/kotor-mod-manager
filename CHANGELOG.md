@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.8.1] - 2026-06-22
+
+### Miscellaneous
+
+- Update the app's libraries and tools to their latest versions
 ## [0.8.0] - 2026-06-22
 
 ### Features
