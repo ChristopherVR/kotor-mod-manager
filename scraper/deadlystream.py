@@ -21,6 +21,30 @@ BASE = "https://deadlystream.com"
 LOGIN_URL = f"{BASE}/login/"
 
 
+def download_name_matches(record_name: str, keep_names: list[str]) -> bool:
+    """
+    Whether a download record matches one of the build guide's "download only X"
+    filenames. Comparison ignores case, punctuation, and the file extension so
+    'hd_twilek_female.rar' matches a record shown as 'HD Twilek Female' etc.
+    Empty keep_names means "keep everything".
+    """
+    if not keep_names:
+        return True
+
+    def norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    rn = norm(record_name)
+    if not rn:
+        return False
+    for k in keep_names:
+        stem = k.rsplit(".", 1)[0] if "." in k else k
+        kn = norm(stem) or norm(k)
+        if kn and (kn in rn or rn in kn):
+            return True
+    return False
+
+
 class AuthError(Exception):
     pass
 
@@ -357,26 +381,47 @@ class DeadlyStreamClient:
         slug: str = "",
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         cancel_event: Optional[threading.Event] = None,
+        keep_names: Optional[list[str]] = None,
     ) -> list[Path]:
         """
-        Download every file in a (possibly multi-file) submission.
+        Download files in a (possibly multi-file) submission.
+
+        keep_names: if set (from a build guide "download only X" instruction),
+        only records matching one of those filenames are fetched. If the filter
+        matches nothing, every file is downloaded (so we never download nothing
+        because a name didn't line up).
+
         Returns the list of downloaded local paths in page order.
         """
         records = self.list_download_records(file_id, slug)
         referer = self._file_page_url(file_id, slug)
-        paths: list[Path] = []
-        for idx, rec in enumerate(records):
-            if cancel_event and cancel_event.is_set():
-                raise DownloadError("Download cancelled.")
-            path = self._download_from_url(
-                rec["url"], dest_dir, file_id,
-                progress_callback=progress_callback,
-                cancel_event=cancel_event,
-                fallback_name=rec["name"],
-                referer=referer,
-            )
-            paths.append(path)
-        return paths
+
+        def _fetch(recs, names):
+            out: list[Path] = []
+            for rec in recs:
+                if cancel_event and cancel_event.is_set():
+                    raise DownloadError("Download cancelled.")
+                path = self._download_from_url(
+                    rec["url"], dest_dir, file_id,
+                    progress_callback=progress_callback,
+                    cancel_event=cancel_event,
+                    fallback_name=rec["name"],
+                    referer=referer,
+                    keep_names=names,
+                )
+                if path is not None:
+                    out.append(path)
+            return out
+
+        # DeadlyStream's download page rarely exposes per-file names, so we
+        # decide from the real filename in each download's headers (see
+        # _download_from_url). If the "download only X" filter ends up matching
+        # nothing, fall back to downloading everything rather than nothing.
+        if keep_names and len(records) > 1:
+            paths = _fetch(records, keep_names)
+            if paths:
+                return paths
+        return _fetch(records, None)
 
     def _download_from_url(
         self,
@@ -387,7 +432,8 @@ class DeadlyStreamClient:
         cancel_event: Optional[threading.Event] = None,
         fallback_name: str = "",
         referer: str = "",
-    ) -> Path:
+        keep_names: Optional[list[str]] = None,
+    ) -> "Path | None":
         headers = {"Referer": referer} if referer else {}
         resp = self._session.get(
             download_url, stream=True, timeout=60, allow_redirects=True, headers=headers
@@ -412,6 +458,12 @@ class DeadlyStreamClient:
             filename = fallback_name or f"mod_{file_id}.zip"
         # Sanitise
         filename = re.sub(r'[<>:"/\\|?*]', "_", filename)
+
+        # "Download only X" filtering: the per-file name is only reliable here in
+        # the response headers, so skip the body of files we were told to ignore.
+        if keep_names and not download_name_matches(filename, keep_names):
+            resp.close()
+            return None
 
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / filename

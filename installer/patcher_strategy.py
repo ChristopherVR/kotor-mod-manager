@@ -102,21 +102,25 @@ def _parse_namespace_options(tslpatchdata: Path) -> list[tuple[str, str]]:
     return options
 
 
-def resolve_namespace_index(tslpatchdata: Path, option_hint: str,
-                            cb: Optional[ProgressCallback] = None) -> int:
+def resolve_namespace_index(tslpatchdata: Path, option_hint: str = "",
+                            cb: Optional[ProgressCallback] = None,
+                            directives=None) -> int:
     """
-    Choose a namespace index from the build-page hint. Returns 0 (default)
-    when there is no match or only a single option.
+    Choose a namespace index from the build-guide directives (which option to
+    pick, e.g. the community-patch-compatible one) and/or a legacy hint. Returns
+    0 (default) when there is no match or only a single option.
     """
+    from installer.build_directives import Directives, match_option_index
+
     options = _parse_namespace_options(tslpatchdata)
     if len(options) <= 1:
         return 0
-    if option_hint:
-        hint = option_hint.replace("_", " ").lower()
-        for i, (key, name) in enumerate(options):
-            if hint in name.lower() or hint in key.lower():
-                _log(f"    Namespace match: '{name}' (index {i})", cb)
-                return i
+    dirs = directives if directives is not None else Directives()
+    names = [f"{key} {name}" for key, name in options]
+    matched = match_option_index(names, dirs, option_hint)
+    if matched is not None:
+        _log(f"    Namespace match: '{options[matched][1]}' (index {matched})", cb)
+        return matched
     _log(f"    Namespace: '{options[0][1]}' (default, {len(options)} options)", cb)
     return 0
 
@@ -131,6 +135,7 @@ def _try_holopatcher_shim(
     game_dir: Path,
     option_hint: str,
     cb: Optional[ProgressCallback],
+    directives=None,
 ) -> StrategyResult:
     holo = find_system_holopatcher()
     if not holo:
@@ -140,7 +145,7 @@ def _try_holopatcher_shim(
     if not tslpatchdata:
         raise PatcherError("No tslpatchdata/ found for HoloPatcher shim")
 
-    ns_index = resolve_namespace_index(tslpatchdata, option_hint, cb)
+    ns_index = resolve_namespace_index(tslpatchdata, option_hint, cb, directives)
     _log(f"  [shim] Using headless HoloPatcher: {holo.name}", cb)
     run_holopatcher(holo, game_dir, tslpatchdata, ns_index, cb)
     return StrategyResult(True, "holopatcher_shim")
@@ -205,6 +210,7 @@ def run_tslpatcher_cascade(
     exe: Optional[Path],
     game_dir: Path,
     option_hint: str = "",
+    directives=None,
     cb: Optional[ProgressCallback] = None,
     on_waiting: Optional[Callable[[], None]] = None,
     allow_manual: bool = True,
@@ -215,7 +221,8 @@ def run_tslpatcher_cascade(
     mod_root:   extracted mod directory
     exe:        the mod's own TSLPatcher.exe (may be None for shim-only installs)
     game_dir:   KOTOR install root
-    option_hint: build-page hint for namespace selection
+    option_hint: legacy build-page hint for namespace selection
+    directives: parsed build-guide directives (preferred namespace selection)
     on_waiting: called if we fall back to gui_manual (UI shows a banner)
     allow_manual: if False, never fall back to the GUI (fully unattended runs)
 
@@ -231,7 +238,7 @@ def run_tslpatcher_cascade(
         try:
             _log(f"  → Strategy: {strategy}", cb)
             if strategy == "holopatcher_shim":
-                return _try_holopatcher_shim(mod_root, exe, game_dir, option_hint, cb)
+                return _try_holopatcher_shim(mod_root, exe, game_dir, option_hint, cb, directives)
             elif strategy == "win32_automation":
                 return _try_win32_automation(exe, game_dir, cb)
             elif strategy == "pywinauto_automation":

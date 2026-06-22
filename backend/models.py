@@ -113,6 +113,7 @@ def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0,
 
 
 def build_mod_to_dict(m: BuildMod) -> dict:
+    d = m.directives
     return {
         "install_order": m.install_order,
         "file_id": m.file_id,
@@ -126,6 +127,14 @@ def build_mod_to_dict(m: BuildMod) -> dict:
         "option_hint": m.option_hint,
         "install_method_hint": m.install_method_hint,
         "build_key": m.build_key,
+        "instructions": m.instructions,
+        "warnings": m.warnings,
+        "install_method": m.install_method,
+        "description": m.description,
+        "author": m.author,
+        # A short, player-readable summary of the special handling we apply, so
+        # the UI can flag mods that need extra steps.
+        "directive_summary": d.summary(),
     }
 
 

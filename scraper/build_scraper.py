@@ -42,10 +42,25 @@ class BuildMod:
     option_hint: str      # e.g. "pc_response_moderation", "restoration"
     install_method_hint: str  # e.g. "loose", "tslpatcher", "holopatcher" (from page text)
     build_key: str
+    # Full structured detail parsed from the build page's per-mod block. The
+    # build guide puts the real, often critical, install nuance here (which
+    # patcher option to pick, which files to copy, multi-run steps, required
+    # patches) - see installer/build_directives.py for how it's acted on.
+    instructions: str = ""    # "Installation Instructions" / "Download Instructions" text
+    warnings: str = ""        # "Usage Warning" / "Known Bugs" / "Compatibility Warning" text
+    install_method: str = ""  # the page's "Installation Method:" line (free text)
+    description: str = ""      # the page's "Description:" line
+    author: str = ""
 
     @property
     def ds_url(self) -> str:
         return f"https://deadlystream.com/files/file/{self.file_id}-{self.slug}/"
+
+    @property
+    def directives(self):
+        """Parsed, actionable install directives from the page text (lazy)."""
+        from installer.build_directives import parse_directives
+        return parse_directives(self.instructions, self.warnings, self.install_method)
 
 
 # Anchor text that is NOT a mod name (download links, mirrors, etc.)
@@ -121,6 +136,93 @@ def _extract_install_method_hint(note: str) -> str:
     return ""
 
 
+# Labels used in the build pages' per-mod blocks (a <p> like
+# "<strong>Author:</strong> ...").
+_FIELD_LABELS = {
+    "author": "author",
+    "description": "description",
+    "category & tier": "category_tier",
+    "category": "category_tier",
+    "non-english functionality": "non_english",
+    "installation method": "install_method",
+}
+
+
+def _is_name_p(el) -> bool:
+    """A '<p><strong>Name:</strong> ...</p>' block anchor."""
+    if getattr(el, "name", None) != "p":
+        return False
+    if not el.find("strong"):
+        return False
+    return el.get_text(" ", strip=True).lower().startswith("name:")
+
+
+def _gather_block(link_el) -> dict:
+    """
+    Collect the full per-mod block around a DeadlyStream link and pull out the
+    labelled fields (Author/Description/Installation Method) plus the free-text
+    Installation Instructions and Warning/Known-Bugs sections.
+
+    The build pages format each mod as a 'Name:' paragraph followed by sibling
+    paragraphs/divs; the old scraper only saw the link's own paragraph, dropping
+    every instruction. We only walk forward when the anchor really is a 'Name:'
+    block so prose links (e.g. the intro Amazon fix) don't swallow neighbours.
+    """
+    anchor = None
+    for anc in link_el.parents:
+        if getattr(anc, "name", None) == "p":
+            anchor = anc
+            break
+    if anchor is None:
+        anchor = link_el.find_parent(["li", "div", "td", "tr"]) or link_el
+
+    els = [anchor]
+    if _is_name_p(anchor):
+        sib = anchor.next_sibling
+        while sib is not None:
+            if getattr(sib, "name", None):
+                if _is_name_p(sib) or sib.name in ("h2", "h3", "h4"):
+                    break
+                els.append(sib)
+            sib = sib.next_sibling
+
+    fields: dict[str, str] = {}
+    instructions: list[str] = []
+    warnings: list[str] = []
+    for el in els:
+        name = getattr(el, "name", None)
+        if name == "p":
+            strong = el.find("strong")
+            if strong:
+                label = strong.get_text(" ", strip=True).rstrip(":").strip().lower()
+                key = _FIELD_LABELS.get(label)
+                if key:
+                    txt = el.get_text(" ", strip=True)
+                    val = txt.split(":", 1)[1].strip() if ":" in txt else txt
+                    fields[key] = val
+        if name in ("div", "blockquote", "aside"):
+            t = el.get_text(" ", strip=True)
+            if not t:
+                continue
+            low = t.lower()
+            if "instruction" in low[:40]:
+                instructions.append(t)
+            elif any(w in low[:40] for w in ("warning", "known bug", "note", "caution")):
+                warnings.append(t)
+            else:
+                instructions.append(t)
+
+    full = " ".join(e.get_text(" ", strip=True) for e in els if getattr(e, "name", None))
+    return {
+        "author": fields.get("author", ""),
+        "description": fields.get("description", ""),
+        "install_method": fields.get("install_method", ""),
+        "instructions": " ".join(instructions).strip(),
+        "warnings": " ".join(warnings).strip(),
+        "note": full,
+    }
+
+
 def scrape_build(build_key: str, session: Optional[requests.Session] = None) -> list[BuildMod]:
     url = BUILD_URLS[build_key]
     game = BUILD_GAME[build_key]
@@ -162,18 +264,13 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None) -> 
             seen.add(fid)
             order += 1
 
-            # Grab note from nearest container
-            note = ""
-            for ancestor in el.parents:
-                atag = getattr(ancestor, "name", None)
-                if atag in ("li", "tr"):
-                    note = ancestor.get_text(" ", strip=True)
-                    break
-                if atag in ("div", "section"):
-                    candidate = ancestor.get_text(" ", strip=True)
-                    if len(candidate) < 2000:
-                        note = candidate
-                        break
+            # Pull the full per-mod block: labelled fields + the actual
+            # Installation Instructions / Warning sections the guide relies on.
+            block = _gather_block(el)
+            instructions = block["instructions"]
+            warnings = block["warnings"]
+            # Hints are derived from the real instructions, not just the name.
+            hint_source = " ".join([instructions, warnings, block["note"]])
 
             name = _clean_mod_name(el, slug)
 
@@ -189,10 +286,16 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None) -> 
                 game=game,
                 section=section,
                 category=category,
-                note=note[:600],
-                option_hint=_extract_option_hint(note),
-                install_method_hint=_extract_install_method_hint(note),
+                note=block["note"][:800],
+                option_hint=_extract_option_hint(hint_source),
+                install_method_hint=_extract_install_method_hint(
+                    block["install_method"] or hint_source),
                 build_key=build_key,
+                instructions=instructions[:2500],
+                warnings=warnings[:1500],
+                install_method=block["install_method"][:200],
+                description=block["description"][:600],
+                author=block["author"][:120],
             ))
 
     return mods

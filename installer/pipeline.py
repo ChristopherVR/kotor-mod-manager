@@ -13,6 +13,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
 
+from installer.build_directives import match_option_index
 from installer.detector import InstallMethod, InstallPlan, detect
 from installer.extractor import ExtractionError, extract
 from installer.installer import InstallError, install
@@ -190,12 +191,18 @@ class Pipeline:
                 if self._on_progress:
                     self._on_progress(mod.file_id, pct, kb, total_kb)
 
+            keep_names = mod.directives.download_only
+            if keep_names:
+                self._log(
+                    f"  Build guide: downloading only {', '.join(keep_names)} "
+                    f"(ignoring the other files in this submission).")
             archives = self._client.download_all_files(
                 file_id=mod.file_id,
                 slug=mod.slug,
                 dest_dir=dest_dir,
                 progress_callback=dl_progress,
                 cancel_event=self._stop_event,
+                keep_names=keep_names,
             )
             pm.archive_paths = archives
             if len(archives) > 1:
@@ -238,6 +245,13 @@ class Pipeline:
             plan = detect(ep)
             pm.plans.append(plan)
 
+        # Honour build-guide nuance: re-order so a "run the patch first" mod
+        # applies its patcher before its loose files, and surface the steps we
+        # can't safely automate (multi-run, required external patches).
+        dirs = pm.build_mod.directives
+        self._apply_build_guide_order(pm, dirs)
+        self._log_build_guide_notes(pm, dirs)
+
         self._set_status(pm, ModStatus.INSTALLING)
         total = len(pm.plans)
         try:
@@ -271,6 +285,9 @@ class Pipeline:
     def _install_one(self, pm: PipelineMod, plan: InstallPlan) -> None:
         game_path = self._game_path
         mod = pm.build_mod
+        # Actionable directives parsed from the build guide (which option to
+        # pick, which files to copy, etc.). See installer/build_directives.py.
+        dirs = mod.directives
 
         def log_cb(msg: str) -> None:
             self._log(f"    {msg}", "muted")
@@ -291,14 +308,18 @@ class Pipeline:
                 raise PatcherError("Cannot find HoloPatcher.exe or tslpatchdata/")
 
             ns_index = 0
-            if plan.namespaces and mod.option_hint:
-                hint = mod.option_hint.lower()
-                for i, ns in enumerate(plan.namespaces):
-                    if hint in ns.name.lower() or hint in ns.description.lower():
-                        ns_index = i
-                        break
             if plan.namespaces:
-                self._log(f"    Namespace: {plan.namespaces[ns_index].name}", "muted")
+                names = [f"{ns.name} {ns.description}" for ns in plan.namespaces]
+                matched = match_option_index(names, dirs, mod.option_hint)
+                if matched is not None:
+                    ns_index = matched
+                    self._log(
+                        f"    Namespace: {plan.namespaces[ns_index].name} "
+                        f"(matched build-guide instructions)", "muted")
+                else:
+                    self._log(
+                        f"    Namespace: {plan.namespaces[ns_index].name} "
+                        f"(default of {len(plan.namespaces)})", "muted")
             run_holopatcher(exe, game_path, tslpatchdata, ns_index, log_cb)
             pm.strategy_used = "holopatcher"
 
@@ -317,6 +338,7 @@ class Pipeline:
                 exe=plan.tslpatcher_exe,
                 game_dir=game_path,
                 option_hint=mod.option_hint,
+                directives=dirs,
                 cb=log_cb,
                 on_waiting=on_waiting,
                 allow_manual=not self._auto_unattended,
@@ -330,12 +352,11 @@ class Pipeline:
         elif method in (InstallMethod.TLK_REPLACE, InstallMethod.MULTI_VARIANT):
             variants = plan.tlk_variants
             chosen_label, chosen_path = variants[0]
-            if len(variants) > 1 and mod.option_hint:
-                hint = mod.option_hint.replace("_", " ").lower()
-                for label, path in variants:
-                    if hint in label.lower():
-                        chosen_label, chosen_path = label, path
-                        break
+            if len(variants) > 1:
+                matched = match_option_index(
+                    [lbl for lbl, _ in variants], dirs, mod.option_hint)
+                if matched is not None:
+                    chosen_label, chosen_path = variants[matched]
             self._log(f"    TLK variant: {chosen_label}", "muted")
 
             def tlk_chooser(_variants):
@@ -346,6 +367,7 @@ class Pipeline:
 
         # ---- Override / Direct copy / Multiple ----
         elif method in (InstallMethod.OVERRIDE_COPY, InstallMethod.DIRECT_COPY, InstallMethod.MULTIPLE):
+            self._apply_file_selection(plan, dirs)
             install(plan, game_path, log_cb)
             pm.strategy_used = "file_copy"
 
@@ -359,6 +381,84 @@ class Pipeline:
             raise InstallError(
                 f"Manual install required for: {mod.name}\nMod files are at: {plan.mod_root}"
             )
+
+    @staticmethod
+    def _is_patcher_plan(plan: InstallPlan) -> bool:
+        return plan.method in (InstallMethod.TSLPATCHER, InstallMethod.HOLOPATCHER)
+
+    def _apply_build_guide_order(self, pm: PipelineMod, dirs) -> None:
+        """
+        For a "the patch is run first" mod, make the patcher run before the
+        loose-file copy (the opposite of our default). Applies both across this
+        mod's components and within a MULTIPLE plan's sub-plans.
+        """
+        if not dirs.patch_first:
+            return
+        before = [p.method.name for p in pm.plans]
+        pm.plans.sort(key=lambda p: 0 if self._is_patcher_plan(p) else 1)
+        for p in pm.plans:
+            if p.sub_plans:
+                p.sub_plans.sort(key=lambda sp: 0 if self._is_patcher_plan(sp) else 1)
+        after = [p.method.name for p in pm.plans]
+        if before != after:
+            self._log("  Build guide: applying the patch first, as instructed.", "muted")
+
+    def _log_build_guide_notes(self, pm: PipelineMod, dirs) -> None:
+        """
+        Surface the build-guide steps we deliberately do NOT guess at - extra
+        patcher runs and required external patches - so the player can finish
+        them. Guessing which optional re-runs to apply could change the game
+        beyond the build's baseline, so we tell the user instead.
+        """
+        mod = pm.build_mod
+        if dirs.requires_patch:
+            self._log(
+                f"  Heads up for '{mod.name}': the build guide says a patch must be "
+                f"installed for this mod. If it was bundled it has been applied; if it "
+                f"links an external patch, install that too.", "warning")
+        if dirs.multi_run:
+            self._log(
+                f"  Heads up for '{mod.name}': this mod's guide asks for the patcher to "
+                f"be run more than once (e.g. a compatibility or optional component). "
+                f"The main option was installed; re-run it for any extra options you want.",
+                "warning")
+            if mod.instructions:
+                self._log(f"    Guide: {mod.instructions[:400]}", "muted")
+        for note in dirs.manual_notes[:3]:
+            self._log(f"  Note for '{mod.name}': {note}", "warning")
+
+    def _apply_file_selection(self, plan: InstallPlan, dirs) -> None:
+        """
+        Drop or keep loose files per the build guide's "only move X" / "move all
+        EXCEPT Y" / "ignore the Z folder" instructions, so we don't copy files
+        the guide says to leave out (which would create conflicts a later mod
+        handles). Applied to the plan and any sub-plans (MULTIPLE).
+        """
+        from installer.build_directives import select_paths
+
+        if not dirs.file_only and not dirs.file_except:
+            return
+        for p in [plan, *plan.sub_plans]:
+            if not p.file_mappings:
+                continue
+            rels = []
+            for m in p.file_mappings:
+                try:
+                    rels.append(str(m.source.relative_to(p.mod_root)).replace("\\", "/"))
+                except ValueError:
+                    rels.append(m.source.name)
+            kept, dropped = select_paths(rels, dirs)
+            if not dropped:
+                continue
+            keptset = set(kept)
+            p.file_mappings = [m for m, r in zip(p.file_mappings, rels) if r in keptset]
+            self._log(
+                f"    Build guide: copying {len(p.file_mappings)} of {len(rels)} "
+                f"file(s); skipped {len(dropped)} per the install instructions.",
+                "muted",
+            )
+            for d in dropped[:6]:
+                self._log(f"      skipped: {d}", "muted")
 
     # ------------------------------------------------------------------
     # Mod-manager recording
