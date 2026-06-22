@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0] - 2026-06-22
+
+### Features
+
+- Install each mod the way the build guide actually says
+- Show each mod's install steps and what the app handles for you
+
+### Testing
+
+- Cover build-guide instruction parsing and selective install
+
+### Miscellaneous
+
+- Add build-guide audit and live-verification tooling
 ## [0.7.2] - 2026-06-21
 
 ### Documentation
