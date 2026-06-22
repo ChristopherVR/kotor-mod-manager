@@ -38,6 +38,8 @@ export function BuildModDetail({ mod, onClose }: BuildModDetailProps) {
   const description = info?.description?.trim();
   const images = info?.images ?? [];
   const note = mod.note?.trim();
+  const summary = mod.directive_summary?.trim();
+  const instructions = mod.instructions?.trim();
 
   const links: { label: string; url?: string }[] = [
     { label: t("modDetail.viewOnDeadlyStream"), url: info?.ds_url || mod.url },
@@ -65,6 +67,28 @@ export function BuildModDetail({ mod, onClose }: BuildModDetailProps) {
 
         {/* Body */}
         <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
+          {/* What the installer will do automatically for this mod */}
+          {summary && (
+            <section className="rounded-md border border-[hsl(var(--info)/0.4)] bg-[hsl(var(--info)/0.08)] p-3">
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[hsl(var(--info))]">
+                {t("modDetail.autoHandling")}
+              </h3>
+              <p className="text-sm leading-relaxed text-foreground">
+                {t("modDetail.autoHandlingPrefix")} {summary}.
+              </p>
+            </section>
+          )}
+
+          {/* Install instructions straight from the build guide */}
+          {instructions && (
+            <section>
+              <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {t("modDetail.guideInstructions")}
+              </h3>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{instructions}</p>
+            </section>
+          )}
+
           {/* Build note */}
           {note && (
             <section className="rounded-md border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] p-3">

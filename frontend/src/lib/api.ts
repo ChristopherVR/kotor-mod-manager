@@ -28,6 +28,14 @@ export interface BuildMod {
   option_hint: string;
   install_method_hint: string;
   build_key: string;
+  // Full per-mod detail parsed from the build guide, and a short summary of the
+  // special handling the installer applies (see installer/build_directives.py).
+  instructions?: string;
+  warnings?: string;
+  install_method?: string;
+  description?: string;
+  author?: string;
+  directive_summary?: string;
 }
 
 export interface AppStatus {
