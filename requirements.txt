@@ -13,4 +13,4 @@ uvicorn[standard]>=0.29.0
 # Optional: improves TSLPatcher GUI automation for .NET/UIA-based patchers.
 # The Win32 (ctypes) automation path works without this; pywinauto is a
 # secondary fallback in the strategy cascade.
-pywinauto>=0.6.8 ; sys_platform == "win32"
+pywinauto>=0.6.9 ; sys_platform == "win32"
