@@ -6,6 +6,8 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
+from installer.fs_retry import with_lock_retry
+
 try:
     import py7zr
     HAS_7Z = True
@@ -24,15 +26,22 @@ class ExtractionError(Exception):
 
 
 def _extract_zip(archive: Path, dest: Path) -> None:
-    with zipfile.ZipFile(archive, "r") as z:
-        z.extractall(dest)
+    # Opening the archive can briefly fail with WinError 32 if antivirus is still
+    # scanning the freshly downloaded file; retry through the transient lock.
+    def _open_and_extract() -> None:
+        with zipfile.ZipFile(archive, "r") as z:
+            z.extractall(dest)
+    with_lock_retry(_open_and_extract)
 
 
 def _extract_7z(archive: Path, dest: Path) -> None:
     if not HAS_7Z:
         raise ExtractionError("py7zr is not installed - cannot extract .7z files.")
-    with py7zr.SevenZipFile(archive, mode="r") as z:
-        z.extractall(path=dest)
+
+    def _open_and_extract() -> None:
+        with py7zr.SevenZipFile(archive, mode="r") as z:
+            z.extractall(path=dest)
+    with_lock_retry(_open_and_extract)
 
 
 _7Z_CANDIDATES = [
