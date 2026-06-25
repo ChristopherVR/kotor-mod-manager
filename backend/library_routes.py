@@ -57,7 +57,7 @@ def _publish(event: dict) -> None:
 
 
 def _download_dir() -> Path:
-    return Path(cfg.load().get("download_dir", ""))
+    return cfg.download_dir()
 
 
 def _source_folder(mod, download_dir: Optional[Path] = None) -> Optional[Path]:

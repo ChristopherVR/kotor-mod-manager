@@ -226,7 +226,7 @@ export const api = {
       body: JSON.stringify({ path, select }),
     }),
   openDownloadFolder: (file_id: string, slug: string, game: string) =>
-    req<{ ok: boolean; path?: string }>("/api/mod/open-download", {
+    req<{ ok: boolean; path?: string; fallback?: boolean }>("/api/mod/open-download", {
       method: "POST",
       body: JSON.stringify({ file_id, slug, game }),
     }),

@@ -532,15 +532,27 @@ def open_path(req: OpenPathRequest) -> dict:
 
 @app.post("/api/mod/open-download")
 def open_mod_download(req: OpenDownloadRequest) -> dict:
-    """Open a build mod's download folder (download_dir/<file_id>_<slug[:30]>)."""
+    """Open a build mod's download folder (download_dir/<file_id>_<slug[:30]>).
+
+    If that mod hasn't been downloaded yet, open the base downloads folder
+    instead (creating it if needed) so the action always opens something useful.
+    """
     from backend.fsutil import reveal_path
-    download_dir = Path(cfg.load().get("download_dir", ""))
-    folder = download_dir / f"{req.file_id}_{req.slug[:30]}"
+    base = cfg.download_dir()
+    folder = base / f"{req.file_id}_{req.slug[:30]}"
+    fallback = False
     if not folder.exists():
-        return JSONResponse(status_code=404, content={"ok": False, "error": "download_unavailable"})
+        # Not downloaded yet - reveal the downloads folder so the user can see
+        # where mods will land.
+        fallback = True
+        folder = base
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return JSONResponse(status_code=404, content={"ok": False, "error": "download_unavailable"})
     if not reveal_path(folder):
         return JSONResponse(status_code=500, content={"ok": False, "error": "open_failed"})
-    return {"ok": True, "path": str(folder)}
+    return {"ok": True, "path": str(folder), "fallback": fallback}
 
 
 @app.get("/api/nexus/validate")

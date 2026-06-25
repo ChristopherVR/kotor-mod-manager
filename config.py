@@ -58,6 +58,12 @@ def save(cfg: dict) -> None:
         json.dump(cfg, f, indent=2)
 
 
+def download_dir() -> Path:
+    """The folder downloads go into, falling back to the default if unset."""
+    raw = load().get("download_dir", "")
+    return Path(raw) if raw else (Path.home() / "Downloads" / "KOTOR_Mods")
+
+
 # ---------------------------------------------------------------------------
 # Game install profiles
 # ---------------------------------------------------------------------------
