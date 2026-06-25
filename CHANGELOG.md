@@ -1,10 +1,30 @@
 # Changelog
 
+## [0.9.0] - 2026-06-25
+
+### Features
+
+- Guide you through mods that need a manual install
+- Check your KOTOR folder before installing anything
+- Pause a download and pick up right where it left off
+- Open account settings by clicking your profile
+- Make the menu click sound closer to KOTOR's
+- Delete a mod from your library in one click
+- Show why a mod failed to install
+- Add your own mod builds, not just the built-in ones
+- Configure the mod build source site in Account settings
+
+### Bug Fixes
+
+- Stop installs failing when antivirus briefly locks a file
+- Keep the conflicts list from vanishing after you resolve one
+- Make "Open download folder" actually open a folder
 ## [0.8.1] - 2026-06-22
 
 ### Miscellaneous
 
 - Update the app's libraries and tools to their latest versions
+- Merge dependency updates (23 Dependabot PRs)
 ## [0.8.0] - 2026-06-22
 
 ### Features
