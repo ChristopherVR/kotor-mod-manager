@@ -32,6 +32,16 @@ DEFAULTS = {
     # a game uses id == game so existing manifests map straight across.
     "game_profiles": [],
     "active_profile": "",
+    # User-added mod builds (on top of the four built-in ones). Each is a named
+    # guide page we scrape just like the built-ins:
+    # {key, label, game ("KOTOR1"|"KOTOR2"), url}. Lets players plug in any
+    # neocities-style build guide without a code change.
+    "custom_builds": [],
+    # The website mod build guides are scraped from. Public today (no login),
+    # but the username is stored here (and the password in the OS keyring) so a
+    # source that needs an account can be supported without a code change.
+    "source_site_url": "https://kotor.neocities.org",
+    "source_site_username": "",
 }
 
 DEADLYSTREAM_BASE = "https://deadlystream.com"
@@ -145,6 +155,42 @@ def set_active_profile(profile_id: str) -> bool:
     cfg["active_profile"] = profile_id
     save(cfg)
     return True
+
+
+# ---------------------------------------------------------------------------
+# Custom mod builds (user-added guide pages)
+# ---------------------------------------------------------------------------
+
+def get_custom_builds(cfg: dict | None = None) -> list:
+    cfg = cfg or load()
+    return cfg.get("custom_builds", [])
+
+
+def get_custom_build(key: str, cfg: dict | None = None) -> dict | None:
+    for b in get_custom_builds(cfg):
+        if b.get("key") == key:
+            return b
+    return None
+
+
+def add_custom_build(label: str, game: str, url: str) -> dict:
+    cfg = load()
+    builds = cfg.setdefault("custom_builds", [])
+    build = {"key": f"custom_{uuid.uuid4().hex[:10]}", "label": label,
+             "game": game, "url": url}
+    builds.append(build)
+    save(cfg)
+    return build
+
+
+def remove_custom_build(key: str) -> bool:
+    cfg = load()
+    before = len(cfg.get("custom_builds", []))
+    cfg["custom_builds"] = [b for b in cfg.get("custom_builds", []) if b.get("key") != key]
+    changed = len(cfg["custom_builds"]) != before
+    if changed:
+        save(cfg)
+    return changed
 
 
 def _sync_legacy_paths(cfg: dict) -> None:

@@ -151,6 +151,20 @@ export const api = {
   health: () => req<{ ok: boolean; version: string }>("/api/health"),
   status: () => req<AppStatus>("/api/status"),
   builds: () => req<{ builds: BuildInfo[] }>("/api/builds"),
+  addBuild: (label: string, game: string, url: string) =>
+    req<{ ok: boolean; build: BuildInfo }>("/api/builds", {
+      method: "POST",
+      body: JSON.stringify({ label, game, url }),
+    }),
+  deleteBuild: (key: string) =>
+    req<{ ok: boolean }>(`/api/builds/${encodeURIComponent(key)}`, { method: "DELETE" }),
+  sourceSite: () =>
+    req<{ url: string; username: string; has_password: boolean }>("/api/source-site"),
+  saveSourceSite: (body: { url?: string; username?: string; password?: string; clear_password?: boolean }) =>
+    req<{ ok: boolean; has_password: boolean }>("/api/source-site", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   credentials: () => req<{ username: string }>("/api/credentials"),
   login: (username: string, password: string, save = true) =>
     req<{ ok: boolean; username: string }>("/api/login", {

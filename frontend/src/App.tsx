@@ -89,6 +89,13 @@ export default function App() {
     } catch { /* endpoint may be unavailable */ }
   }, []);
 
+  const refreshBuilds = useCallback(async () => {
+    try {
+      const r = await api.builds();
+      setBuilds(r.builds);
+    } catch { /* keep the current list on error */ }
+  }, []);
+
   const refreshProfiles = useCallback(async () => {
     try {
       const r = await api.profiles();

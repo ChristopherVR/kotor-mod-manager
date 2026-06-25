@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import {
   Play, Pause, Square, AlertTriangle, RotateCcw, Download, X, FolderInput, UploadCloud,
-  FolderOpen, ScrollText,
+  FolderOpen, ScrollText, Plus, Trash2,
 } from "lucide-react";
 import { api, type BuildInfo, type BuildMod } from "@/lib/api";
 import { pickDirectory, onFilesDropped, onDragHover } from "@/lib/tauri";
 import { ModList, type ModRuntime } from "@/components/ModList";
 import { ContextMenu, type ContextMenuItem } from "@/components/ui/context-menu";
 import { BuildModDetail } from "@/components/BuildModDetail";
+import { AddBuildDialog } from "@/components/AddBuildDialog";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
@@ -18,6 +19,7 @@ interface BuildsViewProps {
   ready: boolean;
   loggedIn: boolean;
   builds: BuildInfo[];
+  refreshBuilds: () => Promise<void> | void;
   selectedBuild: string;
   onSelectBuild: (key: string) => void;
   mods: BuildMod[];
@@ -54,8 +56,29 @@ export function BuildsView(props: BuildsViewProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [dragActive, setDragActive] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; mod: BuildMod } | null>(null);
+  const [showAddBuild, setShowAddBuild] = useState(false);
 
-  const buildGame = builds.find((b) => b.key === selectedBuild)?.game ?? mods[0]?.game ?? "";
+  const selectedBuildInfo = builds.find((b) => b.key === selectedBuild);
+  const buildGame = selectedBuildInfo?.game ?? mods[0]?.game ?? "";
+
+  const onBuildAdded = async (build: BuildInfo) => {
+    await refreshBuilds();
+    onSelectBuild(build.key);
+  };
+
+  const deleteSelectedBuild = async () => {
+    if (!selectedBuildInfo?.custom) return;
+    if (!window.confirm(t("builds.deleteBuildConfirm", { label: selectedBuildInfo.label }))) return;
+    try {
+      await api.deleteBuild(selectedBuildInfo.key);
+      addLog(t("builds.deleteBuildDone", { label: selectedBuildInfo.label }), "success");
+      const remaining = builds.filter((b) => b.key !== selectedBuildInfo.key);
+      await refreshBuilds();
+      if (remaining[0]) onSelectBuild(remaining[0].key);
+    } catch (e: any) {
+      addLog(t("builds.deleteBuildFailed", { error: e?.message ?? "error" }), "error");
+    }
+  };
 
   const labelFor = (key: string) => builds.find((b) => b.key === key)?.label ?? key;
   const patcherName = patcherMod ? mods.find((m) => m.file_id === patcherMod)?.name : null;
@@ -279,6 +302,26 @@ export function BuildsView(props: BuildsViewProps) {
         >
           <FolderInput /> {t("builds.importFolder")}
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowAddBuild(true)}
+          disabled={running}
+          title={t("builds.addBuildHint")}
+        >
+          <Plus /> {t("builds.addBuild")}
+        </Button>
+        {selectedBuildInfo?.custom && !running && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={deleteSelectedBuild}
+            title={t("builds.deleteBuild")}
+            className="text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 />
+          </Button>
+        )}
         {mods.length > 0 && !running && (
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
             <span>{t("builds.selectedCount", { selected: selectedCount, total: mods.length })}</span>

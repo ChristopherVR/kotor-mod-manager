@@ -74,6 +74,19 @@ class ActiveProfileRequest(BaseModel):
     id: str
 
 
+class AddBuildRequest(BaseModel):
+    label: str
+    game: str            # "KOTOR1" | "KOTOR2"
+    url: str             # a neocities-style build guide page to scrape
+
+
+class SourceSiteRequest(BaseModel):
+    url: str = ""
+    username: str = ""
+    password: str = ""        # blank = leave the saved password untouched
+    clear_password: bool = False
+
+
 class OpenPathRequest(BaseModel):
     path: str
     select: bool = False   # highlight the file inside its folder (Windows/macOS)

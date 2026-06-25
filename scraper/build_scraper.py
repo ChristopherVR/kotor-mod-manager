@@ -223,9 +223,12 @@ def _gather_block(link_el) -> dict:
     }
 
 
-def scrape_build(build_key: str, session: Optional[requests.Session] = None) -> list[BuildMod]:
-    url = BUILD_URLS[build_key]
-    game = BUILD_GAME[build_key]
+def scrape_build(build_key: str, session: Optional[requests.Session] = None,
+                 url: Optional[str] = None, game: Optional[str] = None) -> list[BuildMod]:
+    # url/game are supplied for user-added custom builds; built-in builds resolve
+    # from the BUILD_URLS / BUILD_GAME tables.
+    url = url or BUILD_URLS[build_key]
+    game = game or BUILD_GAME.get(build_key, "KOTOR1")
     s = session or requests.Session()
     s.headers.setdefault("User-Agent", "Mozilla/5.0")
 

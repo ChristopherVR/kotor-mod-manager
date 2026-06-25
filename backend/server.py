@@ -25,7 +25,9 @@ from fastapi.responses import JSONResponse
 import config as cfg
 from backend.models import (
     ActiveProfileRequest,
+    AddBuildRequest,
     LoginRequest,
+    SourceSiteRequest,
     OpenDownloadRequest,
     OpenPathRequest,
     ProfileCreate,
@@ -47,6 +49,29 @@ BUILD_LABELS = {
     "k2_full":        "KOTOR 2 - Full Build",
     "k2_spoilerfree": "KOTOR 2 - Spoiler-Free",
 }
+
+
+def _all_builds() -> list[dict]:
+    """Built-in builds plus any the user has added, in one list."""
+    builtin = [
+        {"key": k, "label": BUILD_LABELS.get(k, k), "game": BUILD_GAME.get(k, ""),
+         "custom": False, "url": BUILD_URLS[k]}
+        for k in BUILD_URLS
+    ]
+    custom = [
+        {"key": b["key"], "label": b["label"], "game": b["game"],
+         "custom": True, "url": b["url"]}
+        for b in cfg.get_custom_builds()
+    ]
+    return builtin + custom
+
+
+def _resolve_build_game(build_key: str) -> str:
+    """The game a build targets, for built-in or custom builds."""
+    if build_key in BUILD_GAME:
+        return BUILD_GAME[build_key]
+    b = cfg.get_custom_build(build_key)
+    return b["game"] if b else "KOTOR1"
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +133,7 @@ class AppState:
         if override:
             return Path(override)
         conf = cfg.load()
-        game = BUILD_GAME.get(build_key, "KOTOR1")
+        game = _resolve_build_game(build_key)
         key = "kotor1_path" if game == "KOTOR1" else "kotor2_path"
         p = conf.get(key, "")
         return Path(p) if p else None
@@ -178,12 +203,31 @@ def status() -> dict:
 
 @app.get("/api/builds")
 def builds() -> dict:
-    return {
-        "builds": [
-            {"key": k, "label": BUILD_LABELS.get(k, k), "game": BUILD_GAME.get(k, "")}
-            for k in BUILD_URLS
-        ]
-    }
+    return {"builds": _all_builds()}
+
+
+@app.post("/api/builds")
+def add_build(req: AddBuildRequest) -> dict:
+    """Add a user-defined build from a guide URL (scraped like the built-ins)."""
+    if req.game not in ("KOTOR1", "KOTOR2"):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "invalid_game"})
+    url = req.url.strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "invalid_url"})
+    label = req.label.strip() or url
+    build = cfg.add_custom_build(label, req.game, url)
+    return {"ok": True, "build": {"key": build["key"], "label": build["label"],
+                                  "game": build["game"], "custom": True, "url": build["url"]}}
+
+
+@app.delete("/api/builds/{build_key}")
+def delete_build(build_key: str) -> dict:
+    """Remove a user-added build (built-in builds can't be removed)."""
+    if build_key in BUILD_URLS:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "cannot_delete_builtin"})
+    ok = cfg.remove_custom_build(build_key)
+    state.loaded_mods.pop(build_key, None)
+    return {"ok": ok}
 
 
 @app.post("/api/login")
@@ -615,10 +659,14 @@ def mod_image(url: str):
 
 @app.post("/api/builds/{build_key}/load")
 def load_build(build_key: str) -> dict:
-    if build_key not in BUILD_URLS:
+    custom = None if build_key in BUILD_URLS else cfg.get_custom_build(build_key)
+    if build_key not in BUILD_URLS and not custom:
         return JSONResponse(status_code=404, content={"ok": False, "error": "Unknown build"})
     try:
-        mods = scrape_build(build_key)
+        if custom:
+            mods = scrape_build(build_key, url=custom["url"], game=custom["game"])
+        else:
+            mods = scrape_build(build_key)
     except Exception as e:
         return JSONResponse(status_code=502, content={"ok": False, "error": f"Scrape failed: {e}"})
     state.loaded_mods[build_key] = mods
@@ -649,7 +697,7 @@ def install_start(req: StartInstallRequest) -> dict:
         if not mods:
             return JSONResponse(status_code=400, content={"ok": False, "error": "No mods selected"})
 
-    game = BUILD_GAME.get(req.build_key, "KOTOR1")
+    game = _resolve_build_game(req.build_key)
     # Resolve the target install: a chosen profile, else the game default.
     scope = game
     if req.profile:
