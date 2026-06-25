@@ -1,10 +1,11 @@
 // KOTOR-style UI click sound.
 //
-// The classic KOTOR menu blip is a short, bright, slightly metallic electronic
-// tick. We synthesize it with the Web Audio API instead of shipping an audio
-// file, so there is no binary asset to bundle and nothing to download. The
-// click is played globally whenever the user activates an interactive element,
-// but only while the preference is enabled (it is OFF by default).
+// The KOTOR menu "select" blip is a short, resonant, slightly metallic
+// electronic twing - a warm two-tone chirp with a hollow body, not a bright
+// typewriter tick. We synthesize it with the Web Audio API instead of shipping
+// an audio file, so there is no binary asset to bundle and nothing to download.
+// The click is played globally whenever the user activates an interactive
+// element, but only while the preference is enabled (it is OFF by default).
 
 const STORAGE_KEY = "kmi.uiSounds";
 
@@ -51,39 +52,55 @@ export function playClick(): void {
 
   const now = ac.currentTime;
   const out = ac.createGain();
-  out.gain.value = 0.18; // master volume for the blip
+  out.gain.value = 0.16; // master volume for the blip
   out.connect(ac.destination);
 
-  // Tonal part: a short square blip that drops in pitch for that digital "tick".
-  const osc = ac.createOscillator();
-  osc.type = "square";
-  osc.frequency.setValueAtTime(1650, now);
-  osc.frequency.exponentialRampToValueAtTime(720, now + 0.05);
-  const oscGain = ac.createGain();
-  oscGain.gain.setValueAtTime(0.0001, now);
-  oscGain.gain.exponentialRampToValueAtTime(1, now + 0.004);
-  oscGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
-  osc.connect(oscGain).connect(out);
-  osc.start(now);
-  osc.stop(now + 0.08);
+  // A resonant band-pass gives the click its hollow, "computer console" body -
+  // the character that makes it read as KOTOR rather than a generic beep.
+  const band = ac.createBiquadFilter();
+  band.type = "bandpass";
+  band.frequency.value = 1150;
+  band.Q.value = 5;
+  band.connect(out);
 
-  // Transient: a tiny high-passed noise burst gives the click its crisp edge.
+  // Two partials make the short downward "twing": a warm base tone plus a
+  // quieter octave above, both easing down in pitch for the retro-futuristic feel.
+  const partials: { type: OscillatorType; f0: number; f1: number; gain: number }[] = [
+    { type: "triangle", f0: 940, f1: 660, gain: 1.0 },
+    { type: "sine", f0: 1880, f1: 1480, gain: 0.35 },
+  ];
+  for (const p of partials) {
+    const osc = ac.createOscillator();
+    osc.type = p.type;
+    osc.frequency.setValueAtTime(p.f0, now);
+    osc.frequency.exponentialRampToValueAtTime(p.f1, now + 0.05);
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(p.gain, now + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.11);
+    osc.connect(g).connect(band);
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  // A soft, low-passed transient adds a gentle attack edge - just enough click
+  // without the bright, typewriter-like snap the old version had.
   const noise = ac.createBufferSource();
-  const buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * 0.03), ac.sampleRate);
+  const buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * 0.015), ac.sampleRate);
   const data = buf.getChannelData(0);
   for (let i = 0; i < data.length; i++) {
     data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
   }
   noise.buffer = buf;
-  const hp = ac.createBiquadFilter();
-  hp.type = "highpass";
-  hp.frequency.value = 2400;
+  const lp = ac.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = 3200;
   const noiseGain = ac.createGain();
-  noiseGain.gain.setValueAtTime(0.35, now);
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.025);
-  noise.connect(hp).connect(noiseGain).connect(out);
+  noiseGain.gain.setValueAtTime(0.16, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.012);
+  noise.connect(lp).connect(noiseGain).connect(out);
   noise.start(now);
-  noise.stop(now + 0.03);
+  noise.stop(now + 0.015);
 }
 
 // Elements whose activation should click. Covers buttons, links, the custom
