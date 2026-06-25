@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { GitMerge, CheckCircle2 } from "lucide-react";
+import { GitMerge, CheckCircle2, AlertTriangle } from "lucide-react";
 import { api, type Conflict, type Profile } from "@/lib/api";
 import { ConflictCard } from "@/components/ConflictCard";
 import { Select } from "@/components/ui/select";
@@ -26,6 +26,7 @@ export function ConflictsView({
   const t = useT();
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
     if (!activeProfile) { setConflicts([]); setLoading(false); return; }
@@ -33,8 +34,12 @@ export function ConflictsView({
     try {
       const r = await api.conflicts(activeProfile);
       setConflicts(r.conflicts ?? []);
+      setLoadError(false);
     } catch {
-      setConflicts([]);
+      // Don't blank the list on a transient error - that looks like "all
+      // conflicts resolved" when really the check just failed. Keep what we have
+      // and flag the error instead.
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -42,8 +47,11 @@ export function ConflictsView({
 
   useEffect(() => { load(); }, [load, refreshTick]);
 
-  const handleResolved = useCallback(() => {
-    load();
+  // After a resolve, the disable endpoint already returns the recomputed list -
+  // use it directly when present so the remaining conflicts never flicker away.
+  const handleResolved = useCallback((updated?: Conflict[]) => {
+    if (updated) { setConflicts(updated); setLoadError(false); }
+    else load();
     onResolved();
   }, [load, onResolved]);
 
@@ -80,9 +88,19 @@ export function ConflictsView({
         {loading ? (
           <EmptyState icon={GitMerge} title={t("conflicts.checking")} />
         ) : conflicts.length === 0 ? (
-          <EmptyState icon={CheckCircle2} title={t("conflicts.noneTitle")} subtitle={t("conflicts.noneSubtitle")} />
+          loadError ? (
+            <EmptyState icon={AlertTriangle} title={t("conflicts.checkFailedTitle")} subtitle={t("conflicts.checkFailedSubtitle")} />
+          ) : (
+            <EmptyState icon={CheckCircle2} title={t("conflicts.noneTitle")} subtitle={t("conflicts.noneSubtitle")} />
+          )
         ) : (
           <div className="mx-auto max-w-3xl space-y-3">
+            {loadError && (
+              <div className="flex items-center gap-2 rounded-md border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.1)] px-3 py-2 text-xs text-[hsl(var(--warning))]">
+                <AlertTriangle className="size-4 shrink-0" />
+                {t("conflicts.checkStale")}
+              </div>
+            )}
             {conflicts.map((c) => (
               <ConflictCard
                 key={c.id}

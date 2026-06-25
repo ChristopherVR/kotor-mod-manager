@@ -30,7 +30,7 @@ interface ConflictCardProps {
   conflict: Conflict;
   profile: string;
   addLog: (message: string, tag?: string) => void;
-  onResolved: () => void;
+  onResolved: (conflicts?: Conflict[]) => void;
 }
 
 export function ConflictCard({ conflict, profile, addLog, onResolved }: ConflictCardProps) {
@@ -47,14 +47,19 @@ export function ConflictCard({ conflict, profile, addLog, onResolved }: Conflict
     if (busy || !profile || modIds.length === 0) return;
     setBusy(true);
     try {
+      // The disable endpoint returns the freshly recomputed conflict list, so we
+      // hand that straight back to the parent - no second fetch that could race
+      // or fail and blank the whole view.
+      let latest: Conflict[] | undefined;
       for (const id of modIds) {
-        await api.libraryDisable(profile, id);
+        const r = await api.libraryDisable(profile, id);
+        if (r.conflicts) latest = r.conflicts;
       }
       const names = modIds
         .map((id) => conflict.participants.find((p) => p.mod_id === id)?.mod_name ?? id)
         .join(", ");
       addLog(t("conflicts.resolvedLog", { mods: names }), "success");
-      onResolved();
+      onResolved(latest);
     } catch (e: any) {
       addLog(t("conflicts.resolveFailed", { error: e?.message ?? "error" }), "error");
     } finally {

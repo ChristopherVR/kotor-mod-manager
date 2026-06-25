@@ -206,10 +206,10 @@ export const api = {
     req<LibraryDetail>(
       `/api/library/${id}?profile=${encodeURIComponent(profile)}`),
   libraryEnable: (profile: string, id: string) =>
-    req<{ ok: boolean }>(
+    req<{ ok: boolean; mod?: LibraryMod; conflicts?: Conflict[] }>(
       `/api/library/${id}/enable?profile=${encodeURIComponent(profile)}`, { method: "POST" }),
   libraryDisable: (profile: string, id: string) =>
-    req<{ ok: boolean }>(
+    req<{ ok: boolean; mod?: LibraryMod; conflicts?: Conflict[] }>(
       `/api/library/${id}/disable?profile=${encodeURIComponent(profile)}`, { method: "POST" }),
   libraryUninstall: (profile: string, id: string, force = false) =>
     req<{ ok: boolean }>(
