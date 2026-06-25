@@ -680,6 +680,62 @@ def get_credentials() -> dict:
     return {"username": u}
 
 
+# ---------------------------------------------------------------------------
+# Mod build source site (where build guides are scraped from)
+# ---------------------------------------------------------------------------
+
+_SOURCE_SITE_KEYRING = "kotor_mod_installer_source"
+
+
+def _source_has_password(username: str) -> bool:
+    if not username:
+        return False
+    try:
+        import keyring
+        return bool(keyring.get_password(_SOURCE_SITE_KEYRING, username))
+    except Exception:
+        return False
+
+
+@app.get("/api/source-site")
+def get_source_site() -> dict:
+    conf = cfg.load()
+    username = conf.get("source_site_username", "")
+    return {
+        "url": conf.get("source_site_url", "") or "https://kotor.neocities.org",
+        "username": username,
+        "has_password": _source_has_password(username),
+    }
+
+
+@app.post("/api/source-site")
+def set_source_site(req: SourceSiteRequest) -> dict:
+    conf = cfg.load()
+    if req.url:
+        url = req.url.strip()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            return JSONResponse(status_code=400, content={"ok": False, "error": "invalid_url"})
+        conf["source_site_url"] = url
+    old_username = conf.get("source_site_username", "")
+    conf["source_site_username"] = req.username.strip()
+    cfg.save(conf)
+
+    # Manage the password in the OS keyring (never in the JSON config).
+    try:
+        import keyring
+        if req.clear_password and old_username:
+            try:
+                keyring.delete_password(_SOURCE_SITE_KEYRING, old_username)
+            except Exception:
+                pass
+        elif req.password and req.username.strip():
+            keyring.set_password(_SOURCE_SITE_KEYRING, req.username.strip(), req.password)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"keyring_error: {e}"})
+
+    return {"ok": True, "has_password": _source_has_password(conf["source_site_username"])}
+
+
 @app.post("/api/install/start")
 def install_start(req: StartInstallRequest) -> dict:
     if state.pipeline and state.pipeline.is_running:

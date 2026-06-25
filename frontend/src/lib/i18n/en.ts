@@ -232,6 +232,18 @@ export const en: Dict = {
   "settings.nexus.valid": "Key valid - signed in as {name}",
   "settings.nexus.invalid": "Key invalid or could not be verified.",
 
+  // Settings → Account: mod build source (scraping) site
+  "settings.source.title": "Mod build source",
+  "settings.source.hint": "Where build guides are read from. The built-in guides are public, but you can point this at another site and save a login for sources that need one.",
+  "settings.source.url": "Source site",
+  "settings.source.username": "Username",
+  "settings.source.password": "Password",
+  "settings.source.optional": "Optional",
+  "settings.source.passwordSaved": "Saved - leave blank to keep",
+  "settings.source.hasPassword": "A login is saved for this source.",
+  "settings.source.noLoginNeeded": "No login is required for the built-in guides.",
+  "settings.source.saved": "Saved mod build source settings.",
+  "settings.source.saveFailed": "Couldn't save source settings: {error}",
 
   // Settings → Patcher
   "settings.patcher.title": "Patcher engine",

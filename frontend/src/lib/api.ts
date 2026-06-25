@@ -7,12 +7,14 @@ const WS_URL = `ws://${BACKEND_HOST}:${BACKEND_PORT}/ws`;
 
 export type ModStatus =
   | "PENDING" | "DOWNLOADING" | "EXTRACTING" | "READY" | "INSTALLING"
-  | "WAITING_PATCHER" | "DONE" | "SKIPPED" | "ERROR";
+  | "WAITING_PATCHER" | "DONE" | "SKIPPED" | "MANUAL" | "ERROR";
 
 export interface BuildInfo {
   key: string;
   label: string;
   game: string;
+  custom?: boolean;
+  url?: string;
 }
 
 export interface BuildMod {
@@ -128,6 +130,7 @@ export type WsEvent =
   | { type: "status"; file_id: string; status: ModStatus; status_label: string; detail: string }
   | { type: "progress"; file_id: string; pct: number; kb: number; total_kb: number }
   | { type: "install_progress"; file_id: string; pct: number; label: string }
+  | { type: "manual"; file_id: string; name: string; folder: string; readme: string }
   | { type: "update_progress"; pct: number; downloaded: number; total: number }
   | { type: "library"; event: "import_folder_done"; count: number; [k: string]: unknown }
   | { type: "pipeline"; event: "started" | "finished"; [k: string]: unknown };
