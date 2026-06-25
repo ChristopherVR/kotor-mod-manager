@@ -1,5 +1,6 @@
 """Authentication and downloading from deadlystream.com."""
 
+import os
 import re
 import threading
 from pathlib import Path
@@ -203,12 +204,15 @@ class DeadlyStreamClient:
         slug: str = "",
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         cancel_event: Optional[threading.Event] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> Path:
         """
         Download a (single-file) submission from deadlystream.
 
         progress_callback(bytes_downloaded, total_bytes, filename)
         cancel_event: set() to abort mid-download
+        pause_event: when provided, a CLEARED event pauses the download in place;
+        setting it again resumes from where it left off (HTTP range request).
         Returns the local path of the downloaded file.
         """
         page_url = self._file_page_url(file_id, slug)
@@ -220,6 +224,7 @@ class DeadlyStreamClient:
             download_url, dest_dir, file_id,
             progress_callback=progress_callback,
             cancel_event=cancel_event,
+            pause_event=pause_event,
             referer=page_url,
         )
 
@@ -382,6 +387,7 @@ class DeadlyStreamClient:
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         cancel_event: Optional[threading.Event] = None,
         keep_names: Optional[list[str]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> list[Path]:
         """
         Download files in a (possibly multi-file) submission.
@@ -405,6 +411,7 @@ class DeadlyStreamClient:
                     rec["url"], dest_dir, file_id,
                     progress_callback=progress_callback,
                     cancel_event=cancel_event,
+                    pause_event=pause_event,
                     fallback_name=rec["name"],
                     referer=referer,
                     keep_names=names,
@@ -433,8 +440,16 @@ class DeadlyStreamClient:
         fallback_name: str = "",
         referer: str = "",
         keep_names: Optional[list[str]] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> "Path | None":
         headers = {"Referer": referer} if referer else {}
+
+        def _paused() -> bool:
+            return pause_event is not None and not pause_event.is_set()
+
+        def _aborted() -> bool:
+            return cancel_event is not None and cancel_event.is_set()
+
         resp = self._session.get(
             download_url, stream=True, timeout=60, allow_redirects=True, headers=headers
         )
@@ -444,6 +459,7 @@ class DeadlyStreamClient:
         # back as HTML (HTTP 200). Don't write an HTML page into a .zip.
         ctype = resp.headers.get("Content-Type", "").lower()
         if "text/html" in ctype:
+            resp.close()
             raise DownloadError(
                 "Expected a file but received an HTML page (login, CSRF, or "
                 f"download-confirm issue) for {download_url}"
@@ -467,17 +483,67 @@ class DeadlyStreamClient:
 
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / filename
+        # Stream into a .part file so a half-finished download is never mistaken
+        # for a complete archive; rename to the real name only once it's done.
+        part_path = dest_dir / (filename + ".part")
 
         total = int(resp.headers.get("Content-Length", 0))
         downloaded = 0
-        with open(dest_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=65536):
-                if cancel_event and cancel_event.is_set():
-                    dest_path.unlink(missing_ok=True)
+        current = resp
+        from installer.fs_retry import with_lock_retry
+        f = with_lock_retry(lambda: open(part_path, "wb"))
+        try:
+            while True:
+                paused = False
+                for chunk in current.iter_content(chunk_size=65536):
+                    if _aborted():
+                        f.close()
+                        current.close()
+                        part_path.unlink(missing_ok=True)
+                        raise DownloadError("Download cancelled.")
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if progress_callback:
+                            progress_callback(downloaded, total, filename)
+                    # Check AFTER writing so `downloaded` is exact for the resume
+                    # range request - we must not drop the chunk we just pulled.
+                    if _paused():
+                        paused = True
+                        break
+                current.close()
+                if not paused:
+                    break
+
+                # Paused: flush what we have to disk, then wait to be resumed.
+                f.flush()
+                os.fsync(f.fileno())
+                while _paused() and not _aborted():
+                    pause_event.wait(timeout=0.25)
+                if _aborted():
+                    f.close()
+                    part_path.unlink(missing_ok=True)
                     raise DownloadError("Download cancelled.")
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if progress_callback:
-                        progress_callback(downloaded, total, filename)
+
+                # Resume: ask the server to continue from where we stopped.
+                current = self._session.get(
+                    download_url, stream=True, timeout=60, allow_redirects=True,
+                    headers={**headers, "Range": f"bytes={downloaded}-"},
+                )
+                current.raise_for_status()
+                if current.status_code != 206:
+                    # Server ignored the range (sent the whole file again) - start
+                    # over so we don't append a duplicate body onto the partial.
+                    f.close()
+                    f = open(part_path, "wb")
+                    downloaded = 0
+                    total = int(current.headers.get("Content-Length", total)) or total
+        finally:
+            if not f.closed:
+                f.close()
+
+        # Antivirus/indexer may briefly hold the freshly written file or an old
+        # copy of the destination open (WinError 32); retry the rename past it.
+        from installer.fs_retry import with_lock_retry
+        with_lock_retry(lambda: os.replace(part_path, dest_path))
         return dest_path

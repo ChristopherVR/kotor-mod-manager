@@ -29,6 +29,9 @@ class FakeResp:
     def iter_content(self, chunk_size=65536):
         yield self._content
 
+    def close(self):
+        pass
+
 
 def _client_with_capture(get_handler):
     c = DeadlyStreamClient()

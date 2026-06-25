@@ -218,6 +218,7 @@ class Pipeline:
                 dest_dir=dest_dir,
                 progress_callback=dl_progress,
                 cancel_event=self._stop_event,
+                pause_event=self._pause_event,
                 keep_names=keep_names,
             )
             pm.archive_paths = archives
