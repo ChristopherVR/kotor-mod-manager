@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { AlertTriangle, Copy, Package } from "lucide-react";
+import { AlertTriangle, Copy, Package, Trash2 } from "lucide-react";
 import { api, type LibraryMod } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ interface LibraryRowProps {
   onConflictClick: () => void;
   onOpen: () => void;
   onContextMenu: (e: MouseEvent) => void;
+  onDelete: () => void;
 }
 
 function fmtDate(ts: number): string {
@@ -79,7 +80,7 @@ function Thumbnail({ mod }: { mod: LibraryMod }) {
 }
 
 export function LibraryRow({
-  mod, duplicate, onToggle, onConflictClick, onOpen, onContextMenu,
+  mod, duplicate, onToggle, onConflictClick, onOpen, onContextMenu, onDelete,
 }: LibraryRowProps) {
   const t = useT();
   const sub = [mod.game, mod.install_method, mod.category, fmtDate(mod.install_ts)]
@@ -125,6 +126,14 @@ export function LibraryRow({
           onCheckedChange={onToggle}
         />
       </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        title={t("library.delete")}
+        aria-label={t("library.delete")}
+        className="shrink-0 rounded-sm p-1.5 text-muted-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Trash2 className="size-4" />
+      </button>
     </div>
   );
 }

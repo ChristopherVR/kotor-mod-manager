@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
-import { FolderOpen, Library as LibraryIcon, Power, ScrollText } from "lucide-react";
+import { FolderOpen, Library as LibraryIcon, Power, ScrollText, Trash2 } from "lucide-react";
 import { api, type LibraryMod, type Profile } from "@/lib/api";
 import { LibraryRow } from "@/components/LibraryRow";
 import { ModDetail } from "@/components/ModDetail";
@@ -130,6 +130,28 @@ export function LibraryView({
     }
   };
 
+  // Delete (uninstall) a mod entirely. Baked TSLPatcher/HoloPatcher mods can't be
+  // cleanly removed without a backup, so the backend asks for confirmation
+  // (409 baked_no_backup) before we force it.
+  const deleteMod = async (mod: LibraryMod, force = false) => {
+    if (!force && !window.confirm(t("library.deleteConfirm", { name: mod.name }))) return;
+    try {
+      await api.libraryUninstall(activeProfile, mod.id, force);
+      addLog(t("library.deleted", { name: mod.name }), "success");
+      if (openMod?.id === mod.id) setOpenMod(null);
+      load();
+    } catch (e: any) {
+      if (!force && (e?.status === 409 || e?.data?.error === "baked_no_backup")) {
+        const msg = e?.data?.message || t("library.deleteBakedMessage", { name: mod.name });
+        if (window.confirm(t("library.deleteForceConfirm", { message: msg }))) {
+          deleteMod(mod, true);
+        }
+        return;
+      }
+      addLog(t("library.deleteFailed", { name: mod.name, error: e?.message ?? "error" }), "error");
+    }
+  };
+
   const openContextMenu = (e: MouseEvent, mod: LibraryMod) => {
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, mod });
@@ -145,6 +167,10 @@ export function LibraryView({
       {
         label: mod.enabled ? t("library.disable") : t("library.enable"), icon: Power,
         onSelect: () => toggle(mod, !mod.enabled), disabled: !mod.toggleable,
+      },
+      {
+        label: t("library.delete"), icon: Trash2,
+        onSelect: () => deleteMod(mod), danger: true,
       },
     ];
     return items;
@@ -237,6 +263,7 @@ export function LibraryView({
                 onConflictClick={onGoToConflicts}
                 onOpen={() => setOpenMod(m)}
                 onContextMenu={(e) => openContextMenu(e, m)}
+                onDelete={() => deleteMod(m)}
               />
             ))}
           </div>
