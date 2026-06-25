@@ -30,6 +30,8 @@ interface BuildsViewProps {
   overall: number;
   done: number;
   errors: number;
+  manual: number;
+  markManualDone: (fileId: string) => void;
   patcherMod: string | null;
   clearPatcher: () => void;
   addLog: (message: string, tag?: string) => void;
@@ -41,9 +43,9 @@ interface BuildsViewProps {
 
 export function BuildsView(props: BuildsViewProps) {
   const {
-    ready, loggedIn, builds, selectedBuild, onSelectBuild, mods, setMods, runtime, resetRuntime,
-    activeFileId, running, paused, overall, done, errors, patcherMod, clearPatcher, addLog,
-    setRunning, setPaused, requestLogin, activeProfile,
+    ready, loggedIn, builds, refreshBuilds, selectedBuild, onSelectBuild, mods, setMods, runtime,
+    resetRuntime, activeFileId, running, paused, overall, done, errors, manual, markManualDone,
+    patcherMod, clearPatcher, addLog, setRunning, setPaused, requestLogin, activeProfile,
   } = props;
 
   const t = useT();
@@ -174,10 +176,27 @@ export function BuildsView(props: BuildsViewProps) {
 
   const openDownloadFolder = async (mod: BuildMod) => {
     try {
-      await api.openDownloadFolder(mod.file_id, mod.slug, mod.game);
+      const r = await api.openDownloadFolder(mod.file_id, mod.slug, mod.game);
+      if (r.fallback) addLog(t("builds.downloadFolderMissing", { name: mod.name }), "info");
     } catch {
       addLog(t("builds.downloadFolderMissing", { name: mod.name }), "warning");
     }
+  };
+
+  // Open the extracted folder for a mod the player must install by hand.
+  const openManualFolder = async (mod: BuildMod) => {
+    const folder = runtime[mod.file_id]?.manualFolder;
+    try {
+      if (folder) await api.openPath(folder);
+      else await api.openDownloadFolder(mod.file_id, mod.slug, mod.game);
+    } catch {
+      addLog(t("builds.downloadFolderMissing", { name: mod.name }), "warning");
+    }
+  };
+
+  const markDone = (mod: BuildMod) => {
+    markManualDone(mod.file_id);
+    addLog(t("builds.manualMarkedDone", { name: mod.name }), "success");
   };
 
   const menuItems = (mod: BuildMod): ContextMenuItem[] => [
@@ -197,7 +216,9 @@ export function BuildsView(props: BuildsViewProps) {
             {mods.length > 0
               ? errors
                 ? t("builds.summaryErrors", { count: mods.length, done, total: mods.length, errors })
-                : t("builds.summary", { count: mods.length, done, total: mods.length })
+                : manual
+                  ? t("builds.summaryManual", { count: mods.length, done, total: mods.length, manual })
+                  : t("builds.summary", { count: mods.length, done, total: mods.length })
               : t("builds.subtitle")}
           </p>
         </div>
@@ -283,6 +304,8 @@ export function BuildsView(props: BuildsViewProps) {
             selectable={!running}
             selected={selected}
             onToggle={toggleMod}
+            onManualOpen={openManualFolder}
+            onManualDone={markDone}
           />
         </div>
       </div>

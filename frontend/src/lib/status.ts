@@ -12,6 +12,7 @@ export const STATUS_META: Record<ModStatus, { label: string; variant: BadgeVaria
   WAITING_PATCHER: { label: "Patcher",     variant: "warning",     dot: "bg-[hsl(var(--warning))]" },
   DONE:            { label: "Done",        variant: "success",     dot: "bg-[hsl(var(--success))]" },
   SKIPPED:         { label: "Skipped",     variant: "muted",       dot: "bg-muted-foreground" },
+  MANUAL:          { label: "Manual step", variant: "warning",     dot: "bg-[hsl(var(--warning))]" },
   ERROR:           { label: "Error",       variant: "destructive", dot: "bg-destructive" },
 };
 

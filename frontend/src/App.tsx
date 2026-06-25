@@ -182,6 +182,17 @@ export default function App() {
           [e.file_id]: { ...(prev[e.file_id] ?? DEFAULT_RUNTIME), progress: e.pct * 100, progressLabel: e.label },
         }));
         break;
+      case "manual":
+        setActiveFileId(e.file_id);
+        setRuntime((prev) => ({
+          ...prev,
+          [e.file_id]: {
+            ...(prev[e.file_id] ?? DEFAULT_RUNTIME),
+            status: "MANUAL", detail: e.folder, progress: 100,
+            manualFolder: e.folder, manualReadme: e.readme,
+          },
+        }));
+        break;
       case "library":
         if (e.event === "import_folder_done") {
           addLog(`Imported ${e.count} mod(s) from folder.`, "success");
@@ -193,8 +204,11 @@ export default function App() {
         if (e.event === "started") { setRunning(true); setPaused(false); }
         else if (e.event === "finished") {
           setRunning(false); setPaused(false); setActiveFileId(null); setPatcherMod(null);
-          addLog(`Finished: ${e.done}/${e.total} installed${e.errors ? `, ${e.errors} error(s)` : ""}.`,
-            e.errors ? "warning" : "success");
+          addLog(
+            `Finished: ${e.done}/${e.total} installed` +
+              (e.manual ? `, ${e.manual} need a manual step` : "") +
+              (e.errors ? `, ${e.errors} error(s)` : "") + ".",
+            e.errors ? "warning" : e.manual ? "info" : "success");
           refreshConflicts();
           setDataTick((t) => t + 1);
         }
@@ -206,16 +220,27 @@ export default function App() {
   const patcherRef = useRef<string | null>(null);
   useEffect(() => { patcherRef.current = patcherMod; }, [patcherMod]);
 
-  // Overall progress = finished / total.
-  const { done, errors, overall } = useMemo(() => {
-    let d = 0, er = 0;
+  // Overall progress = finished / total. MANUAL counts as finished (the app has
+  // done all it can; the player just has a few hand steps left) but is tracked
+  // separately so it never reads as a failure.
+  const { done, errors, manual, overall } = useMemo(() => {
+    let d = 0, er = 0, mn = 0;
     for (const m of mods) {
       const st = runtime[m.file_id]?.status;
       if (st === "DONE" || st === "SKIPPED") d++;
+      else if (st === "MANUAL") { d++; mn++; }
       else if (st === "ERROR") { d++; er++; }
     }
-    return { done: d, errors: er, overall: mods.length ? (d / mods.length) * 100 : 0 };
+    return { done: d, errors: er, manual: mn, overall: mods.length ? (d / mods.length) * 100 : 0 };
   }, [mods, runtime]);
+
+  // Player marked a manual mod as finished by hand - reflect it as done.
+  const markManualDone = useCallback((fileId: string) => {
+    setRuntime((prev) => ({
+      ...prev,
+      [fileId]: { ...(prev[fileId] ?? DEFAULT_RUNTIME), status: "DONE", progress: 100 },
+    }));
+  }, []);
 
   const handleSignOut = useCallback(() => {
     api.logout().catch(() => {});
@@ -253,6 +278,8 @@ export default function App() {
           overall={overall}
           done={done}
           errors={errors}
+          manual={manual}
+          markManualDone={markManualDone}
           patcherMod={patcherMod}
           clearPatcher={() => setPatcherMod(null)}
           addLog={addLog}

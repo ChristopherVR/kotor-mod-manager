@@ -32,7 +32,20 @@ class ModStatus(Enum):
     WAITING_PATCHER  = "Waiting for patcher..."
     DONE             = "Done"
     SKIPPED          = "Skipped"
+    MANUAL           = "Manual install needed"
     ERROR            = "Error"
+
+
+class ManualInstallRequired(Exception):
+    """
+    Raised when a mod can only be installed by hand (no recognised auto-install
+    method). Not a failure - it carries the extracted folder and any readme so
+    the UI can guide the player through finishing it.
+    """
+    def __init__(self, mod_root: Path, readme: str = ""):
+        self.mod_root = mod_root
+        self.readme = readme
+        super().__init__(f"Manual install required: {mod_root}")
 
 
 @dataclass
@@ -67,6 +80,7 @@ StatusCallback   = Callable[[str, ModStatus, str], None]  # (file_id, status, de
 LogCallback      = Callable[[str, str], None]              # (message, tag)
 ProgressCB       = Callable[[str, float, int, int], None]  # (file_id, pct, kb, total_kb)
 InstallProgressCB = Callable[[str, float, str], None]      # (file_id, pct, label)
+ManualCB         = Callable[[str, str, str, str], None]     # (file_id, name, folder, readme)
 
 
 class Pipeline:
@@ -80,6 +94,7 @@ class Pipeline:
         on_log: Optional[LogCallback] = None,
         on_progress: Optional[ProgressCB] = None,
         on_install_progress: Optional[InstallProgressCB] = None,
+        on_manual: Optional[ManualCB] = None,
         auto_unattended: bool = False,
         game_key: str = "",
         game_type: str = "",
@@ -93,6 +108,7 @@ class Pipeline:
         self._on_log = on_log
         self._on_progress = on_progress
         self._on_install_progress = on_install_progress
+        self._on_manual = on_manual
         # When True, never fall back to a manual GUI click (fully unattended).
         self._auto_unattended = auto_unattended
         # Mod-manager recording. game_key is the manifest scope (profile id or
@@ -254,6 +270,7 @@ class Pipeline:
 
         self._set_status(pm, ModStatus.INSTALLING)
         total = len(pm.plans)
+        manual: Optional[ManualInstallRequired] = None
         try:
             for i, plan in enumerate(pm.plans, 1):
                 if total > 1:
@@ -262,25 +279,47 @@ class Pipeline:
                     self._log(f"  Method: {plan.method.name}", "muted")
                 self._install_progress(pm, (i - 1) / total, f"{plan.method.name} ({i}/{total})")
                 pre = self._pre_install_snapshot(plan)
-                self._install_one(pm, plan)
+                try:
+                    self._install_one(pm, plan)
+                except ManualInstallRequired as m:
+                    # Not a failure: this component needs hand-installing. Remember
+                    # it, finish any other components, then flag the mod as manual.
+                    manual = m
+                    continue
                 self._record_install(pm, plan, pre)
                 self._install_progress(pm, i / total, "Done")
 
-            self._set_status(pm, ModStatus.DONE)
-            note = f" via {pm.strategy_used}" if pm.strategy_used else ""
-            self._log(f"  Installed.{note}", "success")
+            if manual is not None:
+                self._flag_manual(pm, manual)
+            else:
+                self._set_status(pm, ModStatus.DONE)
+                note = f" via {pm.strategy_used}" if pm.strategy_used else ""
+                self._log(f"  Installed.{note}", "success")
         except InstallError as e:
-            self._set_status(pm, ModStatus.ERROR, str(e)[:200])
+            self._set_status(pm, ModStatus.ERROR, str(e)[:1500])
             self._log(f"  Install error: {e}", "error")
             pm.error = str(e)
         except PatcherError as e:
-            self._set_status(pm, ModStatus.ERROR, str(e)[:200])
+            self._set_status(pm, ModStatus.ERROR, str(e)[:1500])
             self._log(f"  Patcher error: {e}", "error")
             pm.error = str(e)
         except Exception as e:
-            self._set_status(pm, ModStatus.ERROR, str(e)[:200])
+            self._set_status(pm, ModStatus.ERROR, str(e)[:1500])
             self._log(f"  Unexpected install error: {e}", "error")
             pm.error = str(e)
+
+    def _flag_manual(self, pm: PipelineMod, manual: ManualInstallRequired) -> None:
+        """Mark a mod as needing a manual install and hand the UI the details."""
+        mod = pm.build_mod
+        folder = str(manual.mod_root) if manual.mod_root else ""
+        self._set_status(pm, ModStatus.MANUAL, folder)
+        self._log(
+            f"  This mod can't be installed automatically - it needs a few manual "
+            f"steps. Its files are ready in: {folder}", "warning")
+        if manual.readme:
+            self._log("  Follow the mod's own instructions (readme shown in the app).", "muted")
+        if self._on_manual:
+            self._on_manual(mod.file_id, mod.name, folder, manual.readme or "")
 
     def _install_one(self, pm: PipelineMod, plan: InstallPlan) -> None:
         game_path = self._game_path
@@ -373,14 +412,7 @@ class Pipeline:
 
         # ---- Manual ----
         elif method == InstallMethod.MANUAL:
-            if plan.readme_text:
-                self._log(
-                    f"  [MANUAL] Requires manual installation. Readme in: {plan.mod_root}",
-                    "warning"
-                )
-            raise InstallError(
-                f"Manual install required for: {mod.name}\nMod files are at: {plan.mod_root}"
-            )
+            raise ManualInstallRequired(plan.mod_root, plan.readme_text)
 
     @staticmethod
     def _is_patcher_plan(plan: InstallPlan) -> bool:

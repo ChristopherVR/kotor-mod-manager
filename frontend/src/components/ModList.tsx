@@ -1,4 +1,5 @@
 import { useEffect, useRef, type MouseEvent } from "react";
+import { FolderOpen, CheckCircle2 } from "lucide-react";
 import type { BuildMod, ModStatus } from "@/lib/api";
 import { STATUS_META, ACTIVE_STATUSES } from "@/lib/status";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,8 @@ export interface ModRuntime {
   progress: number; // 0..100
   progressLabel: string;
   error?: string;
+  manualFolder?: string;
+  manualReadme?: string;
 }
 
 export const DEFAULT_RUNTIME: ModRuntime = {
@@ -30,6 +33,8 @@ function Row({
   selectable,
   selected,
   onToggle,
+  onManualOpen,
+  onManualDone,
 }: {
   mod: BuildMod;
   rt: ModRuntime;
@@ -38,7 +43,10 @@ function Row({
   selectable?: boolean;
   selected?: boolean;
   onToggle?: (fileId: string) => void;
+  onManualOpen?: (mod: BuildMod) => void;
+  onManualDone?: (mod: BuildMod) => void;
 }) {
+  const t = useT();
   const meta = STATUS_META[rt.status];
   const active = ACTIVE_STATUSES.includes(rt.status);
   const showBar = active && (rt.progress > 0 || rt.status !== "WAITING_PATCHER");
@@ -90,9 +98,34 @@ function Row({
         </Badge>
       </div>
       {showBar && <Progress value={rt.progress} className="ml-11 h-1" />}
-      {rt.status === "ERROR" && rt.error && (
-        <div className="ml-11 truncate text-[11px] text-destructive/90" title={rt.error}>
-          {rt.error}
+      {rt.status === "ERROR" && (rt.error || rt.detail) && (
+        <div className="ml-11 flex items-center gap-1 text-[11px] text-destructive/90">
+          <span className="truncate" title={rt.error || rt.detail}>{rt.error || rt.detail}</span>
+          {onOpen && <span className="shrink-0 underline opacity-80">{t("builds.viewError")}</span>}
+        </div>
+      )}
+      {rt.status === "MANUAL" && (
+        <div
+          className="ml-11 flex flex-wrap items-center gap-2 text-[11px] text-[hsl(var(--warning))]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="mr-1">{t("builds.manualNeeded")}</span>
+          {onManualOpen && (
+            <button
+              onClick={() => onManualOpen(mod)}
+              className="inline-flex items-center gap-1 rounded-sm border border-[hsl(var(--warning)/0.4)] px-1.5 py-0.5 transition-colors hover:bg-[hsl(var(--warning)/0.1)]"
+            >
+              <FolderOpen className="size-3" /> {t("builds.manualOpenFolder")}
+            </button>
+          )}
+          {onManualDone && (
+            <button
+              onClick={() => onManualDone(mod)}
+              className="inline-flex items-center gap-1 rounded-sm border border-[hsl(var(--warning)/0.4)] px-1.5 py-0.5 transition-colors hover:bg-[hsl(var(--warning)/0.1)]"
+            >
+              <CheckCircle2 className="size-3" /> {t("builds.manualMarkDone")}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -108,6 +141,8 @@ export function ModList({
   selectable,
   selected,
   onToggle,
+  onManualOpen,
+  onManualDone,
 }: {
   mods: BuildMod[];
   runtime: Record<string, ModRuntime>;
@@ -117,6 +152,8 @@ export function ModList({
   selectable?: boolean;
   selected?: Set<string>;
   onToggle?: (fileId: string) => void;
+  onManualOpen?: (mod: BuildMod) => void;
+  onManualDone?: (mod: BuildMod) => void;
 }) {
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -148,6 +185,8 @@ export function ModList({
           selectable={selectable}
           selected={selected?.has(m.file_id)}
           onToggle={onToggle}
+          onManualOpen={onManualOpen}
+          onManualDone={onManualDone}
         />
       ))}
     </div>

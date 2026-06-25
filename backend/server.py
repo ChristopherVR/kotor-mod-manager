@@ -679,6 +679,10 @@ def install_start(req: StartInstallRequest) -> dict:
         hub.publish({"type": "install_progress", "file_id": file_id,
                      "pct": pct, "label": label})
 
+    def on_manual(file_id: str, name: str, folder: str, readme: str) -> None:
+        hub.publish({"type": "manual", "file_id": file_id, "name": name,
+                     "folder": folder, "readme": readme[:4000]})
+
     state.pipeline = Pipeline(
         mods=mods,
         game_path=game_path,
@@ -688,6 +692,7 @@ def install_start(req: StartInstallRequest) -> dict:
         on_log=on_log,
         on_progress=on_progress,
         on_install_progress=on_install_progress,
+        on_manual=on_manual,
         auto_unattended=req.unattended,
         game_key=scope,
         game_type=game,
@@ -701,8 +706,10 @@ def install_start(req: StartInstallRequest) -> dict:
         pl._thread.join() if pl._thread else None
         done = sum(1 for pm in pl.mods if pm.status == ModStatus.DONE)
         errors = sum(1 for pm in pl.mods if pm.status == ModStatus.ERROR)
+        manual = sum(1 for pm in pl.mods if pm.status == ModStatus.MANUAL)
         hub.publish({"type": "pipeline", "event": "finished",
-                     "done": done, "errors": errors, "total": len(pl.mods)})
+                     "done": done, "errors": errors, "manual": manual,
+                     "total": len(pl.mods)})
 
     threading.Thread(target=_watch, args=(state.pipeline,), daemon=True).start()
     return {"ok": True, "total": len(mods), "game_path": str(game_path)}

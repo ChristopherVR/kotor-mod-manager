@@ -39,6 +39,11 @@ export const en: Dict = {
   "builds.subtitle": "Choose a curated build to download and install",
   "builds.summary": "{count} mods · {done}/{total} done",
   "builds.summaryErrors": "{count} mods · {done}/{total} done · {errors} error(s)",
+  "builds.summaryManual": "{count} mods · {done}/{total} done · {manual} need a manual step",
+  "builds.manualNeeded": "Needs a few manual steps:",
+  "builds.manualOpenFolder": "Open folder",
+  "builds.manualMarkDone": "Mark as installed",
+  "builds.manualMarkedDone": "Marked \"{name}\" as installed.",
   "builds.overall": "Overall",
   "builds.loadList": "Load Mod List",
   "builds.loading": "Loading…",
@@ -197,6 +202,7 @@ export const en: Dict = {
   "settings.nexus.saving": "Saving…",
   "settings.nexus.valid": "Key valid - signed in as {name}",
   "settings.nexus.invalid": "Key invalid or could not be verified.",
+
 
   // Settings → Patcher
   "settings.patcher.title": "Patcher engine",
