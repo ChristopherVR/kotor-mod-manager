@@ -652,6 +652,15 @@ def install_start(req: StartInstallRequest) -> dict:
             status_code=400,
             content={"ok": False, "error": "game_path_required", "game": game},
         )
+    # Make sure it's actually a KOTOR install before downloading anything - a
+    # wrong folder otherwise only fails deep inside the patcher.
+    from installer.game_validate import is_kotor_install
+    if not is_kotor_install(game_path):
+        return JSONResponse(
+            status_code=400,
+            content={"ok": False, "error": "game_path_invalid",
+                     "game": game, "path": str(game_path)},
+        )
 
     conf = cfg.load()
     dl_dir = Path(conf.get("download_dir") or (Path.home() / "Downloads" / "KOTOR_Mods"))

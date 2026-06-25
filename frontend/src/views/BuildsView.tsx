@@ -147,15 +147,24 @@ export function BuildsView(props: BuildsViewProps) {
       await api.startInstall(selectedBuild, undefined, fileIds);
       setRunning(true);
     } catch (e: any) {
-      if (e?.data?.error === "game_path_required") {
-        addLog(`Select your ${e.data.game} installation folder…`, "warning");
+      const err = e?.data?.error;
+      if (err === "game_path_required" || err === "game_path_invalid") {
+        if (err === "game_path_invalid") {
+          addLog(t("builds.invalidGameFolder", { game: e.data.game, path: e.data.path ?? "" }), "warning");
+        } else {
+          addLog(t("builds.pickGameFolder", { game: e.data.game }), "warning");
+        }
         const dir = await pickDirectory();
         if (!dir) return;
         try {
           await api.startInstall(selectedBuild, dir, fileIds);
           setRunning(true);
         } catch (e2: any) {
-          addLog(`Start failed: ${e2?.message}`, "error");
+          if (e2?.data?.error === "game_path_invalid") {
+            addLog(t("builds.invalidGameFolder", { game: e2.data.game, path: e2.data.path ?? "" }), "error");
+          } else {
+            addLog(`Start failed: ${e2?.message}`, "error");
+          }
         }
       } else {
         addLog(`Start failed: ${e?.message}`, "error");

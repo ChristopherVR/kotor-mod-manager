@@ -44,6 +44,8 @@ export const es: Dict = {
   "builds.manualOpenFolder": "Abrir carpeta",
   "builds.manualMarkDone": "Marcar como instalado",
   "builds.manualMarkedDone": "\"{name}\" marcado como instalado.",
+  "builds.pickGameFolder": "Selecciona la carpeta de instalación de {game}…",
+  "builds.invalidGameFolder": "Esa carpeta no es una instalación de {game} (no se encontraron archivos del juego en {path}). Elige la carpeta que contiene chitin.key y swkotor.exe.",
   "builds.overall": "Total",
   "builds.loadList": "Cargar lista de mods",
   "builds.loading": "Cargando…",
