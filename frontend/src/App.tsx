@@ -171,6 +171,8 @@ export default function App() {
             ...(prev[e.file_id] ?? DEFAULT_RUNTIME),
             status: e.status,
             detail: e.detail,
+            // Keep the full failure reason around so it can be reviewed later.
+            ...(e.status === "ERROR" ? { error: e.detail } : {}),
             ...(FINAL.has(e.status) ? { progress: e.status === "DONE" ? 100 : prev[e.file_id]?.progress ?? 0 } : {}),
           },
         }));

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { X, ExternalLink, Loader2 } from "lucide-react";
+import { X, ExternalLink, Loader2, AlertTriangle } from "lucide-react";
 import { api, type BuildMod, type ModInfo } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,11 +9,12 @@ import { useT } from "@/lib/i18n";
 interface BuildModDetailProps {
   mod: BuildMod;
   onClose: () => void;
+  error?: string;
 }
 
 // Lightweight detail drawer for a build mod (no installed-file data - that's
 // only available once a mod is in the library).
-export function BuildModDetail({ mod, onClose }: BuildModDetailProps) {
+export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
   const t = useT();
   const [info, setInfo] = useState<ModInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
@@ -67,6 +68,16 @@ export function BuildModDetail({ mod, onClose }: BuildModDetailProps) {
 
         {/* Body */}
         <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
+          {/* Why this mod failed to install (when it did). */}
+          {error && (
+            <section className="rounded-md border border-destructive/40 bg-destructive/10 p-3">
+              <h3 className="mb-1 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-destructive">
+                <AlertTriangle className="size-3.5" /> {t("modDetail.installError")}
+              </h3>
+              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">{error}</p>
+            </section>
+          )}
+
           {/* What the installer will do automatically for this mod */}
           {summary && (
             <section className="rounded-md border border-[hsl(var(--info)/0.4)] bg-[hsl(var(--info)/0.08)] p-3">

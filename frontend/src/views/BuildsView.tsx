@@ -364,7 +364,20 @@ export function BuildsView(props: BuildsViewProps) {
         />
       )}
 
-      {openMod && <BuildModDetail mod={openMod} onClose={() => setOpenMod(null)} />}
+      {openMod && (
+        <BuildModDetail
+          mod={openMod}
+          error={runtime[openMod.file_id]?.error}
+          onClose={() => setOpenMod(null)}
+        />
+      )}
+
+      <AddBuildDialog
+        open={showAddBuild}
+        onClose={() => setShowAddBuild(false)}
+        onAdded={onBuildAdded}
+        addLog={addLog}
+      />
     </div>
   );
 }
