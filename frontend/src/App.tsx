@@ -13,7 +13,7 @@ import { BuildsView } from "@/views/BuildsView";
 import { LibraryView } from "@/views/LibraryView";
 import { ConflictsView } from "@/views/ConflictsView";
 import { ActivityView } from "@/views/ActivityView";
-import { SettingsView } from "@/views/SettingsView";
+import { SettingsView, type SettingsSectionId } from "@/views/SettingsView";
 import { type ViewId } from "@/lib/views";
 
 const FINAL = new Set(["DONE", "SKIPPED", "ERROR"]);
@@ -30,6 +30,14 @@ export default function App() {
     setViewState(v);
     if (typeof location !== "undefined") location.hash = v;
   }, []);
+
+  // Which Settings sub-section is open, so other parts of the UI (e.g. clicking
+  // the signed-in profile) can jump straight to it.
+  const [settingsSection, setSettingsSection] = useState<SettingsSectionId>("general");
+  const openSettingsSection = useCallback((s: SettingsSectionId) => {
+    setSettingsSection(s);
+    setView("settings");
+  }, [setView]);
 
   const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<AppStatus | null>(null);
@@ -260,12 +268,14 @@ export default function App() {
       conflictCount={conflictCount}
       onSignIn={() => setShowLogin(true)}
       onSignOut={handleSignOut}
+      onOpenAccount={() => openSettingsSection("account")}
     >
       {view === "builds" && (
         <BuildsView
           ready={ready}
           loggedIn={!!status?.logged_in}
           builds={builds}
+          refreshBuilds={refreshBuilds}
           selectedBuild={selectedBuild}
           onSelectBuild={setSelectedBuild}
           mods={mods}
@@ -322,6 +332,8 @@ export default function App() {
           activeProfile={activeProfile}
           setActiveProfile={setActiveProfile}
           refreshProfiles={refreshProfiles}
+          section={settingsSection}
+          setSection={setSettingsSection}
         />
       )}
 

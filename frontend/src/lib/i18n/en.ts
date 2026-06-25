@@ -33,6 +33,7 @@ export const en: Dict = {
   // Account menu (sidebar)
   "account.account": "Account",
   "account.signedIn": "Signed in",
+  "account.openSettings": "Open account settings",
 
   // Builds view
   "builds.title": "Mod Builds",

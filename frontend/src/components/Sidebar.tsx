@@ -17,10 +17,12 @@ interface SidebarProps {
   conflictCount: number;
   onSignIn: () => void;
   onSignOut: () => void;
+  onOpenAccount: () => void;
 }
 
 export function Sidebar({
-  active, onNavigate, status, username, running, overallPct, conflictCount, onSignIn, onSignOut,
+  active, onNavigate, status, username, running, overallPct, conflictCount,
+  onSignIn, onSignOut, onOpenAccount,
 }: SidebarProps) {
   const t = useT();
   const navItems = NAV_ITEMS.filter((n) => n.id !== "settings");
@@ -77,6 +79,7 @@ export function Sidebar({
           username={username}
           onSignIn={onSignIn}
           onSignOut={onSignOut}
+          onOpenAccount={onOpenAccount}
         />
       </div>
     </aside>

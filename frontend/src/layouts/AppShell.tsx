@@ -13,6 +13,7 @@ interface AppShellProps {
   conflictCount: number;
   onSignIn: () => void;
   onSignOut: () => void;
+  onOpenAccount: () => void;
   children: ReactNode;
 }
 

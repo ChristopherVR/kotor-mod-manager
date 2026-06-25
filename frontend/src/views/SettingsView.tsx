@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   SlidersHorizontal, Gamepad2, User, Zap, RefreshCw, type LucideIcon,
 } from "lucide-react";
@@ -11,7 +10,8 @@ import { PatcherSection } from "@/views/settings/PatcherSection";
 import { UpdatesSection } from "@/views/settings/UpdatesSection";
 import { useT } from "@/lib/i18n";
 
-type SectionId = "general" | "installs" | "account" | "patcher" | "updates";
+export type SettingsSectionId = "general" | "installs" | "account" | "patcher" | "updates";
+type SectionId = SettingsSectionId;
 
 const SECTIONS: { id: SectionId; labelKey: string; icon: LucideIcon }[] = [
   { id: "general", labelKey: "settings.section.general", icon: SlidersHorizontal },
@@ -31,14 +31,16 @@ interface SettingsViewProps {
   activeProfile: string;
   setActiveProfile: (id: string) => void;
   refreshProfiles: () => Promise<void> | void;
+  section: SectionId;
+  setSection: (s: SectionId) => void;
 }
 
 export function SettingsView({
   status, username, onSignIn, onSignOut, addLog,
   profiles, activeProfile, setActiveProfile, refreshProfiles,
+  section, setSection,
 }: SettingsViewProps) {
   const t = useT();
-  const [section, setSection] = useState<SectionId>("general");
 
   return (
     <div className="flex h-full flex-col">
