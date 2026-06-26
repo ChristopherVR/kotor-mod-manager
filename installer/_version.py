@@ -3,4 +3,4 @@
 Bumped automatically by the release pipeline (git-cliff). Do not edit by hand.
 """
 
-__version__ = "0.14.2"
+__version__ = "0.14.3"

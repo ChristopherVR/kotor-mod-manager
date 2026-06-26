@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.3] - 2026-06-26
+
+### Bug Fixes
+
+- Stop conflicts count from growing and remove duplicate mod names
 ## [0.14.2] - 2026-06-26
 
 ### Bug Fixes
