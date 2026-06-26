@@ -254,6 +254,45 @@ def test_benign_instruction_is_empty():
     print("PASS: benign instruction yields no risky directives")
 
 
+def test_download_ignore_and_only_stunbaton():
+    # Verbatim from the k1_full build guide for Stunbaton HD.
+    d = parse_directives(
+        'do not download the "stunbaton 2025" file; only download "Stun baton HD".'
+    )
+    assert d.download_ignore and any("stunbaton 2025" in x.lower() for x in d.download_ignore), d.download_ignore
+    assert d.download_only and any("stun baton hd" in x.lower() for x in d.download_only), d.download_only
+    print("PASS: Stunbaton HD sets download_ignore and download_only")
+
+
+def test_download_ignore_extension_hd_malak():
+    # Verbatim from the build guide for HD Darth Malak.
+    d = parse_directives(
+        "Download Instructions Do not download the .tga file."
+    )
+    assert any(".tga" in x.lower() for x in d.download_ignore), d.download_ignore
+    assert not d.download_only, d.download_only
+    print("PASS: HD Darth Malak sets download_ignore for .tga extension")
+
+
+def test_file_except_do_not_use_content_of_folder():
+    # Verbatim from Transparent Cockpit Windows TSL build guide.
+    d = parse_directives(
+        "DO NOT USE the content of the \"Korriban Distorted Model Fix\" folder, "
+        "even if you are on the Aspyr patch!"
+    )
+    assert any("korriban distorted model fix" in x.lower() for x in d.file_except), d.file_except
+    print("PASS: 'DO NOT USE content of folder' captured in file_except")
+
+
+def test_file_except_but_not_folder():
+    # Parenthetical "but NOT the X folder" exclusion.
+    d = parse_directives(
+        "Install all subfolders (but NOT the 'M4-78 with HQ Skyboxes II' folder!)."
+    )
+    assert any("m4-78" in x.lower() for x in d.file_except), d.file_except
+    print("PASS: 'but NOT the X folder' captured in file_except")
+
+
 if __name__ == "__main__":
     failures = 0
     tests = [
@@ -274,6 +313,10 @@ if __name__ == "__main__":
         test_download_ignore_not_captured_as_only,
         test_descriptive_download_mention_not_captured,
         test_do_not_download_tga_not_captured,
+        test_download_ignore_and_only_stunbaton,
+        test_download_ignore_extension_hd_malak,
+        test_file_except_do_not_use_content_of_folder,
+        test_file_except_but_not_folder,
         test_select_paths_except_filenames,
         test_select_paths_only_extension,
         test_select_paths_ignore_folder,
