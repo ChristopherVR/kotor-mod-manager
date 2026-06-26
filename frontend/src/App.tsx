@@ -214,11 +214,9 @@ export default function App() {
         if (e.event === "import_folder_done") {
           addLog(`Imported ${e.count} mod(s) from folder.`, "success");
         }
-        // Refresh conflicts on any library change (mod toggled, imported, deleted).
-        if (e.event === "import_folder_done" || e.event === "changed") {
-          refreshConflicts();
-          setDataTick((t) => t + 1);
-        }
+        // Refresh conflicts and data on any library event (import, toggle, delete).
+        refreshConflicts();
+        setDataTick((t) => t + 1);
         break;
       case "pipeline":
         if (e.event === "started") { setRunning(true); setPaused(false); }
