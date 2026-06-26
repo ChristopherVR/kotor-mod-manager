@@ -23,6 +23,18 @@ function fmtDate(ts: number): string {
   return d.toLocaleDateString();
 }
 
+const METHOD_LABELS: Record<string, string> = {
+  TSLPATCHER: "TSLPatcher",
+  HOLOPATCHER: "HoloPatcher",
+  DIRECT_COPY: "Direct copy",
+  OVERRIDE_COPY: "Override copy",
+  TLK_REPLACE: "Dialog (TLK)",
+  MULTI_VARIANT: "Multi-variant",
+  MULTIPLE: "Multiple",
+  MANUAL: "Manual",
+};
+const methodLabel = (m: string) => METHOD_LABELS[m] ?? m;
+
 // Module-level cache so thumbnails aren't re-fetched as rows mount/unmount.
 const thumbCache = new Map<string, string | null>();
 
@@ -83,7 +95,7 @@ export function LibraryRow({
   mod, duplicate, onToggle, onConflictClick, onOpen, onContextMenu, onDelete,
 }: LibraryRowProps) {
   const t = useT();
-  const sub = [mod.game, mod.install_method, mod.category, fmtDate(mod.install_ts)]
+  const sub = [mod.game, mod.install_method ? methodLabel(mod.install_method) : null, mod.category, fmtDate(mod.install_ts)]
     .filter(Boolean).join(" · ");
 
   return (
