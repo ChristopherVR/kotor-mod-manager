@@ -523,11 +523,19 @@ class Pipeline:
                 f"installed for this mod. If it was bundled it has been applied; if it "
                 f"links an external patch, install that too.", "warning")
         if dirs.multi_run:
-            self._log(
-                f"  Heads up for '{mod.name}': this mod's guide asks for the patcher to "
-                f"be run more than once (e.g. a compatibility or optional component). "
-                f"The main option was installed; re-run it for any extra options you want.",
-                "warning")
+            if dirs.multi_run_options:
+                opts_list = ", ".join(f'"{o}"' for o in dirs.multi_run_options)
+                self._log(
+                    f"  Heads up for '{mod.name}': the build guide requires the patcher "
+                    f"to be run {len(dirs.multi_run_options)} times with these options in order: "
+                    f"{opts_list}. The first option was installed automatically.",
+                    "warning")
+            else:
+                self._log(
+                    f"  Heads up for '{mod.name}': this mod's guide asks for the patcher to "
+                    f"be run more than once (e.g. a compatibility or optional component). "
+                    f"The main option was installed; re-run it for any extra options you want.",
+                    "warning")
             if mod.instructions:
                 self._log(f"    Guide: {mod.instructions[:400]}", "muted")
         for note in dirs.manual_notes[:3]:

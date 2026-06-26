@@ -133,6 +133,9 @@ class Directives:
     # When set, copy all files in the mod under this stem (keeping extensions).
     # e.g. "PLC_CompPnl_b" → PLC_CompPnl.tpc becomes PLC_CompPnl_b.tpc as well.
     rename_base_copies: str = ""
+    # Ordered list of TSLPatcher/HoloPatcher option names to run in sequence.
+    # Non-empty implies multi_run; each entry is matched via match_option_index.
+    multi_run_options: list[str] = field(default_factory=list)
     raw: str = ""
 
     def is_empty(self) -> bool:
@@ -142,6 +145,7 @@ class Directives:
             self.file_only, self.file_except,
             self.patch_first, self.requires_patch, self.multi_run,
             self.manual_notes, self.rename_copies, self.rename_base_copies,
+            self.multi_run_options,
         ])
 
     def summary(self) -> str:
@@ -159,7 +163,11 @@ class Directives:
             bits.append("applies the patch first")
         if self.requires_patch:
             bits.append("installs the required patch")
-        if self.multi_run:
+        if self.multi_run_options:
+            bits.append(f"runs the patcher {len(self.multi_run_options)} times "
+                        f"({', '.join(self.multi_run_options[:2])}"
+                        f"{', ...' if len(self.multi_run_options) > 2 else ''})")
+        elif self.multi_run:
             bits.append("runs the patcher more than once")
         return "; ".join(bits)
 
@@ -256,30 +264,94 @@ def _parse_download_choice(text: str, dirs: Directives) -> None:
 
 def _parse_file_selection(text: str, dirs: Directives) -> None:
     low = text.lower()
-    # EXCEPT <explicit files>: capture the named files to drop.
+
+    # ---- EXCLUSIONS ----
+
+    # "except X.tga, Y.tga" or "except for the Effix folder" - capture filenames and
+    # folder names after the word "except".
     if "except" in low:
-        # Take the text after the first "except" and harvest filenames there.
         after = text[low.index("except"):]
+        # Filenames (known extensions)
         names = [n for n in _FILENAME_RE.findall(after)
                  if not n.lower().endswith(_IMG_EXTS)]
         dirs.file_except.extend(names)
+        # Folder names: "except for the X folder" / "except the X folder"
+        for m in re.finditer(r"except\s+(?:for\s+)?(?:the\s+)?([A-Za-z][A-Za-z0-9 _-]{2,40}?)\s+folder", after, re.I):
+            dirs.file_except.append(m.group(1).strip())
 
-    # "ignore the MacOS folder" / "ignore the Effix folder".
-    for m in re.finditer(r"ignore the ([\w '’-]{2,40}?) folder", text, re.I):
-        dirs.file_except.append(m.group(1).strip())
+    # "delete X.tga" / "remove X.tga" before installing (pre-install exclusion).
+    # Exclude "delete from Override/game" which is a post-install cleanup instruction.
+    _POST_OVERRIDE_RE = re.compile(
+        r"\bdelete\b.{0,60}?\bfrom\s+(?:the\s+)?(?:override|your\s+game|the\s+game|the\s+install)",
+        re.I,
+    )
+    for sent in _split_sentences(text):
+        sl = sent.lower()
+        if ("delete" not in sl and "remove" not in sl) or _POST_OVERRIDE_RE.search(sent):
+            continue
+        for fn in _FILENAME_RE.findall(sent):
+            if not fn.lower().endswith(_IMG_EXTS) and _is_real_filename(fn):
+                dirs.file_except.append(fn)
 
-    # "only move the four .dds ... files" / "only move the .TGA files".
+    # "do not move/install/use X.tga" - explicit single-file negation.
     for m in re.finditer(
-        r"only (?:move|copy|install|use)[^.]*?(\.(?:dds|tga|tpc|mdl|mdx|2da))\b",
+        r"do\s+not\s+(?:move|install|include|use|overwrite)\s+"
+        r"[‘\"]?([A-Za-z0-9_.-]+\.(?:tga|tpc|dds|mdl|mdx|2da|wav|mp3|utm))[‘\"]?",
+        text, re.I,
+    ):
+        fn = m.group(1).strip()
+        if _is_real_filename(fn):
+            dirs.file_except.append(fn)
+
+    # "ignore the MacOS folder / skip the Optional folder / and the X folder"
+    # Scan full sentences that contain ignore/skip verbs for ALL folder names mentioned.
+    _FOLDER_STOPWORDS = {"all", "any", "other", "these", "those", "following", "each"}
+    for sent in _split_sentences(text):
+        if not re.search(r"\b(?:ignore|skip|do\s+not\s+(?:use|install|include))\b", sent, re.I):
+            continue
+        for m in re.finditer(
+            r"(?:ignore|skip|do\s+not\s+(?:use|install|include)|and)\s+(?:the\s+)?"
+            r"[‘\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)[‘\"]?\s+(?:sub)?folder",
+            sent, re.I,
+        ):
+            name = m.group(1).strip()
+            if name.lower() not in _FOLDER_STOPWORDS:
+                dirs.file_except.append(name)
+
+    # ---- INCLUSIONS ----
+
+    # "only move/copy the .dds files" - extension-based whitelist.
+    for m in re.finditer(
+        r"only\s+(?:move|copy|install|use)[^.]*?(\.(?:dds|tga|tpc|mdl|mdx|2da))\b",
         text, re.I,
     ):
         dirs.file_only.append(m.group(1).lower())
 
-    # "Only move the files from 'X'" / "move just the files in the base folder".
-    if re.search(r"only (move|copy|install|use) the files (from|in)", low):
+    # "only move/use the files from/in ‘QuotedFolder’" - quoted subfolder name.
+    if re.search(r"only\s+(?:move|copy|install|use)\s+the\s+files?\s+(?:from|in)\b", low):
         for q in _QUOTED_RE.findall(text):
             if not q.lower().endswith(_IMG_EXTS):
                 dirs.file_only.append(q)
+
+    # "only use the files in/from the X subfolder" (unquoted folder name).
+    for m in re.finditer(
+        r"only\s+(?:use|move|install|copy)\s+(?:the\s+)?(?:files?\s+)?(?:in|from)\s+"
+        r"(?:the\s+)?[‘\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)[‘\"]?\s+(?:sub)?folder",
+        text, re.I,
+    ):
+        name = m.group(1).strip()
+        if name.lower() not in {"base", "the", "a", "this", "that", "same"}:
+            dirs.file_only.append(name)
+
+    # "navigate to the X folder and move" - explicit subfolder navigation instruction.
+    for m in re.finditer(
+        r"(?:navigate|go)\s+(?:in)?to\s+(?:the\s+)?[‘\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)[‘\"]?"
+        r"\s+(?:sub)?folder\s+(?:and|inside|within)\s+(?:move|copy|install)",
+        text, re.I,
+    ):
+        name = m.group(1).strip()
+        if name.lower() not in {"base", "the", "a", "this", "that"}:
+            dirs.file_only.append(name)
 
     dirs.file_only = _dedupe(dirs.file_only)
     dirs.file_except = _dedupe(dirs.file_except)
@@ -298,6 +370,20 @@ def _parse_order_and_deps(text: str, dirs: Directives) -> None:
     if re.search(r"re-?run the (patcher|installer|executable)|run (it )?(again|twice)|"
                  r"run the patcher \w+ times|multi-?run|run \d+ times|"
                  r"need to be run \d+ times", low):
+        dirs.multi_run = True
+
+    # Try to extract the exact ordered option names for a multi-run install
+    # so the log message (and eventually the installer) can name them explicitly.
+    # e.g. "run once selecting Kaevee Removal Part 1, once selecting Saedhe's Head"
+    _OPTION_RUN_RE = re.compile(
+        r"(?:once|each\s+time)\s+(?:selecting|choosing|for|with)\s+"
+        r"['\"]?([A-Za-z][A-Za-z0-9 _',&-]{2,80}?)['\"]?"
+        r"(?=\s*[,;.]|\s+and\b|\s+once\b|$)",
+        re.I,
+    )
+    opts = [m.group(1).strip(" '\".,;") for m in _OPTION_RUN_RE.finditer(text)]
+    if opts and len(opts) >= 2:
+        dirs.multi_run_options = _dedupe(opts)
         dirs.multi_run = True
 
 
