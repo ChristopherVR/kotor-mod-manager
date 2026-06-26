@@ -222,8 +222,27 @@ class Pipeline:
         self._log(f"\n── [{mod.install_order:3d}] {mod.name}")
 
         try:
-            self._set_status(pm, ModStatus.DOWNLOADING)
             dest_dir = self._download_dir / f"{mod.file_id}_{mod.slug[:30]}"
+
+            # If complete archives are already on disk, skip re-downloading.
+            # This makes pressing Install again (or Retry) resumable without
+            # restarting every download from zero.
+            if dest_dir.exists():
+                cached = sorted(
+                    [f for f in dest_dir.iterdir()
+                     if not f.name.endswith(".part") and f.stat().st_size > 0],
+                    key=lambda f: f.name,
+                )
+                if cached:
+                    pm.archive_paths = cached
+                    total_kb = sum(f.stat().st_size for f in cached) // 1024
+                    for a in cached:
+                        self._log(f"  Cached: {a.name} ({a.stat().st_size // 1024} KB)")
+                    if self._on_progress:
+                        self._on_progress(mod.file_id, 1.0, total_kb, total_kb)
+                    return
+
+            self._set_status(pm, ModStatus.DOWNLOADING)
             dest_dir.mkdir(parents=True, exist_ok=True)
 
             def dl_progress(downloaded: int, total: int, filename: str) -> None:

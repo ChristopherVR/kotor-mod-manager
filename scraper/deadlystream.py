@@ -3,6 +3,7 @@
 import os
 import re
 import threading
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -492,10 +493,13 @@ class DeadlyStreamClient:
         current = resp
         from installer.fs_retry import with_lock_retry
         f = with_lock_retry(lambda: open(part_path, "wb"))
+        # Throttle progress reports to ~3 per second so the WS bus doesn't
+        # flood the frontend with hundreds of messages for a big archive.
+        _last_report: float = 0.0
         try:
             while True:
                 paused = False
-                for chunk in current.iter_content(chunk_size=65536):
+                for chunk in current.iter_content(chunk_size=1024 * 512):
                     if _aborted():
                         f.close()
                         current.close()
@@ -505,7 +509,10 @@ class DeadlyStreamClient:
                         f.write(chunk)
                         downloaded += len(chunk)
                         if progress_callback:
-                            progress_callback(downloaded, total, filename)
+                            now = time.monotonic()
+                            if now - _last_report >= 0.33:
+                                progress_callback(downloaded, total, filename)
+                                _last_report = now
                     # Check AFTER writing so `downloaded` is exact for the resume
                     # range request - we must not drop the chunk we just pulled.
                     if _paused():
@@ -541,6 +548,11 @@ class DeadlyStreamClient:
         finally:
             if not f.closed:
                 f.close()
+
+        # Final progress ping so the UI always reaches 100 % even when the
+        # last chunk happened to be sent within the throttle window.
+        if progress_callback:
+            progress_callback(downloaded, total or downloaded, filename)
 
         # Antivirus/indexer may briefly hold the freshly written file or an old
         # copy of the destination open (WinError 32); retry the rename past it.

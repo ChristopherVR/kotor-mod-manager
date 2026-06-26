@@ -112,13 +112,14 @@ export type LibraryDetail = LibraryMod & {
   baked_files: BakedFile[];
 };
 
-export interface ConflictParticipant { mod_id: string; mod_name: string; enabled: boolean; }
+export interface ConflictParticipant { mod_id: string; mod_name: string; enabled: boolean; build_key?: string | null; }
 
 export interface Conflict {
   id: string; resource: string;
   type: "override" | "2da" | "dialog" | "module" | "declared";
   severity: "info" | "warning" | "error"; participants: ConflictParticipant[];
   winner_mod_id: string | null;
+  same_build?: boolean;
   description: string;
   recommendation: string;
 }

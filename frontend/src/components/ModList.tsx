@@ -1,5 +1,5 @@
-import { useEffect, useRef, type MouseEvent } from "react";
-import { FolderOpen, CheckCircle2 } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { FolderOpen, CheckCircle2, FileText } from "lucide-react";
 import type { BuildMod, ModStatus } from "@/lib/api";
 import { STATUS_META, ACTIVE_STATUSES } from "@/lib/status";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +47,7 @@ function Row({
   onManualDone?: (mod: BuildMod) => void;
 }) {
   const t = useT();
+  const [readmeOpen, setReadmeOpen] = useState(false);
   const meta = STATUS_META[rt.status];
   const active = ACTIVE_STATUSES.includes(rt.status);
   const showBar = active && (rt.progress > 0 || rt.status !== "WAITING_PATCHER");
@@ -111,25 +112,48 @@ function Row({
       )}
       {rt.status === "MANUAL" && (
         <div
-          className="ml-11 flex flex-wrap items-center gap-2 text-[11px] text-[hsl(var(--warning))]"
+          className="ml-11 flex flex-col gap-2"
           onClick={(e) => e.stopPropagation()}
         >
-          <span className="mr-1">{t("builds.manualNeeded")}</span>
-          {onManualOpen && (
-            <button
-              onClick={() => onManualOpen(mod)}
-              className="inline-flex items-center gap-1 rounded-sm border border-[hsl(var(--warning)/0.4)] px-1.5 py-0.5 transition-colors hover:bg-[hsl(var(--warning)/0.1)]"
-            >
-              <FolderOpen className="size-3" /> {t("builds.manualOpenFolder")}
-            </button>
-          )}
-          {onManualDone && (
-            <button
-              onClick={() => onManualDone(mod)}
-              className="inline-flex items-center gap-1 rounded-sm border border-[hsl(var(--warning)/0.4)] px-1.5 py-0.5 transition-colors hover:bg-[hsl(var(--warning)/0.1)]"
-            >
-              <CheckCircle2 className="size-3" /> {t("builds.manualMarkDone")}
-            </button>
+          <div className="space-y-0.5">
+            <p className="text-[11px] font-medium text-[hsl(var(--warning))]">
+              {t("builds.manualNeeded")}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              {t("builds.manualInstructions")}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {onManualOpen && (
+              <button
+                onClick={() => onManualOpen(mod)}
+                className="inline-flex items-center gap-1 rounded-sm border border-[hsl(var(--warning)/0.4)] px-1.5 py-0.5 text-[11px] text-[hsl(var(--warning))] transition-colors hover:bg-[hsl(var(--warning)/0.1)]"
+              >
+                <FolderOpen className="size-3" /> {t("builds.manualOpenFolder")}
+              </button>
+            )}
+            {onManualDone && (
+              <button
+                onClick={() => onManualDone(mod)}
+                className="inline-flex items-center gap-1 rounded-sm border border-[hsl(var(--warning)/0.4)] px-1.5 py-0.5 text-[11px] text-[hsl(var(--warning))] transition-colors hover:bg-[hsl(var(--warning)/0.1)]"
+              >
+                <CheckCircle2 className="size-3" /> {t("builds.manualMarkDone")}
+              </button>
+            )}
+            {rt.manualReadme && (
+              <button
+                onClick={() => setReadmeOpen((v) => !v)}
+                className="inline-flex items-center gap-1 rounded-sm border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/50"
+              >
+                <FileText className="size-3" />
+                {readmeOpen ? t("builds.manualHideReadme") : t("builds.manualShowReadme")}
+              </button>
+            )}
+          </div>
+          {readmeOpen && rt.manualReadme && (
+            <pre className="max-h-52 overflow-auto rounded-md bg-muted/40 p-3 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
+              {rt.manualReadme}
+            </pre>
           )}
         </div>
       )}
