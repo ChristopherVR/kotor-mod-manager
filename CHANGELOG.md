@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.10.0] - 2026-06-26
+
+### Features
+
+- Download up to 3 mods at the same time to save waiting
 ## [0.9.0] - 2026-06-25
 
 ### Features
@@ -13,12 +18,14 @@
 - Show why a mod failed to install
 - Add your own mod builds, not just the built-in ones
 - Configure the mod build source site in Account settings
+- Show which mods are already installed when you load a mod list
 
 ### Bug Fixes
 
 - Stop installs failing when antivirus briefly locks a file
 - Keep the conflicts list from vanishing after you resolve one
 - Make "Open download folder" actually open a folder
+- Keep the conflicts badge in sync and make conflicts easier to understand
 ## [0.8.1] - 2026-06-22
 
 ### Miscellaneous
