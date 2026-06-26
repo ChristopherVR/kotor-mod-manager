@@ -38,6 +38,7 @@ export interface BuildMod {
   description?: string;
   author?: string;
   directive_summary?: string;
+  installed?: boolean;
 }
 
 export interface AppStatus {
@@ -179,9 +180,10 @@ export const api = {
   getSettings: () => req<Settings>("/api/settings"),
   setSettings: (s: Settings) =>
     req<{ ok: boolean }>("/api/settings", { method: "POST", body: JSON.stringify(s) }),
-  loadBuild: (key: string) =>
+  loadBuild: (key: string, profile?: string) =>
     req<{ ok: boolean; build_key: string; mods: BuildMod[] }>(
-      `/api/builds/${key}/load`, { method: "POST" }),
+      `/api/builds/${key}/load${profile ? `?profile=${encodeURIComponent(profile)}` : ""}`,
+      { method: "POST" }),
   startInstall: (
     build_key: string,
     game_path?: string,

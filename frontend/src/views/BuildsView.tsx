@@ -57,6 +57,7 @@ export function BuildsView(props: BuildsViewProps) {
   const [dragActive, setDragActive] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; mod: BuildMod } | null>(null);
   const [showAddBuild, setShowAddBuild] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
 
   const selectedBuildInfo = builds.find((b) => b.key === selectedBuild);
   const buildGame = selectedBuildInfo?.game ?? mods[0]?.game ?? "";
@@ -83,9 +84,9 @@ export function BuildsView(props: BuildsViewProps) {
   const labelFor = (key: string) => builds.find((b) => b.key === key)?.label ?? key;
   const patcherName = patcherMod ? mods.find((m) => m.file_id === patcherMod)?.name : null;
 
-  // Default to ALL mods selected whenever the loaded mod list changes.
+  // Select all mods by default, but skip already-installed ones.
   useEffect(() => {
-    setSelected(new Set(mods.map((m) => m.file_id)));
+    setSelected(new Set(mods.filter(m => !m.installed).map((m) => m.file_id)));
   }, [mods]);
 
   const toggleMod = (fileId: string) => {
@@ -151,9 +152,13 @@ export function BuildsView(props: BuildsViewProps) {
     setLoading(true);
     resetRuntime();
     try {
-      const r = await api.loadBuild(selectedBuild);
+      const r = await api.loadBuild(selectedBuild, activeProfile || undefined);
       setMods(r.mods);
-      addLog(`Loaded ${r.mods.length} mods for ${labelFor(selectedBuild)}.`, "success");
+      const alreadyInstalled = r.mods.filter(m => m.installed).length;
+      const msg = alreadyInstalled > 0
+        ? `Loaded ${r.mods.length} mods for ${labelFor(selectedBuild)} (${alreadyInstalled} already installed, deselected).`
+        : `Loaded ${r.mods.length} mods for ${labelFor(selectedBuild)}.`;
+      addLog(msg, "success");
     } catch (e: any) {
       addLog(`Load failed: ${e?.message}`, "error");
     } finally {
@@ -165,6 +170,7 @@ export function BuildsView(props: BuildsViewProps) {
     if (!loggedIn) { requestLogin(); return; }
     if (mods.length === 0) { addLog("Load a mod list first.", "warning"); return; }
     if (selectedCount === 0) { addLog(t("builds.selectNoneWarn"), "warning"); return; }
+    setInstallError(null);
     const fileIds = Array.from(selected);
     try {
       await api.startInstall(selectedBuild, undefined, fileIds);
@@ -183,14 +189,15 @@ export function BuildsView(props: BuildsViewProps) {
           await api.startInstall(selectedBuild, dir, fileIds);
           setRunning(true);
         } catch (e2: any) {
-          if (e2?.data?.error === "game_path_invalid") {
-            addLog(t("builds.invalidGameFolder", { game: e2.data.game, path: e2.data.path ?? "" }), "error");
-          } else {
-            addLog(`Start failed: ${e2?.message}`, "error");
-          }
+          const msg = e2?.data?.error === "game_path_invalid"
+            ? t("builds.invalidGameFolder", { game: e2.data.game, path: e2.data.path ?? "" })
+            : `Start failed: ${e2?.message}`;
+          addLog(msg, "error");
+          setInstallError(msg);
         }
       } else {
         addLog(`Start failed: ${e?.message}`, "error");
+        setInstallError(`Start failed: ${e?.message}`);
       }
     }
   };
@@ -389,13 +396,20 @@ export function BuildsView(props: BuildsViewProps) {
             <RotateCcw /> {t("builds.retry")}
           </Button>
         )}
-        <span className={cn("ml-auto text-xs", ready ? "text-muted-foreground" : "text-destructive")}>
-          {ready
-            ? running
-              ? paused ? t("builds.statusPaused") : t("builds.statusInstalling")
-              : t("builds.statusIdle")
-            : t("builds.statusConnecting")}
-        </span>
+        {installError && !running ? (
+          <span className="ml-auto flex max-w-sm items-center gap-1.5 text-xs text-destructive">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            {installError}
+          </span>
+        ) : (
+          <span className={cn("ml-auto text-xs", ready ? "text-muted-foreground" : "text-destructive")}>
+            {ready
+              ? running
+                ? paused ? t("builds.statusPaused") : t("builds.statusInstalling")
+                : t("builds.statusIdle")
+              : t("builds.statusConnecting")}
+          </span>
+        )}
       </footer>
 
       {menu && (

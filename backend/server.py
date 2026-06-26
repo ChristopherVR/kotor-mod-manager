@@ -658,7 +658,7 @@ def mod_image(url: str):
 
 
 @app.post("/api/builds/{build_key}/load")
-def load_build(build_key: str) -> dict:
+def load_build(build_key: str, profile: str = "") -> dict:
     custom = None if build_key in BUILD_URLS else cfg.get_custom_build(build_key)
     if build_key not in BUILD_URLS and not custom:
         return JSONResponse(status_code=404, content={"ok": False, "error": "Unknown build"})
@@ -671,7 +671,23 @@ def load_build(build_key: str) -> dict:
         return JSONResponse(status_code=502, content={"ok": False, "error": f"Scrape failed: {e}"})
     state.loaded_mods[build_key] = mods
     state.current_build = build_key
-    return {"ok": True, "build_key": build_key, "mods": [build_mod_to_dict(m) for m in mods]}
+
+    # Cross-reference with the installed library so the UI can flag mods the
+    # player already has. source_ref is the file_id set at install time.
+    try:
+        from installer import mod_manager as mm
+        game = _resolve_build_game(build_key)
+        scope = profile if (profile and cfg.get_profile(profile)) else game
+        manifest = mm.load_manifest(scope)
+        installed_refs = {m.source_ref for m in manifest.mods if m.source_type == "build"}
+    except Exception:
+        installed_refs = set()
+
+    return {
+        "ok": True,
+        "build_key": build_key,
+        "mods": [{**build_mod_to_dict(m), "installed": m.file_id in installed_refs} for m in mods],
+    }
 
 
 @app.get("/api/credentials")

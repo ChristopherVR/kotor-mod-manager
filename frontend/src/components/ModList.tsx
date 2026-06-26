@@ -93,9 +93,14 @@ function Row({
             {rt.progressLabel}
           </span>
         ) : null}
-        <Badge variant={meta.variant} className="shrink-0">
-          {rt.status === "DOWNLOADING" && rt.detail ? rt.detail : meta.label}
-        </Badge>
+        {mod.installed && rt.status === "PENDING" && (
+          <Badge variant="success" className="shrink-0">Installed</Badge>
+        )}
+        {(!mod.installed || rt.status !== "PENDING") && (
+          <Badge variant={meta.variant} className="shrink-0">
+            {rt.status === "DOWNLOADING" && rt.detail ? rt.detail : meta.label}
+          </Badge>
+        )}
       </div>
       {showBar && <Progress value={rt.progress} className="ml-11 h-1" />}
       {rt.status === "ERROR" && (rt.error || rt.detail) && (
