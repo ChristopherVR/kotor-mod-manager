@@ -11,6 +11,7 @@ For each mod in build order: download (up to 3 at once) → extract → detect �
 """
 import copy
 import re
+import shutil
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -303,15 +304,35 @@ class Pipeline:
         if self._stop_event.is_set():
             return
 
-        # ---- Extract each archive ----
+        # ---- Extract archives; treat loose mod files (e.g. .tga) as direct copies ----
+        _ARCHIVE_SUFFIXES = {".zip", ".rar", ".7z", ".exe"}
         try:
             self._set_status(pm, ModStatus.EXTRACTING)
+            loose_files: list[Path] = []
             for archive in pm.archive_paths:
-                extracted = extract(archive)
-                pm.extracted_paths.append(extracted)
-                self._log(f"  Extracted: {extracted.name}")
+                if archive.suffix.lower() in _ARCHIVE_SUFFIXES:
+                    extracted = extract(archive)
+                    pm.extracted_paths.append(extracted)
+                    self._log(f"  Extracted: {extracted.name}")
+                else:
+                    # Loose mod file distributed without an archive wrapper (e.g. a
+                    # .tga texture). Queue it for direct copy rather than extraction.
+                    loose_files.append(archive)
+
+            if loose_files:
+                loose_dir = pm.archive_paths[0].parent / "_loose"
+                loose_dir.mkdir(exist_ok=True)
+                for f in loose_files:
+                    shutil.copy2(f, loose_dir / f.name)
+                pm.extracted_paths.append(loose_dir)
+                self._log(f"  Loose files: {', '.join(f.name for f in loose_files)}")
         except ExtractionError as e:
             self._set_status(pm, ModStatus.ERROR, str(e))
+            self._log(f"  Extraction failed: {e}", "error")
+            pm.error = str(e)
+            return
+        except Exception as e:
+            self._set_status(pm, ModStatus.ERROR, str(e)[:1500])
             self._log(f"  Extraction failed: {e}", "error")
             pm.error = str(e)
             return

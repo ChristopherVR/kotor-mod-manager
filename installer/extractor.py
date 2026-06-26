@@ -173,7 +173,12 @@ def extract(archive: Path, dest: Optional[Path] = None) -> Path:
             _extract_zip(archive, dest)
         except zipfile.BadZipFile:
             if HAS_7Z:
-                _extract_7z(archive, dest)
+                try:
+                    _extract_7z(archive, dest)
+                except Exception as e:
+                    raise ExtractionError(
+                        f"Cannot extract '{archive.name}': {e}"
+                    ) from e
             else:
                 raise ExtractionError(f"Unsupported archive format: {suffix}")
 
