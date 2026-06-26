@@ -54,6 +54,47 @@ _QUOTED_RE = re.compile(r"[\"“‘']([^\"”’']{2,60})[\"”’']")
 
 _IMG_EXTS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
 
+# "copy X ... rename ... to Y" - copy a file under a new name in addition to the original.
+# Handles: "make a copy of N_Duros02.tga, rename to N_Duros04.tga",
+#           "copy the file 'LDA_EHawk01' ... Rename this duplicate to 'M36_EHawk01.tga'",
+#           "Make a copy of N_CommM0801 ... Rename that duplicate file to 'N_CommM08.tga'".
+_RENAME_COPY_RE = re.compile(
+    r"(?:make\s+(?:a\s+)?(?:copy|duplicate)\s+of\s+|copy\s+(?:the\s+)?(?:file\s+)?)"
+    r"['\"]?([A-Za-z0-9_.-]+)['\"]?"
+    r".{0,300}?"
+    r"(?:rename\b.{0,60}?\bto\s+|creating\s+)"  # flexible: "rename ... to" or "creating"
+    r"['\"]?([A-Za-z0-9_.-]+\.[a-z0-9]+)['\"]?",
+    re.I | re.S,
+)
+
+# "repeat with SRC creating DST" - additional copy-rename pair after the first.
+_RENAME_REPEAT_RE = re.compile(
+    r"repeat\s+with\s+['\"]?([A-Za-z0-9_.-]+\.[a-z0-9]+)['\"]?"
+    r"\s+creating\s+['\"]?([A-Za-z0-9_.-]+\.[a-z0-9]+)['\"]?",
+    re.I,
+)
+
+# "creating X and Y" - second destination name attached to a preceding source.
+_RENAME_AND_RE = re.compile(
+    r"creating\s+['\"]?([A-Za-z0-9_.-]+\.[a-z0-9]+)['\"]?"
+    r"\s+and\s+['\"]?([A-Za-z0-9_.-]+\.[a-z0-9]+)['\"]?",
+    re.I,
+)
+
+# "rename copies to BASENAME retaining file extensions" - copy all files, replacing stem.
+_RENAME_BASE_RE = re.compile(
+    r"rename\s+copies?\s+to\s+([A-Za-z0-9_-]+)\s+retaining\s+(?:file\s+)?extensions?",
+    re.I,
+)
+
+# "rename it/this/the file FILENAME" - copy all files under this new stem.
+# Used when the source is vague ("the file") but the destination is named.
+_RENAME_IT_RE = re.compile(
+    r"\brename\s+(?:it|this|the\s+(?:file|copy|duplicate))\s+(?:to\s+|as\s+)?"
+    r"['\"]?([A-Za-z0-9_-]+)(?:\.[a-z0-9]+)?['\"]?",
+    re.I,
+)
+
 # Generic words that must never drive namespace selection on their own.
 _PREF_STOPWORDS = {
     "only", "main", "file", "files", "this", "that", "mods", "mod", "content",
@@ -86,6 +127,12 @@ class Directives:
     multi_run: bool = False
     # Free-text cautions we surface to the user but cannot fully automate.
     manual_notes: list[str] = field(default_factory=list)
+    # File copy-and-rename pairs: [(src_filename, dst_filename), ...].
+    # Installer creates an additional copy of src under the dst name.
+    rename_copies: list = field(default_factory=list)
+    # When set, copy all files in the mod under this stem (keeping extensions).
+    # e.g. "PLC_CompPnl_b" → PLC_CompPnl.tpc becomes PLC_CompPnl_b.tpc as well.
+    rename_base_copies: str = ""
     raw: str = ""
 
     def is_empty(self) -> bool:
@@ -94,7 +141,7 @@ class Directives:
             self.download_only, self.download_ignore,
             self.file_only, self.file_except,
             self.patch_first, self.requires_patch, self.multi_run,
-            self.manual_notes,
+            self.manual_notes, self.rename_copies, self.rename_base_copies,
         ])
 
     def summary(self) -> str:
@@ -254,6 +301,46 @@ def _parse_order_and_deps(text: str, dirs: Directives) -> None:
         dirs.multi_run = True
 
 
+def _parse_rename_copies(text: str, dirs: Directives) -> None:
+    """Parse copy-and-rename directives from build guide instructions."""
+    pairs: list[tuple[str, str]] = []
+
+    for src, dst in _RENAME_COPY_RE.findall(text):
+        src, dst = src.strip(" '\""), dst.strip(" '\"")
+        if src and dst and src.lower() != dst.lower():
+            pairs.append((src, dst))
+
+    # "repeat with SRC creating DST" - additional pair using a different source.
+    for src, dst in _RENAME_REPEAT_RE.findall(text):
+        src, dst = src.strip(" '\""), dst.strip(" '\"")
+        if src and dst and src.lower() != dst.lower():
+            pairs.append((src, dst))
+
+    # "creating X and Y" - two destinations from a single preceding source.
+    for m in _RENAME_AND_RE.finditer(text):
+        name1, name2 = m.group(1).strip(), m.group(2).strip()
+        src_for = next((s for s, d in pairs if d.lower() == name1.lower()), None)
+        if src_for and not any(d.lower() == name2.lower() for _, d in pairs):
+            pairs.append((src_for, name2))
+
+    seen: set[str] = set()
+    for src, dst in pairs:
+        key = f"{src.lower()}\x00{dst.lower()}"
+        if key not in seen:
+            seen.add(key)
+            dirs.rename_copies.append((src, dst))
+
+    # Base-name rename: "rename copies to STEM retaining file extensions"
+    m = _RENAME_BASE_RE.search(text)
+    if m:
+        dirs.rename_base_copies = m.group(1).strip()
+    elif not dirs.rename_copies:
+        # "rename it/this/the file FILENAME" - vague source means copy all files.
+        m = _RENAME_IT_RE.search(text)
+        if m:
+            dirs.rename_base_copies = m.group(1).strip()
+
+
 def _parse_manual_notes(text: str, dirs: Directives) -> None:
     for sent in _split_sentences(text):
         sl = sent.lower()
@@ -367,5 +454,6 @@ def parse_directives(instructions: str, warnings: str = "",
     _parse_download_choice(text, dirs)
     _parse_file_selection(text, dirs)
     _parse_order_and_deps(text, dirs)
+    _parse_rename_copies(text, dirs)
     _parse_manual_notes(text, dirs)
     return dirs

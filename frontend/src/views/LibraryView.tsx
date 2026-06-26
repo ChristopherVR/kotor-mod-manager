@@ -30,6 +30,7 @@ const METHOD_LABELS: Record<string, string> = {
   TLK_REPLACE: "Dialog (TLK)",
   MULTI_VARIANT: "Multi-variant",
   MULTIPLE: "Multiple",
+  GAME_PATCHER: "Game patcher",
   MANUAL: "Manual",
 };
 

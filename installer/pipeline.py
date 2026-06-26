@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from installer.build_directives import match_option_index
-from installer.detector import InstallMethod, InstallPlan, detect
+from installer.detector import InstallMethod, InstallPlan, ModFileMapping, detect
 from installer.extractor import ExtractionError, extract
 from installer.installer import InstallError, install
 from installer.patcher_strategy import run_tslpatcher_cascade
@@ -456,8 +456,33 @@ class Pipeline:
         # ---- Override / Direct copy / Multiple ----
         elif method in (InstallMethod.OVERRIDE_COPY, InstallMethod.DIRECT_COPY, InstallMethod.MULTIPLE):
             self._apply_file_selection(plan, dirs)
+            self._apply_renames(plan, dirs)
             install(plan, game_path, log_cb)
             pm.strategy_used = "file_copy"
+
+        # ---- Standalone game-binary patcher (e.g. 3C-FD Patcher, fog fixes) ----
+        elif method == InstallMethod.GAME_PATCHER:
+            import subprocess
+            exe = plan.tslpatcher_exe
+            if not exe or not exe.exists():
+                raise ManualInstallRequired(plan.mod_root, plan.readme_text)
+            # Put game folder on clipboard so user can paste it when prompted.
+            try:
+                subprocess.run(
+                    ["clip"], input=str(self._game_path),
+                    text=True, check=False, capture_output=True,
+                )
+            except Exception:
+                pass
+            self._set_status(pm, ModStatus.WAITING_PATCHER)
+            self._log(
+                f"  [Game Patcher] Opening {exe.name} to apply game-level patches.\n"
+                f"    Your game folder is on the clipboard: {self._game_path}\n"
+                f"    Select your game executable in the patcher window and apply the patches.",
+                "warning",
+            )
+            subprocess.Popen([str(exe)], cwd=str(exe.parent))
+            raise ManualInstallRequired(plan.mod_root, plan.readme_text)
 
         # ---- Manual ----
         elif method == InstallMethod.MANUAL:
@@ -540,6 +565,41 @@ class Pipeline:
             )
             for d in dropped[:6]:
                 self._log(f"      skipped: {d}", "muted")
+
+    def _apply_renames(self, plan: InstallPlan, dirs) -> None:
+        """Add copy-under-new-name mappings from the build guide's rename directives."""
+        rename_copies = getattr(dirs, "rename_copies", [])
+        rename_base = getattr(dirs, "rename_base_copies", "")
+        if not rename_copies and not rename_base:
+            return
+
+        new_mappings: list[ModFileMapping] = []
+
+        for src_name, dst_name in rename_copies:
+            src_low = src_name.lower()
+            src_stem = src_low.rsplit(".", 1)[0] if "." in src_low else src_low
+            for fm in plan.file_mappings:
+                fn_low = fm.source.name.lower()
+                # Match exact filename or stem-only (source name lacks extension).
+                if fn_low == src_low or ("." not in src_low and fn_low.startswith(src_stem + ".")):
+                    parts = fm.dest_relative.rsplit("/", 1)
+                    dst_rel = f"{parts[0]}/{dst_name}" if len(parts) > 1 else dst_name
+                    new_mappings.append(ModFileMapping(source=fm.source, dest_relative=dst_rel))
+                    self._log(f"    Rename copy: {fm.source.name} -> {dst_name}", "muted")
+                    break
+
+        if rename_base:
+            for fm in plan.file_mappings:
+                suffix = fm.source.suffix.lower()
+                dst_name = f"{rename_base}{suffix}"
+                parts = fm.dest_relative.rsplit("/", 1)
+                dst_rel = f"{parts[0]}/{dst_name}" if len(parts) > 1 else dst_name
+                if dst_rel != fm.dest_relative:
+                    new_mappings.append(ModFileMapping(source=fm.source, dest_relative=dst_rel))
+                    self._log(f"    Rename copy: {fm.source.name} -> {dst_name}", "muted")
+
+        if new_mappings:
+            plan.file_mappings.extend(new_mappings)
 
     # ------------------------------------------------------------------
     # Mod-manager recording

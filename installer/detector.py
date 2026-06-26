@@ -14,19 +14,20 @@ class InstallMethod(Enum):
     DIRECT_COPY   = auto()   # Loose KOTOR files → copy to Override/
     MULTI_VARIANT = auto()   # Sub-folders each with a variant (user must pick one)
     MULTIPLE      = auto()   # Multiple distinct sub-mods, each needs its own install
+    GAME_PATCHER  = auto()   # Standalone exe that patches the game binary (no mod files)
     MANUAL        = auto()   # Unknown - show readme to user
 
 
 OVERRIDE_EXTENSIONS = {
     ".utc", ".uti", ".utd", ".utp", ".uts", ".utt", ".utn", ".utw",
-    ".dlg", ".2da", ".nss", ".ncs", ".tga", ".tpc", ".mdl", ".mdx",
-    ".wav", ".mp3", ".bik", ".lip", ".gui", ".are", ".git", ".ifo",
-    ".mod", ".jrl", ".itp", ".lyt", ".vis", ".txi", ".pth", ".gff",
+    ".dlg", ".2da", ".nss", ".ncs", ".tga", ".tpc", ".dds", ".mdl", ".mdx",
+    ".wav", ".mp3", ".ogg", ".flac", ".bik", ".lip", ".gui", ".are", ".git",
+    ".ifo", ".mod", ".jrl", ".itp", ".lyt", ".vis", ".txi", ".pth", ".gff",
     ".bic", ".fac", ".ptt",
 }
 
 MODULE_EXTENSIONS = {".mod", ".sav", ".rim", ".erf"}
-MOVIE_EXTENSIONS  = {".bik", ".avi", ".mpg"}
+MOVIE_EXTENSIONS  = {".bik", ".avi", ".mpg", ".mp4", ".wmv"}
 # Files that belong in the GAME ROOT (next to swkotor.exe), not Override -
 # e.g. Miles Sound System fixes for the Amazon/modern releases.
 ROOT_EXTENSIONS   = {".asi", ".flt", ".m3d"}
@@ -188,6 +189,22 @@ def _find_tslpatcher(root: Path) -> "Path | None":
     return None
 
 
+def _find_standalone_patcher(root: Path) -> "Path | None":
+    """Find a standalone game-binary patcher exe (no KOTOR mod files, no tslpatchdata)."""
+    if _find_dir(root, "tslpatchdata"):
+        return None
+    if _collect_loose_files(root):
+        return None
+    _KEYWORDS = {"patch", "patcher", "fix", "fixer", "repair"}
+    for p in root.rglob("*.exe"):
+        low = p.name.lower()
+        if "uninstall" in low:
+            continue
+        if any(kw in low for kw in _KEYWORDS):
+            return p
+    return None
+
+
 def _find_tlk_variants(root: Path) -> list[tuple[str, Path]]:
     """Find dialog.tlk files. Returns (label, path) pairs."""
     variants = []
@@ -285,6 +302,17 @@ def _plan_for_root(mod_root: Path) -> InstallPlan:
             method=InstallMethod.DIRECT_COPY,
             mod_root=mod_root,
             file_mappings=mappings,
+            readme_text=readme,
+        )
+
+    # 6. Standalone game-binary patcher (e.g. 3C-FD Patcher, fog fixes) -
+    #    an exe that patches the game's own executable rather than installing mod files.
+    game_patcher = _find_standalone_patcher(mod_root)
+    if game_patcher:
+        return InstallPlan(
+            method=InstallMethod.GAME_PATCHER,
+            mod_root=mod_root,
+            tslpatcher_exe=game_patcher,
             readme_text=readme,
         )
 
