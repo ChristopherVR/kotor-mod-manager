@@ -1,13 +1,16 @@
 """
-Sequential mod installation pipeline.
-For each mod in build order: download → extract → detect → install.
+Mod installation pipeline: parallel downloads, sequential installs.
+For each mod in build order: download (up to 3 at once) → extract → detect → install.
 
+- Up to 3 mods download concurrently; extraction and install stay sequential so
+  patchers never clobber each other.
 - Multi-file submissions are downloaded and installed in order.
 - TSLPatcher mods go through the strategy cascade (headless HoloPatcher shim →
   Win32 automation → pywinauto → manual GUI) so almost nothing needs a click.
 - Install-phase progress is reported so the UI can show live status.
 """
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -174,24 +177,50 @@ class Pipeline:
             self._on_install_progress(mod.build_mod.file_id, pct, label)
 
     def _run(self) -> None:
+        pending = [pm for pm in self._mods if pm.status not in (ModStatus.DONE, ModStatus.SKIPPED)]
         try:
-            for pm in self._mods:
-                if self._stop_event.is_set():
-                    break
-                self._pause_event.wait()
-                if pm.status in (ModStatus.DONE, ModStatus.SKIPPED):
-                    continue
-                self._current = pm
-                self._process_mod(pm)
+            with ThreadPoolExecutor(max_workers=3, thread_name_prefix="mod-dl") as pool:
+                futures: dict = {}  # Future -> PipelineMod
+                queue = list(pending)
+
+                def fill_pool() -> None:
+                    while queue and len(futures) < 3 and not self._stop_event.is_set():
+                        pm = queue.pop(0)
+                        futures[pool.submit(self._download_mod, pm)] = pm
+
+                fill_pool()
+
+                for pm in pending:
+                    if self._stop_event.is_set():
+                        break
+
+                    # Wait for this mod's download future (already in-flight or
+                    # about to be submitted). _download_mod never raises; errors
+                    # are stored on pm.status / pm.error instead.
+                    f = next((k for k, v in futures.items() if v is pm), None)
+                    if f is not None:
+                        f.result()
+                        del futures[f]
+                        fill_pool()
+
+                    if self._stop_event.is_set() or pm.status == ModStatus.ERROR:
+                        continue
+
+                    self._pause_event.wait()
+                    self._current = pm
+                    self._extract_and_install(pm)
         finally:
             self._running = False
             self._current = None
 
-    def _process_mod(self, pm: PipelineMod) -> None:
+    def _download_mod(self, pm: PipelineMod) -> None:
+        """Download all files for a mod. Called concurrently; never raises."""
+        if self._stop_event.is_set():
+            return
+
         mod = pm.build_mod
         self._log(f"\n── [{mod.install_order:3d}] {mod.name}")
 
-        # ---- Download (all files in the submission) ----
         try:
             self._set_status(pm, ModStatus.DOWNLOADING)
             dest_dir = self._download_dir / f"{mod.file_id}_{mod.slug[:30]}"
@@ -231,13 +260,13 @@ class Pipeline:
             self._set_status(pm, ModStatus.ERROR, str(e))
             self._log(f"  Download failed: {e}", "error")
             pm.error = str(e)
-            return
         except Exception as e:
             self._set_status(pm, ModStatus.ERROR, str(e))
             self._log(f"  Unexpected download error: {e}", "error")
             pm.error = str(e)
-            return
 
+    def _extract_and_install(self, pm: PipelineMod) -> None:
+        """Extract downloaded archives then detect and install the mod. Called sequentially."""
         if self._stop_event.is_set():
             return
 
