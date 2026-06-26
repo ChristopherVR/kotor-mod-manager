@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.13.0] - 2026-06-26
+
+### Features
+
+- Read more install details from the build guide automatically
 ## [0.12.0] - 2026-06-26
 
 ### Features
