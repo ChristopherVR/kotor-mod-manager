@@ -9,6 +9,8 @@ For each mod in build order: download (up to 3 at once) → extract → detect �
   Win32 automation → pywinauto → manual GUI) so almost nothing needs a click.
 - Install-phase progress is reported so the UI can show live status.
 """
+import copy
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -335,6 +337,7 @@ class Pipeline:
                     # it, finish any other components, then flag the mod as manual.
                     manual = m
                     continue
+                self._apply_post_delete(dirs)
                 self._record_install(pm, plan, pre)
                 self._install_progress(pm, i / total, "Done")
 
@@ -410,6 +413,7 @@ class Pipeline:
                         f"(default of {len(plan.namespaces)})", "muted")
             run_holopatcher(exe, game_path, tslpatchdata, ns_index, log_cb)
             pm.strategy_used = "holopatcher"
+            self._apply_compat_patches(pm, plan)
 
         # ---- TSLPatcher: strategy cascade (headless first) ----
         elif method == InstallMethod.TSLPATCHER:
@@ -421,20 +425,48 @@ class Pipeline:
                     "warning"
                 )
 
-            result = run_tslpatcher_cascade(
-                mod_root=plan.mod_root,
-                exe=plan.tslpatcher_exe,
-                game_dir=game_path,
-                option_hint=mod.option_hint,
-                directives=dirs,
-                cb=log_cb,
-                on_waiting=on_waiting,
-                allow_manual=not self._auto_unattended,
-            )
-            pm.strategy_used = result.strategy
-            # If we showed the waiting banner, return to INSTALLING for cleanliness
-            if pm.status == ModStatus.WAITING_PATCHER:
-                self._set_status(pm, ModStatus.INSTALLING)
+            if dirs.multi_run_options:
+                # Run the patcher once per named option in the order the build
+                # guide specifies (e.g. TSLRCM Tweak Pack's 6 separate options).
+                strategies: list[str] = []
+                for i, opt in enumerate(dirs.multi_run_options, 1):
+                    self._log(
+                        f"    Run {i}/{len(dirs.multi_run_options)}: {opt}", "muted")
+                    run_dirs = copy.copy(dirs)
+                    run_dirs.namespace_preferences = [opt]
+                    run_dirs.prefer_compatible = False
+                    run_dirs.multi_run = False
+                    run_dirs.multi_run_options = []
+                    result = run_tslpatcher_cascade(
+                        mod_root=plan.mod_root,
+                        exe=plan.tslpatcher_exe,
+                        game_dir=game_path,
+                        option_hint=opt,
+                        directives=run_dirs,
+                        cb=log_cb,
+                        on_waiting=on_waiting,
+                        allow_manual=not self._auto_unattended,
+                    )
+                    strategies.append(result.strategy)
+                    if pm.status == ModStatus.WAITING_PATCHER:
+                        self._set_status(pm, ModStatus.INSTALLING)
+                pm.strategy_used = f"{strategies[0]}x{len(strategies)}"
+            else:
+                result = run_tslpatcher_cascade(
+                    mod_root=plan.mod_root,
+                    exe=plan.tslpatcher_exe,
+                    game_dir=game_path,
+                    option_hint=mod.option_hint,
+                    directives=dirs,
+                    cb=log_cb,
+                    on_waiting=on_waiting,
+                    allow_manual=not self._auto_unattended,
+                )
+                pm.strategy_used = result.strategy
+                if pm.status == ModStatus.WAITING_PATCHER:
+                    self._set_status(pm, ModStatus.INSTALLING)
+
+            self._apply_compat_patches(pm, plan)
 
         # ---- TLK replacement / multi-variant ----
         elif method in (InstallMethod.TLK_REPLACE, InstallMethod.MULTI_VARIANT):
@@ -458,6 +490,7 @@ class Pipeline:
             self._apply_file_selection(plan, dirs)
             self._apply_renames(plan, dirs)
             install(plan, game_path, log_cb)
+            self._remove_dds_conflicts(plan)
             pm.strategy_used = "file_copy"
 
         # ---- Standalone game-binary patcher (e.g. 3C-FD Patcher, fog fixes) ----
@@ -491,6 +524,188 @@ class Pipeline:
     @staticmethod
     def _is_patcher_plan(plan: InstallPlan) -> bool:
         return plan.method in (InstallMethod.TSLPATCHER, InstallMethod.HOLOPATCHER)
+
+    # ------------------------------------------------------------------
+    # Compat-patch subfolder handling
+    # ------------------------------------------------------------------
+
+    def _compat_folder_matches_batch(self, folder_name: str) -> str:
+        """
+        Returns the name of the first mod in the batch whose name/slug contains
+        all significant keywords from the folder name. Used for log context only;
+        compat patches are applied regardless of match result.
+        """
+        _SKIP = {"patch", "compat", "compatibility", "fix", "fixes", "for", "and",
+                 "with", "the", "install", "mod", "option", "ver", "version"}
+        tokens = [w for w in re.findall(r'[a-z0-9]{2,}', folder_name.lower())
+                  if w not in _SKIP]
+        if not tokens:
+            return ""
+        for pm_check in self._mods:
+            nm = pm_check.build_mod.name.lower()
+            sl = (pm_check.build_mod.slug or "").lower()
+            haystack = f"{nm} {sl}"
+            if all(t in haystack for t in tokens):
+                return pm_check.build_mod.name
+        return ""
+
+    def _install_sub_plan(self, pm: PipelineMod, sub_plan: InstallPlan) -> None:
+        """Execute a single compat-patch sub-plan without full directive processing."""
+        game_path = self._game_path
+        mod = pm.build_mod
+        method = sub_plan.method
+
+        def log_cb(msg: str) -> None:
+            self._log(f"      {msg}", "muted")
+
+        if method == InstallMethod.HOLOPATCHER:
+            exe = sub_plan.holopatcher_exe
+            tslpatchdata = exe.parent / "tslpatchdata" if exe else None
+            if exe and (not tslpatchdata or not tslpatchdata.exists()):
+                for candidate in exe.parent.rglob("tslpatchdata"):
+                    if candidate.is_dir():
+                        tslpatchdata = candidate
+                        break
+            if exe and tslpatchdata:
+                run_holopatcher(exe, game_path, tslpatchdata, 0, log_cb)
+
+        elif method == InstallMethod.TSLPATCHER:
+            def on_waiting_sub() -> None:
+                self._set_status(pm, ModStatus.WAITING_PATCHER)
+
+            run_tslpatcher_cascade(
+                mod_root=sub_plan.mod_root,
+                exe=sub_plan.tslpatcher_exe,
+                game_dir=game_path,
+                option_hint=mod.option_hint,
+                directives=mod.directives,
+                cb=log_cb,
+                on_waiting=on_waiting_sub,
+                allow_manual=not self._auto_unattended,
+            )
+            if pm.status == ModStatus.WAITING_PATCHER:
+                self._set_status(pm, ModStatus.INSTALLING)
+
+        elif method in (InstallMethod.OVERRIDE_COPY, InstallMethod.DIRECT_COPY,
+                        InstallMethod.MULTIPLE):
+            install(sub_plan, game_path, log_cb)
+
+    def _apply_compat_patches(self, pm: PipelineMod, plan: InstallPlan) -> None:
+        """
+        After a patcher install, scan for compat-patch subfolders and apply them.
+        In a curated build every bundled compat patch is intentional, so we apply
+        all of them except those explicitly excluded by file_except.
+        """
+        dirs = pm.build_mod.directives
+        _SKIP_NAMES = {"tslpatchdata", "backup", "__macosx", ".ds_store",
+                       "data", "docs", "documentation", "readme"}
+        try:
+            subdirs = sorted(
+                [d for d in plan.mod_root.iterdir()
+                 if d.is_dir() and d.name.lower() not in _SKIP_NAMES],
+                key=lambda d: d.name.lower(),
+            )
+        except OSError:
+            return
+
+        if not subdirs:
+            return
+
+        applied = 0
+        for sub_dir in subdirs:
+            folder_name = sub_dir.name
+            folder_low = folder_name.lower()
+
+            # Respect explicit build-guide exclusions.
+            if dirs.file_except and any(
+                e.lower().strip() == folder_low or e.lower().strip() in folder_low
+                for e in dirs.file_except
+            ):
+                self._log(
+                    f"    Compat skipped: {folder_name} (excluded by build guide)", "muted")
+                continue
+
+            sub_plan = detect(sub_dir)
+            if sub_plan.method in (InstallMethod.MANUAL, InstallMethod.GAME_PATCHER):
+                continue
+
+            matched = self._compat_folder_matches_batch(folder_name)
+            if matched:
+                self._log(f"    Compat: {folder_name} (for {matched})", "muted")
+            else:
+                self._log(f"    Compat: {folder_name}", "muted")
+
+            try:
+                self._install_sub_plan(pm, sub_plan)
+                applied += 1
+            except ManualInstallRequired:
+                self._log(f"    Compat {folder_name}: needs manual step", "warning")
+            except (PatcherError, InstallError) as e:
+                self._log(f"    Compat {folder_name} failed: {e}", "warning")
+            except Exception as e:
+                self._log(f"    Compat {folder_name} failed: {e}", "warning")
+
+        if applied:
+            self._log(f"    Applied {applied} compat patch(es).", "muted")
+
+    # ------------------------------------------------------------------
+    # Post-install cleanup
+    # ------------------------------------------------------------------
+
+    def _remove_dds_conflicts(self, plan: InstallPlan) -> None:
+        """
+        Remove .tpc / .tga files from Override when a .dds with the same stem was
+        just installed. Some engine versions prefer .tpc over .dds, so the old
+        files must be gone for HD textures to take effect.
+        """
+        override_dir = self._game_path / "Override"
+        if not override_dir.exists():
+            return
+        dds_stems = {
+            fm.source.stem.lower()
+            for fm in plan.file_mappings
+            if fm.source.suffix.lower() == ".dds"
+            and fm.dest_relative.lower().startswith("override/")
+        }
+        if not dds_stems:
+            return
+        removed: list[str] = []
+        for stem in dds_stems:
+            for ext in (".tpc", ".tga"):
+                conflict = override_dir / f"{stem}{ext}"
+                if not conflict.exists():
+                    # Case-insensitive fallback for mounted game dirs on Linux/Mac.
+                    for f in override_dir.iterdir():
+                        if f.name.lower() == f"{stem}{ext}":
+                            conflict = f
+                            break
+                if conflict.exists():
+                    try:
+                        conflict.unlink()
+                        removed.append(conflict.name)
+                    except OSError as e:
+                        self._log(f"    Could not remove {conflict.name}: {e}", "warning")
+        if removed:
+            n = len(removed)
+            listed = ", ".join(removed[:5])
+            extra = f" +{n - 5} more" if n > 5 else ""
+            self._log(f"    Removed {n} outdated file(s): {listed}{extra}", "muted")
+
+    def _apply_post_delete(self, dirs) -> None:
+        """Delete files from Override per explicit build-guide post-install directives."""
+        filenames = getattr(dirs, "post_install_delete", [])
+        if not filenames:
+            return
+        for fn in filenames:
+            for subdir in ("Override", "Modules"):
+                target = self._game_path / subdir / fn
+                if target.exists():
+                    try:
+                        target.unlink()
+                        self._log(
+                            f"    Cleaned up {subdir}/{fn} (per build guide)", "muted")
+                    except OSError as e:
+                        self._log(f"    Could not clean up {fn}: {e}", "warning")
 
     def _apply_build_guide_order(self, pm: PipelineMod, dirs) -> None:
         """
@@ -526,10 +741,9 @@ class Pipeline:
             if dirs.multi_run_options:
                 opts_list = ", ".join(f'"{o}"' for o in dirs.multi_run_options)
                 self._log(
-                    f"  Heads up for '{mod.name}': the build guide requires the patcher "
-                    f"to be run {len(dirs.multi_run_options)} times with these options in order: "
-                    f"{opts_list}. The first option was installed automatically.",
-                    "warning")
+                    f"  '{mod.name}': running the patcher {len(dirs.multi_run_options)} times "
+                    f"in order: {opts_list}.",
+                    "muted")
             else:
                 self._log(
                     f"  Heads up for '{mod.name}': this mod's guide asks for the patcher to "

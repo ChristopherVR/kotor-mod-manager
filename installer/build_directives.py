@@ -136,6 +136,9 @@ class Directives:
     # Ordered list of TSLPatcher/HoloPatcher option names to run in sequence.
     # Non-empty implies multi_run; each entry is matched via match_option_index.
     multi_run_options: list[str] = field(default_factory=list)
+    # Files to delete from Override/Modules AFTER the mod installs successfully.
+    # Populated from "delete X from Override" instructions in the build guide.
+    post_install_delete: list[str] = field(default_factory=list)
     raw: str = ""
 
     def is_empty(self) -> bool:
@@ -145,7 +148,7 @@ class Directives:
             self.file_only, self.file_except,
             self.patch_first, self.requires_patch, self.multi_run,
             self.manual_notes, self.rename_copies, self.rename_base_copies,
-            self.multi_run_options,
+            self.multi_run_options, self.post_install_delete,
         ])
 
     def summary(self) -> str:
@@ -303,20 +306,34 @@ def _parse_file_selection(text: str, dirs: Directives) -> None:
         if _is_real_filename(fn):
             dirs.file_except.append(fn)
 
-    # "ignore the MacOS folder / skip the Optional folder / and the X folder"
-    # Scan full sentences that contain ignore/skip verbs for ALL folder names mentioned.
+    # "ignore the MacOS folder / skip the Optional folder / never apply the X folder"
+    # Scan full sentences that contain ignore/skip/never-apply verbs for ALL folder names.
     _FOLDER_STOPWORDS = {"all", "any", "other", "these", "those", "following", "each"}
+    _FOLDER_VERB_RE = re.compile(
+        r"\b(?:ignore|skip|do\s+not\s+(?:use|install|include)|never\s+apply)\b", re.I)
     for sent in _split_sentences(text):
-        if not re.search(r"\b(?:ignore|skip|do\s+not\s+(?:use|install|include))\b", sent, re.I):
+        if not _FOLDER_VERB_RE.search(sent):
             continue
         for m in re.finditer(
-            r"(?:ignore|skip|do\s+not\s+(?:use|install|include)|and)\s+(?:the\s+)?"
+            r"(?:ignore|skip|do\s+not\s+(?:use|install|include)|never\s+apply|and)\s+(?:the\s+)?"
             r"[‘\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)[‘\"]?\s+(?:sub)?folder",
             sent, re.I,
         ):
             name = m.group(1).strip()
             if name.lower() not in _FOLDER_STOPWORDS:
                 dirs.file_except.append(name)
+
+    # "delete X.tpc, Y.tpc from Override" - post-install cleanup.
+    # These files must be removed AFTER install so a newer .dds or replacement wins.
+    for m in re.finditer(
+        r"\bdelete\b(.{5,300}?)\bfrom\s+(?:the\s+)?(?:override|your\s+override"
+        r"|the\s+override)\b",
+        text, re.I,
+    ):
+        for fn in _FILENAME_RE.findall(m.group(1)):
+            if not fn.lower().endswith(_IMG_EXTS) and _is_real_filename(fn):
+                dirs.post_install_delete.append(fn)
+    dirs.post_install_delete = _dedupe(dirs.post_install_delete)
 
     # ---- INCLUSIONS ----
 
