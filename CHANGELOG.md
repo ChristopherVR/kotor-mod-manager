@@ -1,10 +1,16 @@
 # Changelog
 
+## [0.14.1] - 2026-06-26
+
+### Testing
+
+- Add coverage for download filtering and folder exclusion parsing
 ## [0.14.0] - 2026-06-26
 
 ### Features
 
 - Auto-apply compat patches and multi-run patcher options during install
+- Automate all known mods so none require manual installation steps
 ## [0.13.0] - 2026-06-26
 
 ### Features
