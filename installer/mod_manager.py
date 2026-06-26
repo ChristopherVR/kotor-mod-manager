@@ -487,41 +487,41 @@ def reorder(game: str, ordered_ids: list[str]) -> GameManifest:
 def _conflict_explanation(
     ctype: str, kinds: set, winner: str, losers: list[str], same_build: bool = False
 ) -> tuple[str, str]:
-    “””Return (description, recommendation) explaining a file conflict in plain terms.”””
-    others = “, “.join(f””{n}”” for n in losers) or “another mod”
-    if kinds == {“baked”}:
+    """Return (description, recommendation) explaining a file conflict in plain terms."""
+    others = ", ".join(f'"{n}"' for n in losers) or "another mod"
+    if kinds == {"baked"}:
         return (
-            f”Both are patcher mods that modify this file. TSLPatcher/HoloPatcher “
-            f”usually merge their changes - this is almost always fine.”,
-            “No action needed. Patcher mods are designed to merge, not overwrite.”,
+            f"Both are patcher mods that modify this file. TSLPatcher/HoloPatcher "
+            f"usually merge their changes - this is almost always fine.",
+            "No action needed. Patcher mods are designed to merge, not overwrite.",
         )
     if same_build:
         return (
-            f”Both mods are from the same curated build and write to the same file. “
-            f”The build was designed this way - \”{winner}\” takes priority by install “
-            f”order, which is intentional.”,
-            “No action needed. File sharing between mods in the same build is expected.”,
+            f"Both mods are from the same curated build and write to the same file. "
+            f"The build was designed this way - \"{winner}\" takes priority by install "
+            f"order, which is intentional.",
+            "No action needed. File sharing between mods in the same build is expected.",
         )
     base = {
-        “2da”: (
-            f”Both mods ship a copy of this 2DA table. Only one can be active, “
-            f”so \”{winner}\” wins and the changes from {others} are shadowed.”
+        "2da": (
+            f"Both mods ship a copy of this 2DA table. Only one can be active, "
+            f"so \"{winner}\" wins and the changes from {others} are shadowed."
         ),
-        “dialog”: (
-            f”Both mods provide a dialog.tlk (the game's string table). Only “
-            f”one can be active - \”{winner}\” wins and {others}'s text is not used.”
+        "dialog": (
+            f"Both mods provide a dialog.tlk (the game's string table). Only "
+            f"one can be active - \"{winner}\" wins and {others}'s text is not used."
         ),
-        “module”: (
-            f”Both mods change the same module/area file. \”{winner}\” takes priority; “
-            f”{others} may not apply its changes.”
+        "module": (
+            f"Both mods change the same module/area file. \"{winner}\" takes priority; "
+            f"{others} may not apply its changes."
         ),
-        “override”: (
-            f”Both mods install a file of the same name into Override. \”{winner}\” “
-            f”wins and the version from {others} is shadowed.”
+        "override": (
+            f"Both mods install a file of the same name into Override. \"{winner}\" "
+            f"wins and the version from {others} is shadowed."
         ),
-    }.get(ctype, f”\”{winner}\” and {others} both write the same file; one overrides the other.”)
-    rec = (“If this causes problems, check which mod should provide this file “
-           “and disable the other - or adjust load order so the intended one wins.”)
+    }.get(ctype, f"\"{winner}\" and {others} both write the same file; one overrides the other.")
+    rec = ("If this causes problems, check which mod should provide this file "
+           "and disable the other - or adjust load order so the intended one wins.")
     return base, rec
 
 
@@ -632,31 +632,31 @@ def compute_conflicts(game: str) -> list[dict]:
                 a.build_key and b.build_key and a.build_key == b.build_key
             )
             conflicts.append({
-                “id”: f”declared:{pair[0]}:{pair[1]}”,
-                “resource”: f”{a.name}  ↔  {b.name}”,
-                “type”: “declared”,
-                “severity”: “error”,
-                “same_build”: ab_same_build,
-                “participants”: [
-                    {“mod_id”: a.id, “mod_name”: a.name, “enabled”: a.enabled, “build_key”: a.build_key},
-                    {“mod_id”: b.id, “mod_name”: b.name, “enabled”: b.enabled, “build_key”: b.build_key},
+                "id": f"declared:{pair[0]}:{pair[1]}",
+                "resource": f"{a.name}  ↔  {b.name}",
+                "type": "declared",
+                "severity": "error",
+                "same_build": ab_same_build,
+                "participants": [
+                    {"mod_id": a.id, "mod_name": a.name, "enabled": a.enabled, "build_key": a.build_key},
+                    {"mod_id": b.id, "mod_name": b.name, "enabled": b.enabled, "build_key": b.build_key},
                 ],
-                “winner_mod_id”: None,
-                “description”: (
-                    f”\”{a.name}\” states in its own readme that it is “
-                    f”incompatible with \”{b.name}\”. “
+                "winner_mod_id": None,
+                "description": (
+                    f"\"{a.name}\" states in its own readme that it is "
+                    f"incompatible with \"{b.name}\". "
                     + (
-                        “Both are part of the same curated build, so a compatibility “
-                        “patch may already resolve this. If the game is working correctly, “
-                        “you can likely leave both enabled.”
+                        "Both are part of the same curated build, so a compatibility "
+                        "patch may already resolve this. If the game is working correctly, "
+                        "you can likely leave both enabled."
                         if ab_same_build else
-                        “Running both enabled may cause crashes, missing content, or broken scripting.”
+                        "Running both enabled may cause crashes, missing content, or broken scripting."
                     )
                 ),
-                “recommendation”: (
-                    “Monitor your game for issues. If something looks broken, try disabling one of these mods.”
+                "recommendation": (
+                    "Monitor your game for issues. If something looks broken, try disabling one of these mods."
                     if ab_same_build else
-                    “If you're experiencing problems, disable one of these mods.”
+                    "If you're experiencing problems, disable one of these mods."
                 ),
             })
 
