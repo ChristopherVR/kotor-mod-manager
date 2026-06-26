@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.2] - 2026-06-26
+
+### Bug Fixes
+
+- Remove encoding error in mod manager that blocked app startup
 ## [0.14.1] - 2026-06-26
 
 ### Testing
