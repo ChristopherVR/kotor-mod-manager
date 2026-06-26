@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.12.0] - 2026-06-26
+
+### Features
+
+- Automatically handle most mods that previously needed manual install
 ## [0.11.0] - 2026-06-26
 
 ### Features
