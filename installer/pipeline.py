@@ -201,7 +201,12 @@ class Pipeline:
                     # are stored on pm.status / pm.error instead.
                     f = next((k for k, v in futures.items() if v is pm), None)
                     if f is not None:
-                        f.result()
+                        try:
+                            f.result()
+                        except Exception as e:
+                            self._log(f"  Unexpected pipeline error: {e}", "error")
+                            pm.status = ModStatus.ERROR
+                            pm.error = str(e)
                         del futures[f]
                         fill_pool()
 
@@ -211,6 +216,8 @@ class Pipeline:
                     self._pause_event.wait()
                     self._current = pm
                     self._extract_and_install(pm)
+        except Exception as e:
+            self._log(f"Pipeline crashed unexpectedly: {e}", "error")
         finally:
             self._running = False
             self._current = None

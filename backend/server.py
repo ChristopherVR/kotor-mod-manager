@@ -844,8 +844,9 @@ def install_start(req: StartInstallRequest) -> dict:
 
     # Notify completion on a watcher thread.
     def _watch(pl: Pipeline) -> None:
-        pl._thread.join() if pl._thread else None
-        done = sum(1 for pm in pl.mods if pm.status == ModStatus.DONE)
+        if pl._thread:
+            pl._thread.join()
+        done = sum(1 for pm in pl.mods if pm.status in (ModStatus.DONE, ModStatus.SKIPPED))
         errors = sum(1 for pm in pl.mods if pm.status == ModStatus.ERROR)
         manual = sum(1 for pm in pl.mods if pm.status == ModStatus.MANUAL)
         hub.publish({"type": "pipeline", "event": "finished",
