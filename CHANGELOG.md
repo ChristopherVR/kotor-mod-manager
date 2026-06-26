@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.6] - 2026-06-26
+
+### Bug Fixes
+
+- Stop the installer crashing when a mod includes a loose texture file
 ## [0.14.5] - 2026-06-26
 
 ### Bug Fixes
