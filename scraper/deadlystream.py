@@ -47,6 +47,31 @@ def download_name_matches(record_name: str, keep_names: list[str]) -> bool:
     return False
 
 
+def download_name_excluded(filename: str, ignore_names: list[str]) -> bool:
+    """
+    Whether a filename should be skipped because it matches a build guide
+    "do not download X" instruction. Handles extension-only entries (e.g.
+    ".tga" skips any .tga file) and quoted name fragments.
+    Empty ignore_names means "exclude nothing".
+    """
+    if not ignore_names:
+        return False
+    fn = filename.lower()
+
+    def norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    fn_norm = norm(fn.rsplit(".", 1)[0] if "." in fn else fn)
+    for ign in ignore_names:
+        il = ign.lower().strip()
+        if il.startswith(".") and fn.endswith(il):
+            return True
+        ign_norm = norm(ign.rsplit(".", 1)[0] if "." in ign else ign)
+        if ign_norm and fn_norm and (ign_norm in fn_norm or fn_norm in ign_norm):
+            return True
+    return False
+
+
 class AuthError(Exception):
     pass
 
@@ -388,6 +413,7 @@ class DeadlyStreamClient:
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
         cancel_event: Optional[threading.Event] = None,
         keep_names: Optional[list[str]] = None,
+        ignore_names: Optional[list[str]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> list[Path]:
         """
@@ -398,12 +424,15 @@ class DeadlyStreamClient:
         matches nothing, every file is downloaded (so we never download nothing
         because a name didn't line up).
 
+        ignore_names: if set (from a "do not download X" instruction), records
+        matching any of these are skipped. Applied after keep_names filtering.
+
         Returns the list of downloaded local paths in page order.
         """
         records = self.list_download_records(file_id, slug)
         referer = self._file_page_url(file_id, slug)
 
-        def _fetch(recs, names):
+        def _fetch(recs, names, excl):
             out: list[Path] = []
             for rec in recs:
                 if cancel_event and cancel_event.is_set():
@@ -416,6 +445,7 @@ class DeadlyStreamClient:
                     fallback_name=rec["name"],
                     referer=referer,
                     keep_names=names,
+                    ignore_names=excl,
                 )
                 if path is not None:
                     out.append(path)
@@ -426,10 +456,10 @@ class DeadlyStreamClient:
         # _download_from_url). If the "download only X" filter ends up matching
         # nothing, fall back to downloading everything rather than nothing.
         if keep_names and len(records) > 1:
-            paths = _fetch(records, keep_names)
+            paths = _fetch(records, keep_names, ignore_names)
             if paths:
                 return paths
-        return _fetch(records, None)
+        return _fetch(records, None, ignore_names)
 
     def _download_from_url(
         self,
@@ -441,6 +471,7 @@ class DeadlyStreamClient:
         fallback_name: str = "",
         referer: str = "",
         keep_names: Optional[list[str]] = None,
+        ignore_names: Optional[list[str]] = None,
         pause_event: Optional[threading.Event] = None,
     ) -> "Path | None":
         headers = {"Referer": referer} if referer else {}
@@ -479,6 +510,9 @@ class DeadlyStreamClient:
         # "Download only X" filtering: the per-file name is only reliable here in
         # the response headers, so skip the body of files we were told to ignore.
         if keep_names and not download_name_matches(filename, keep_names):
+            resp.close()
+            return None
+        if ignore_names and download_name_excluded(filename, ignore_names):
             resp.close()
             return None
 

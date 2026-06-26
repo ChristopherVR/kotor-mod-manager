@@ -258,10 +258,14 @@ class Pipeline:
                     self._on_progress(mod.file_id, pct, kb, total_kb)
 
             keep_names = mod.directives.download_only
+            ignore_names = mod.directives.download_ignore
             if keep_names:
                 self._log(
                     f"  Build guide: downloading only {', '.join(keep_names)} "
                     f"(ignoring the other files in this submission).")
+            if ignore_names:
+                self._log(
+                    f"  Build guide: skipping download of {', '.join(ignore_names)}.")
             archives = self._client.download_all_files(
                 file_id=mod.file_id,
                 slug=mod.slug,
@@ -270,6 +274,7 @@ class Pipeline:
                 cancel_event=self._stop_event,
                 pause_event=self._pause_event,
                 keep_names=keep_names,
+                ignore_names=ignore_names,
             )
             pm.archive_paths = archives
             if len(archives) > 1:
@@ -491,6 +496,10 @@ class Pipeline:
             self._apply_renames(plan, dirs)
             install(plan, game_path, log_cb)
             self._remove_dds_conflicts(plan)
+            # Apply any patcher-based compat patches in subfolders (e.g. Ebon Hawk K1
+            # "Compatibility Patches" folder). Loose-file subfolders are already
+            # included by _collect_loose_files and don't need a separate pass.
+            self._apply_compat_patches(pm, plan, patcher_only=True)
             pm.strategy_used = "file_copy"
 
         # ---- Standalone game-binary patcher (e.g. 3C-FD Patcher, fog fixes) ----
@@ -586,19 +595,37 @@ class Pipeline:
             if pm.status == ModStatus.WAITING_PATCHER:
                 self._set_status(pm, ModStatus.INSTALLING)
 
-        elif method in (InstallMethod.OVERRIDE_COPY, InstallMethod.DIRECT_COPY,
-                        InstallMethod.MULTIPLE):
+        elif method == InstallMethod.MULTIPLE:
+            # Recursively handle each sub-plan, respecting file_except exclusions.
+            dirs = pm.build_mod.directives
+            for sp in sub_plan.sub_plans:
+                sp_name = sp.mod_root.name if sp.mod_root else ""
+                if dirs.file_except and sp_name and any(
+                    e.lower().strip() in sp_name.lower() for e in dirs.file_except
+                ):
+                    self._log(f"      Skipped: {sp_name} (excluded by build guide)", "muted")
+                    continue
+                self._install_sub_plan(pm, sp)
+
+        elif method in (InstallMethod.OVERRIDE_COPY, InstallMethod.DIRECT_COPY):
             install(sub_plan, game_path, log_cb)
 
-    def _apply_compat_patches(self, pm: PipelineMod, plan: InstallPlan) -> None:
+    def _apply_compat_patches(self, pm: PipelineMod, plan: InstallPlan,
+                              patcher_only: bool = False) -> None:
         """
-        After a patcher install, scan for compat-patch subfolders and apply them.
+        After an install, scan for compat-patch subfolders and apply them.
         In a curated build every bundled compat patch is intentional, so we apply
         all of them except those explicitly excluded by file_except.
+
+        patcher_only: when True (used after DIRECT_COPY/OVERRIDE_COPY installs),
+        only run patcher-based sub-plans - loose-file subfolders are already
+        included by _collect_loose_files and do not need a second pass.
         """
         dirs = pm.build_mod.directives
         _SKIP_NAMES = {"tslpatchdata", "backup", "__macosx", ".ds_store",
                        "data", "docs", "documentation", "readme"}
+        _PATCHER_METHODS = {InstallMethod.TSLPATCHER, InstallMethod.HOLOPATCHER,
+                            InstallMethod.MULTIPLE}
         try:
             subdirs = sorted(
                 [d for d in plan.mod_root.iterdir()
@@ -627,6 +654,8 @@ class Pipeline:
 
             sub_plan = detect(sub_dir)
             if sub_plan.method in (InstallMethod.MANUAL, InstallMethod.GAME_PATCHER):
+                continue
+            if patcher_only and sub_plan.method not in _PATCHER_METHODS:
                 continue
 
             matched = self._compat_folder_matches_batch(folder_name)

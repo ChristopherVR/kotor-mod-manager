@@ -27,7 +27,7 @@ _RECO_RE = re.compile(
     r"\b(?:i (?:personally )?recommend(?:ed)?(?: using)?|"
     r"recommend(?:ed)?|select|choose|use|install|apply)\b"
     r"\s+(?:the\s+|using\s+|one of\s+|your\s+)?"
-    r"[\"“‘']?([A-Za-z0-9][\w '.’/&+-]{2,60}?)[\"”’']?"
+    r'''["']?([A-Za-z0-9][\w '.'/&+-]{2,60}?)["']?'''
     r"\s+(?:install(?:ation)?|option|version|variant|patch|folder)\b",
     re.I,
 )
@@ -50,7 +50,7 @@ def _is_real_filename(fn: str) -> bool:
     return not stem.replace(".", "").isdigit()
 
 # Quoted phrases (folder names, file labels) - both straight and curly quotes.
-_QUOTED_RE = re.compile(r"[\"“‘']([^\"”’']{2,60})[\"”’']")
+_QUOTED_RE = re.compile(r'''["']([^"']{2,60})["']''')
 
 _IMG_EXTS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
 
@@ -210,7 +210,7 @@ def _parse_namespace(text: str, dirs: Directives) -> None:
             # This clause names the rejected alternative - skip it.
             continue
         for m in _RECO_RE.finditer(sent):
-            opt = m.group(1).strip(" '\"‘’“”.")
+            opt = m.group(1).strip(" '\"''"".")
             # Reject filler captures (articles, stopwords, and the trailing
             # keywords themselves so "use the patch" doesn't yield "the").
             if len(opt) < 3 or opt.lower() in {
@@ -223,7 +223,7 @@ def _parse_namespace(text: str, dirs: Directives) -> None:
                 continue
             dirs.namespace_preferences.append(opt)
             # Also add a short tail token (e.g. "Senni Vek's Ambush" -> "ambush").
-            tail = opt.split()[-1].strip("'’s")
+            tail = opt.split()[-1].strip("''s")
             if tail and tail.lower() != opt.lower():
                 dirs.namespace_preferences.append(tail)
 
@@ -247,9 +247,49 @@ def _clauses(text: str) -> list[str]:
 def _parse_download_choice(text: str, dirs: Directives) -> None:
     if "download" not in text.lower():
         return
-    # Only act on an affirmative "download the/just/only/both X" clause that has
-    # no negation ("do not download", "ignore the other ...") - those describe
-    # what to AVOID and must never become a download_only target.
+
+    # ---- EXCLUSIONS ----
+
+    # "do not download the .tga file" → ignore that extension.
+    for m in re.finditer(
+        r"do\s+not\s+download\s+(?:the\s+)?(\.[a-z0-9]+)\s+(?:file|version|variant)",
+        text, re.I,
+    ):
+        dirs.download_ignore.append(m.group(1).lower())
+
+    # "do not download X.rar" / "don't download X.zip" → ignore named file.
+    _DONOT_DL_RE = re.compile(r"do\s+not\s+download\s+|don't\s+download\s+", re.I)
+    for clause in _clauses(text):
+        if not _DONOT_DL_RE.search(clause):
+            continue
+        tail = clause[_DONOT_DL_RE.search(clause).end():]
+        for fn in _FILENAME_RE.findall(tail):
+            if not fn.lower().endswith(_IMG_EXTS) and _is_real_filename(fn):
+                dirs.download_ignore.append(fn)
+        # Quoted name like the "stunbaton 2025" file
+        for q in re.findall(r"['\"]([^'\"]{3,60})['\"]", tail):
+            if q and not q.lower().endswith(_IMG_EXTS):
+                dirs.download_ignore.append(q)
+
+    # ---- INCLUSIONS ----
+
+    # "only download 'Stun baton HD'" (only before download, quoted name).
+    _ONLY_DL_RE = re.compile(r"\bonly\s+download\b", re.I)
+    for clause in _clauses(text):
+        if not _ONLY_DL_RE.search(clause):
+            continue
+        # A negation earlier in the clause (e.g. "do not download X; only download Y")
+        # means THIS part is a valid affirmative instruction.
+        tail = clause[_ONLY_DL_RE.search(clause).start():]
+        for fn in _FILENAME_RE.findall(tail):
+            if not fn.lower().endswith(_IMG_EXTS) and _is_real_filename(fn):
+                dirs.download_only.append(fn)
+        for q in re.findall(r"['\"]([^'\"]{3,60})['\"]", tail):
+            if q and not q.lower().endswith(_IMG_EXTS) and "." not in q:
+                dirs.download_only.append(q)
+
+    # "download the/just/both X" (original: download verb before qualifier).
+    # Skips negation clauses - they describe what to AVOID, not what to keep.
     for clause in _clauses(text):
         if not _DL_AFFIRM_RE.search(clause) or _NEG_RE.search(clause):
             continue
@@ -262,7 +302,13 @@ def _parse_download_choice(text: str, dirs: Directives) -> None:
             for fn in _FILENAME_RE.findall(paren):
                 if _is_real_filename(fn):
                     dirs.download_only.append(fn)
+        # Quoted name without extension
+        for q in re.findall(r"['\"]([^'\"]{3,60})['\"]", tail):
+            if q and not q.lower().endswith(_IMG_EXTS) and "." not in q:
+                dirs.download_only.append(q)
+
     dirs.download_only = _dedupe(dirs.download_only)
+    dirs.download_ignore = _dedupe(dirs.download_ignore)
 
 
 def _parse_file_selection(text: str, dirs: Directives) -> None:
@@ -299,7 +345,7 @@ def _parse_file_selection(text: str, dirs: Directives) -> None:
     # "do not move/install/use X.tga" - explicit single-file negation.
     for m in re.finditer(
         r"do\s+not\s+(?:move|install|include|use|overwrite)\s+"
-        r"[‘\"]?([A-Za-z0-9_.-]+\.(?:tga|tpc|dds|mdl|mdx|2da|wav|mp3|utm))[‘\"]?",
+        r"['\"]?([A-Za-z0-9_.-]+\.(?:tga|tpc|dds|mdl|mdx|2da|wav|mp3|utm))['\"]?",
         text, re.I,
     ):
         fn = m.group(1).strip()
@@ -307,6 +353,7 @@ def _parse_file_selection(text: str, dirs: Directives) -> None:
             dirs.file_except.append(fn)
 
     # "ignore the MacOS folder / skip the Optional folder / never apply the X folder"
+    # "DO NOT USE the content of the 'Korriban Fix' folder"
     # Scan full sentences that contain ignore/skip/never-apply verbs for ALL folder names.
     _FOLDER_STOPWORDS = {"all", "any", "other", "these", "those", "following", "each"}
     _FOLDER_VERB_RE = re.compile(
@@ -315,13 +362,24 @@ def _parse_file_selection(text: str, dirs: Directives) -> None:
         if not _FOLDER_VERB_RE.search(sent):
             continue
         for m in re.finditer(
-            r"(?:ignore|skip|do\s+not\s+(?:use|install|include)|never\s+apply|and)\s+(?:the\s+)?"
-            r"[‘\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)[‘\"]?\s+(?:sub)?folder",
+            r"(?:ignore|skip|do\s+not\s+(?:use|install|include)|never\s+apply|and)\s+"
+            r"(?:the\s+)?(?:content\s+of\s+(?:the\s+)?)?"
+            r"['\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)['\"]?\s+(?:sub)?folder",
             sent, re.I,
         ):
             name = m.group(1).strip()
             if name.lower() not in _FOLDER_STOPWORDS:
                 dirs.file_except.append(name)
+
+    # "but NOT the 'X' folder" - parenthetical exclusion inside a sentence that
+    # describes what TO apply (so the main verb isn't ignore/skip).
+    for m in re.finditer(
+        r"\bnot\s+(?:the\s+)?['\"]?([A-Za-z][A-Za-z0-9 _-]{2,50}?)['\"]?\s+(?:sub)?folder",
+        text, re.I,
+    ):
+        name = m.group(1).strip()
+        if name.lower() not in _FOLDER_STOPWORDS:
+            dirs.file_except.append(name)
 
     # "delete X.tpc, Y.tpc from Override" - post-install cleanup.
     # These files must be removed AFTER install so a newer .dds or replacement wins.
@@ -344,7 +402,7 @@ def _parse_file_selection(text: str, dirs: Directives) -> None:
     ):
         dirs.file_only.append(m.group(1).lower())
 
-    # "only move/use the files from/in ‘QuotedFolder’" - quoted subfolder name.
+    # "only move/use the files from/in 'QuotedFolder'" - quoted subfolder name.
     if re.search(r"only\s+(?:move|copy|install|use)\s+the\s+files?\s+(?:from|in)\b", low):
         for q in _QUOTED_RE.findall(text):
             if not q.lower().endswith(_IMG_EXTS):
@@ -353,7 +411,7 @@ def _parse_file_selection(text: str, dirs: Directives) -> None:
     # "only use the files in/from the X subfolder" (unquoted folder name).
     for m in re.finditer(
         r"only\s+(?:use|move|install|copy)\s+(?:the\s+)?(?:files?\s+)?(?:in|from)\s+"
-        r"(?:the\s+)?[‘\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)[‘\"]?\s+(?:sub)?folder",
+        r"(?:the\s+)?['\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)['\"]?\s+(?:sub)?folder",
         text, re.I,
     ):
         name = m.group(1).strip()
@@ -362,7 +420,7 @@ def _parse_file_selection(text: str, dirs: Directives) -> None:
 
     # "navigate to the X folder and move" - explicit subfolder navigation instruction.
     for m in re.finditer(
-        r"(?:navigate|go)\s+(?:in)?to\s+(?:the\s+)?[‘\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)[‘\"]?"
+        r"(?:navigate|go)\s+(?:in)?to\s+(?:the\s+)?['\"]?([A-Za-z][A-Za-z0-9 _-]{2,40}?)['\"]?"
         r"\s+(?:sub)?folder\s+(?:and|inside|within)\s+(?:move|copy|install)",
         text, re.I,
     ):
