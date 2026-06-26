@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.0] - 2026-06-26
+
+### Features
+
+- Auto-apply compat patches and multi-run patcher options during install
 ## [0.13.0] - 2026-06-26
 
 ### Features
