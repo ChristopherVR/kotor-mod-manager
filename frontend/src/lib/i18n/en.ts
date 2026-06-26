@@ -156,8 +156,9 @@ export const en: Dict = {
 
   // Conflicts view
   "conflicts.title": "Conflicts",
-  "conflicts.summaryOne": "{count} contested resource",
-  "conflicts.summaryMany": "{count} contested resources",
+  "conflicts.noneShort": "No conflicts",
+  "conflicts.summaryOne": "1 conflict",
+  "conflicts.summaryMany": "{count} conflicts",
   "conflicts.noProfiles": "No game installs",
   "conflicts.checking": "Checking for conflicts…",
   "conflicts.noneTitle": "No conflicts detected.",
@@ -165,10 +166,9 @@ export const en: Dict = {
   "conflicts.checkFailedTitle": "Couldn't check for conflicts.",
   "conflicts.checkFailedSubtitle": "Something went wrong reading your library. Try again in a moment.",
   "conflicts.checkStale": "The latest conflict check failed - showing the previous results.",
-  "conflicts.recommendation": "Recommendation: ",
   "conflicts.wins": "wins",
   "conflicts.disabled": "disabled",
-  "conflicts.keepWinner": "Keep {mod} (disable others)",
+  "conflicts.keepWinner": "Keep {mod}",
   "conflicts.disableMod": "Disable {mod}",
   "conflicts.resolvedLog": "Disabled: {mods}",
   "conflicts.resolveFailed": "Could not resolve conflict: {error}",

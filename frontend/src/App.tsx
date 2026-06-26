@@ -213,6 +213,9 @@ export default function App() {
       case "library":
         if (e.event === "import_folder_done") {
           addLog(`Imported ${e.count} mod(s) from folder.`, "success");
+        }
+        // Refresh conflicts on any library change (mod toggled, imported, deleted).
+        if (e.event === "import_folder_done" || e.event === "changed") {
           refreshConflicts();
           setDataTick((t) => t + 1);
         }
@@ -327,6 +330,7 @@ export default function App() {
           setActiveProfile={setActiveProfile}
           addLog={addLog}
           onResolved={() => { refreshConflicts(); setDataTick((t) => t + 1); }}
+          onCountChange={setConflictCount}
         />
       )}
       {view === "activity" && <ActivityView logs={logs} onClear={() => setLogs([])} />}

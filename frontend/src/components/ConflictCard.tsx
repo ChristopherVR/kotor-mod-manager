@@ -1,10 +1,18 @@
 import { useState } from "react";
 import { Lightbulb } from "lucide-react";
-import { api, type Conflict } from "@/lib/api";
+import { api, type Conflict, type ConflictParticipant } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
+
+export interface ConflictGroup {
+  gkey: string;
+  participants: ConflictParticipant[];
+  items: Conflict[];
+  severity: Conflict["severity"];
+  winner_mod_id: string | null;
+}
 
 const SEVERITY_DOT: Record<Conflict["severity"], string> = {
   info: "bg-[hsl(var(--info))]",
@@ -18,45 +26,63 @@ const SEVERITY_BADGE: Record<Conflict["severity"], "info" | "warning" | "destruc
   error: "destructive",
 };
 
-const TYPE_VARIANT: Record<Conflict["type"], "info" | "warning" | "muted" | "secondary" | "destructive"> = {
-  override: "secondary",
-  "2da": "info",
-  dialog: "warning",
-  module: "muted",
-  declared: "destructive",
-};
-
 interface ConflictCardProps {
-  conflict: Conflict;
+  group: ConflictGroup;
   profile: string;
   addLog: (message: string, tag?: string) => void;
   onResolved: (conflicts?: Conflict[]) => void;
 }
 
-export function ConflictCard({ conflict, profile, addLog, onResolved }: ConflictCardProps) {
+function joinNames(names: string[]): string {
+  if (names.length === 0) return "";
+  if (names.length === 1) return `"${names[0]}"`;
+  if (names.length === 2) return `"${names[0]}" and "${names[1]}"`;
+  return names.slice(0, -1).map(n => `"${n}"`).join(", ") + `, and "${names[names.length - 1]}"`;
+}
+
+export function ConflictCard({ group, profile, addLog, onResolved }: ConflictCardProps) {
   const t = useT();
   const [busy, setBusy] = useState(false);
 
-  const winner = conflict.participants.find((p) => p.mod_id === conflict.winner_mod_id);
-  // Enabled participants that lose to the winner.
-  const losers = conflict.winner_mod_id
-    ? conflict.participants.filter((p) => p.mod_id !== conflict.winner_mod_id && p.enabled)
+  const { participants, items, severity, winner_mod_id } = group;
+  const isDeclared = items[0]?.type === "declared";
+  const winner = participants.find(p => p.mod_id === winner_mod_id);
+  const losers = winner_mod_id
+    ? participants.filter(p => p.mod_id !== winner_mod_id && p.enabled)
     : [];
+
+  // File names from non-declared conflicts (file-level conflicts only).
+  const files = items.filter(c => c.type !== "declared").map(c => c.resource);
+
+  // Description and recommendation come from the first representative conflict.
+  const description = items[0]?.description ?? "";
+  const recommendation = items[0]?.recommendation ?? "";
+
+  // Title: mod names as the primary identifier, not the filename.
+  const modNames = participants.map(p => p.mod_name);
+  const title = isDeclared
+    ? `Incompatible: ${joinNames(modNames)}`
+    : joinNames(modNames);
+
+  // File list display: show up to 3 inline, then "and N more".
+  const MAX_FILES = 3;
+  const fileDisplay = files.length === 0 ? null
+    : files.length === 1 ? `File: ${files[0]}`
+    : files.length <= MAX_FILES
+      ? `${files.length} files: ${files.join(", ")}`
+      : `${files.length} files: ${files.slice(0, MAX_FILES).join(", ")} and ${files.length - MAX_FILES} more`;
 
   const disableMods = async (modIds: string[]) => {
     if (busy || !profile || modIds.length === 0) return;
     setBusy(true);
     try {
-      // The disable endpoint returns the freshly recomputed conflict list, so we
-      // hand that straight back to the parent - no second fetch that could race
-      // or fail and blank the whole view.
       let latest: Conflict[] | undefined;
       for (const id of modIds) {
         const r = await api.libraryDisable(profile, id);
         if (r.conflicts) latest = r.conflicts;
       }
       const names = modIds
-        .map((id) => conflict.participants.find((p) => p.mod_id === id)?.mod_name ?? id)
+        .map(id => participants.find(p => p.mod_id === id)?.mod_name ?? id)
         .join(", ");
       addLog(t("conflicts.resolvedLog", { mods: names }), "success");
       onResolved(latest);
@@ -69,90 +95,59 @@ export function ConflictCard({ conflict, profile, addLog, onResolved }: Conflict
 
   return (
     <div className="rounded-lg border bg-card/40 p-4">
-      <div className="flex items-center gap-2">
-        <span className={cn("size-2 shrink-0 rounded-full", SEVERITY_DOT[conflict.severity])} />
-        <code className="flex-1 truncate font-mono text-sm text-foreground" title={conflict.resource}>
-          {conflict.resource}
-        </code>
-        <Badge variant={SEVERITY_BADGE[conflict.severity]}>{conflict.severity}</Badge>
-        <Badge variant={TYPE_VARIANT[conflict.type]}>{conflict.type}</Badge>
+      {/* Header: mod names as the title */}
+      <div className="flex items-start gap-2">
+        <span className={cn("mt-1 size-2 shrink-0 rounded-full", SEVERITY_DOT[severity])} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground" title={title}>
+            {title}
+          </p>
+          {fileDisplay && (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground" title={files.join(", ")}>
+              {fileDisplay}
+            </p>
+          )}
+        </div>
+        <Badge variant={SEVERITY_BADGE[severity]} className="shrink-0">{severity}</Badge>
       </div>
 
-      {conflict.description && (
-        <p className="mt-2.5 text-sm leading-relaxed text-foreground">{conflict.description}</p>
+      {/* Plain-English explanation from the backend */}
+      {description && (
+        <p className="mt-2.5 text-sm leading-relaxed text-foreground">{description}</p>
       )}
 
-      {conflict.recommendation && (
+      {/* Recommendation */}
+      {recommendation && (
         <div className="mt-2.5 flex items-start gap-2 rounded-md border border-[hsl(var(--info)/0.3)] bg-[hsl(var(--info)/0.08)] p-2.5">
           <Lightbulb className="mt-0.5 size-4 shrink-0 text-[hsl(var(--info))]" />
-          <p className="text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">{t("conflicts.recommendation")}</span>
-            {conflict.recommendation}
-          </p>
+          <p className="text-sm text-muted-foreground">{recommendation}</p>
         </div>
       )}
 
-      <ul className="mt-3 space-y-1.5 pl-4">
-        {conflict.participants.map((p) => {
-          const isWinner = conflict.winner_mod_id === p.mod_id;
-          return (
-            <li key={p.mod_id} className="flex items-center gap-2 text-sm">
-              <span
-                className={cn(
-                  "flex-1 truncate",
-                  isWinner ? "font-medium text-foreground" : "text-muted-foreground",
-                  !p.enabled && "line-through opacity-60"
-                )}
-                title={p.mod_name}
-              >
-                {p.mod_name}
-              </span>
-              {isWinner && <Badge variant="success">{t("conflicts.wins")}</Badge>}
-              {!p.enabled && <Badge variant="muted">{t("conflicts.disabled")}</Badge>}
-            </li>
-          );
-        })}
-      </ul>
-
-      {/* Resolution actions */}
-      {conflict.winner_mod_id && losers.length > 0 && (
+      {/* Resolution: winner vs losers */}
+      {winner && losers.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() => disableMods(losers.map((p) => p.mod_id))}
-          >
-            {t("conflicts.keepWinner", { mod: winner?.mod_name ?? "" })}
+          <Button size="sm" disabled={busy} onClick={() => disableMods(losers.map(p => p.mod_id))}>
+            {t("conflicts.keepWinner", { mod: winner.mod_name })}
           </Button>
-          {losers.map((p) => (
-            <Button
-              key={p.mod_id}
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => disableMods([p.mod_id])}
-            >
+          {losers.map(p => (
+            <Button key={p.mod_id} size="sm" variant="outline" disabled={busy}
+              onClick={() => disableMods([p.mod_id])}>
               {t("conflicts.disableMod", { mod: p.mod_name })}
             </Button>
           ))}
         </div>
       )}
 
-      {!conflict.winner_mod_id && conflict.type === "declared" && (
+      {/* Resolution: declared incompatibility (no winner, just disable one) */}
+      {!winner_mod_id && participants.some(p => p.enabled) && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
-          {conflict.participants
-            .filter((p) => p.enabled)
-            .map((p) => (
-              <Button
-                key={p.mod_id}
-                size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={() => disableMods([p.mod_id])}
-              >
-                {t("conflicts.disableMod", { mod: p.mod_name })}
-              </Button>
-            ))}
+          {participants.filter(p => p.enabled).map(p => (
+            <Button key={p.mod_id} size="sm" variant="outline" disabled={busy}
+              onClick={() => disableMods([p.mod_id])}>
+              {t("conflicts.disableMod", { mod: p.mod_name })}
+            </Button>
+          ))}
         </div>
       )}
     </div>

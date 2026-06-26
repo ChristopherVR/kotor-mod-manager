@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { GitMerge, CheckCircle2, AlertTriangle } from "lucide-react";
-import { api, type Conflict, type Profile } from "@/lib/api";
-import { ConflictCard } from "@/components/ConflictCard";
+import { api, type Conflict, type ConflictParticipant, type Profile } from "@/lib/api";
+import { ConflictCard, type ConflictGroup } from "@/components/ConflictCard";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useT } from "@/lib/i18n";
@@ -13,6 +13,7 @@ interface ConflictsViewProps {
   setActiveProfile: (id: string) => void;
   addLog: (message: string, tag?: string) => void;
   onResolved: () => void;
+  onCountChange?: (n: number) => void;
 }
 
 export function ConflictsView({
@@ -22,6 +23,7 @@ export function ConflictsView({
   setActiveProfile,
   addLog,
   onResolved,
+  onCountChange,
 }: ConflictsViewProps) {
   const t = useT();
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -29,11 +31,13 @@ export function ConflictsView({
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(async () => {
-    if (!activeProfile) { setConflicts([]); setLoading(false); return; }
+    if (!activeProfile) { setConflicts([]); setLoading(false); onCountChange?.(0); return; }
     setLoading(true);
     try {
       const r = await api.conflicts(activeProfile);
-      setConflicts(r.conflicts ?? []);
+      const list = r.conflicts ?? [];
+      setConflicts(list);
+      onCountChange?.(list.length);
       setLoadError(false);
     } catch {
       // Don't blank the list on a transient error - that looks like "all
@@ -43,17 +47,46 @@ export function ConflictsView({
     } finally {
       setLoading(false);
     }
-  }, [activeProfile]);
+  }, [activeProfile, onCountChange]);
 
   useEffect(() => { load(); }, [load, refreshTick]);
 
   // After a resolve, the disable endpoint already returns the recomputed list -
   // use it directly when present so the remaining conflicts never flicker away.
   const handleResolved = useCallback((updated?: Conflict[]) => {
-    if (updated) { setConflicts(updated); setLoadError(false); }
-    else load();
+    if (updated) {
+      setConflicts(updated);
+      setLoadError(false);
+      onCountChange?.(updated.length);
+    } else {
+      load();
+    }
     onResolved();
-  }, [load, onResolved]);
+  }, [load, onResolved, onCountChange]);
+
+  // Group conflicts that share the exact same set of participants so that
+  // "Mod A vs Mod B on 5 files" shows as one card instead of five.
+  const groups = useMemo<ConflictGroup[]>(() => {
+    const map = new Map<string, ConflictGroup>();
+    for (const c of conflicts) {
+      const gkey = [...c.participants.map((p: ConflictParticipant) => p.mod_id)].sort().join("\0");
+      if (!map.has(gkey)) {
+        map.set(gkey, {
+          gkey,
+          participants: c.participants,
+          items: [],
+          severity: c.severity,
+          winner_mod_id: c.winner_mod_id,
+        });
+      }
+      const g = map.get(gkey)!;
+      g.items.push(c);
+      // Escalate to the worst severity in the group.
+      const rank: Record<string, number> = { error: 2, warning: 1, info: 0 };
+      if ((rank[c.severity] ?? 0) > (rank[g.severity] ?? 0)) g.severity = c.severity;
+    }
+    return [...map.values()];
+  }, [conflicts]);
 
   const switchProfile = (id: string) => {
     setActiveProfile(id);
@@ -66,9 +99,11 @@ export function ConflictsView({
         <div>
           <h1 className="text-base font-semibold">{t("conflicts.title")}</h1>
           <p className="text-xs text-muted-foreground">
-            {conflicts.length === 1
-              ? t("conflicts.summaryOne", { count: conflicts.length })
-              : t("conflicts.summaryMany", { count: conflicts.length })}
+            {groups.length === 0
+              ? t("conflicts.noneShort")
+              : groups.length === 1
+                ? t("conflicts.summaryOne")
+                : t("conflicts.summaryMany", { count: groups.length })}
           </p>
         </div>
         <Select
@@ -87,7 +122,7 @@ export function ConflictsView({
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading ? (
           <EmptyState icon={GitMerge} title={t("conflicts.checking")} />
-        ) : conflicts.length === 0 ? (
+        ) : groups.length === 0 ? (
           loadError ? (
             <EmptyState icon={AlertTriangle} title={t("conflicts.checkFailedTitle")} subtitle={t("conflicts.checkFailedSubtitle")} />
           ) : (
@@ -101,10 +136,10 @@ export function ConflictsView({
                 {t("conflicts.checkStale")}
               </div>
             )}
-            {conflicts.map((c) => (
+            {groups.map((g) => (
               <ConflictCard
-                key={c.id}
-                conflict={c}
+                key={g.gkey}
+                group={g}
                 profile={activeProfile}
                 addLog={addLog}
                 onResolved={handleResolved}
