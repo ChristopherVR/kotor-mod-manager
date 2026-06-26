@@ -118,8 +118,8 @@ export function ConflictCard({ group, profile, addLog, onResolved }: ConflictCar
   }
 
   // ---- File-level warning (mods from different builds sharing files) ----
-  // Still no disable buttons - load order handles it, but flag it more visibly.
   if (!isDeclared) {
+    const enabledParticipants = participants.filter(p => p.enabled);
     return (
       <div className={cn("rounded-lg border bg-card/40 p-4", "border-[hsl(var(--warning)/0.25)]")}>
         <div className="flex items-start gap-2">
@@ -145,8 +145,19 @@ export function ConflictCard({ group, profile, addLog, onResolved }: ConflictCar
             <p className="text-sm text-muted-foreground">{recommendation}</p>
           </div>
         )}
-        {/* Load order handles file conflicts - no disable buttons here.
-            If the player truly wants to act, they can use the Library view. */}
+        {enabledParticipants.length > 0 && (
+          <div className="mt-3 space-y-2 border-t pt-3">
+            <p className="text-xs text-muted-foreground">{t("conflicts.ifIssuesDisable")}</p>
+            <div className="flex flex-wrap gap-2">
+              {enabledParticipants.map(p => (
+                <Button key={p.mod_id} size="sm" variant="outline" disabled={busy}
+                  onClick={() => disableMods([p.mod_id])}>
+                  {t("conflicts.disableMod", { mod: p.mod_name })}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
