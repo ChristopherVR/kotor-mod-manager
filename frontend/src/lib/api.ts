@@ -134,6 +134,7 @@ export type WsEvent =
   | { type: "manual"; file_id: string; name: string; folder: string; readme: string }
   | { type: "update_progress"; pct: number; downloaded: number; total: number }
   | { type: "library"; event: "import_folder_done"; count: number; [k: string]: unknown }
+  | { type: "library"; event: "changed"; [k: string]: unknown }
   | { type: "pipeline"; event: "started" | "finished"; [k: string]: unknown };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
