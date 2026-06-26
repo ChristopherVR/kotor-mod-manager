@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.11.0] - 2026-06-26
+
+### Features
+
+- Fix download restarts, show manual install readme, and overhaul the conflicts page
 ## [0.10.1] - 2026-06-26
 
 ### Bug Fixes
