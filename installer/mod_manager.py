@@ -535,6 +535,20 @@ def _resource_type(rel_lower: str) -> str:
     return "override"
 
 
+def _logical_id(mod: "InstalledMod") -> str:
+    """Conflict-grouping identity.
+
+    Multiple manifest entries that share a source_ref (e.g. the two records
+    written for a MULTIPLE-type mod whose main plan and patch plan each call
+    record_install) must NOT conflict with each other - they are the same
+    logical mod installed in stages.  Use source_type+source_ref as the stable
+    identity when available, falling back to the entry's own id.
+    """
+    if mod.source_ref:
+        return f"{mod.source_type}:{mod.source_ref}"
+    return mod.id
+
+
 def compute_conflicts(game: str) -> list[dict]:
     """
     Compute file-level conflicts across ENABLED mods. Returns UI-shaped dicts:
@@ -562,8 +576,9 @@ def compute_conflicts(game: str) -> list[dict]:
 
     conflicts: list[dict] = []
     for key, parts in owners.items():
-        distinct = {m.id for _, m, _ in parts}
-        if len(distinct) < 2:
+        # Deduplicate by logical identity before checking for real conflicts.
+        distinct_logical = {_logical_id(m) for _, m, _ in parts}
+        if len(distinct_logical) < 2:
             continue
         parts_sorted = sorted(parts, key=lambda t: (t[0], t[1].install_ts))
         kinds = {k for _, _, k in parts}
@@ -582,12 +597,13 @@ def compute_conflicts(game: str) -> list[dict]:
             severity = "warning"
 
         winner = parts_sorted[0][1]
-        seen_ids: set[str] = set()
+        seen_logical: set[str] = set()
         participants = []
         for _, m, _k in parts_sorted:
-            if m.id in seen_ids:
+            lid = _logical_id(m)
+            if lid in seen_logical:
                 continue
-            seen_ids.add(m.id)
+            seen_logical.add(lid)
             participants.append({
                 "mod_id": m.id,
                 "mod_name": m.name,

@@ -448,7 +448,7 @@ def _parse_order_and_deps(text: str, dirs: Directives) -> None:
         dirs.multi_run = True
 
     # Try to extract the exact ordered option names for a multi-run install
-    # so the log message (and eventually the installer) can name them explicitly.
+    # so the installer can run the patcher once per option automatically.
     # e.g. "run once selecting Kaevee Removal Part 1, once selecting Saedhe's Head"
     _OPTION_RUN_RE = re.compile(
         r"(?:once|each\s+time)\s+(?:selecting|choosing|for|with)\s+"
@@ -460,6 +460,24 @@ def _parse_order_and_deps(text: str, dirs: Directives) -> None:
     if opts and len(opts) >= 2:
         dirs.multi_run_options = _dedupe(opts)
         dirs.multi_run = True
+
+    # "Install the main mod, then re-run the patcher and select the X option"
+    # The empty string marks the first (default/main) run; X is the compat run.
+    if not dirs.multi_run_options:
+        _MAIN_COMPAT_RE = re.compile(
+            r"install\s+(?:the\s+)?main\s+mod[^,;.]*"
+            r"[,;.]\s*then\s+re-?run[^,;.]*?"
+            r"\bselect\s+(?:the\s+)?"
+            r"([A-Za-z][A-Za-z0-9 _'\"&,-]{2,60}?)"
+            r"\s+(?:install(?:ation)?\s+)?option",
+            re.I,
+        )
+        mc = _MAIN_COMPAT_RE.search(text)
+        if mc:
+            compat_opt = mc.group(1).strip(" '\".,;")
+            if compat_opt:
+                dirs.multi_run_options = ["", compat_opt]
+                dirs.multi_run = True
 
 
 def _parse_rename_copies(text: str, dirs: Directives) -> None:

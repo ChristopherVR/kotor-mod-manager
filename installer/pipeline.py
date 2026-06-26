@@ -435,11 +435,17 @@ class Pipeline:
                 # guide specifies (e.g. TSLRCM Tweak Pack's 6 separate options).
                 strategies: list[str] = []
                 for i, opt in enumerate(dirs.multi_run_options, 1):
+                    label = opt if opt else "main (default)"
                     self._log(
-                        f"    Run {i}/{len(dirs.multi_run_options)}: {opt}", "muted")
+                        f"    Run {i}/{len(dirs.multi_run_options)}: {label}", "muted")
                     run_dirs = copy.copy(dirs)
-                    run_dirs.namespace_preferences = [opt]
-                    run_dirs.prefer_compatible = False
+                    # Empty string = install the default/main option; non-empty = named option.
+                    if opt:
+                        run_dirs.namespace_preferences = [opt]
+                        run_dirs.prefer_compatible = False
+                    else:
+                        run_dirs.namespace_preferences = []
+                        run_dirs.prefer_compatible = False
                     run_dirs.multi_run = False
                     run_dirs.multi_run_options = []
                     result = run_tslpatcher_cascade(
@@ -768,7 +774,7 @@ class Pipeline:
                 f"links an external patch, install that too.", "warning")
         if dirs.multi_run:
             if dirs.multi_run_options:
-                opts_list = ", ".join(f'"{o}"' for o in dirs.multi_run_options)
+                opts_list = ", ".join(f'"{o or "main (default)"}"' for o in dirs.multi_run_options)
                 self._log(
                     f"  '{mod.name}': running the patcher {len(dirs.multi_run_options)} times "
                     f"in order: {opts_list}.",

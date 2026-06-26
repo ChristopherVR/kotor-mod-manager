@@ -23,10 +23,11 @@ interface ConflictCardProps {
 }
 
 function joinNames(names: string[]): string {
-  if (names.length === 0) return "";
-  if (names.length === 1) return `"${names[0]}"`;
-  if (names.length === 2) return `"${names[0]}" and "${names[1]}"`;
-  return names.slice(0, -1).map(n => `"${n}"`).join(", ") + `, and "${names[names.length - 1]}"`;
+  const u = [...new Set(names)];
+  if (u.length === 0) return "";
+  if (u.length === 1) return `"${u[0]}"`;
+  if (u.length === 2) return `"${u[0]}" and "${u[1]}"`;
+  return u.slice(0, -1).map(n => `"${n}"`).join(", ") + `, and "${u[u.length - 1]}"`;
 }
 
 // Shared button style used inside conflict cards.
