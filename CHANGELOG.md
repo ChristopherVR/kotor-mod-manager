@@ -1,10 +1,20 @@
 # Changelog
 
+## [0.10.1] - 2026-06-26
+
+### Bug Fixes
+
+- Build error caused by TypeScript narrowing in library event handler
+- Show friendly install method names in the mod library
 ## [0.10.0] - 2026-06-26
 
 ### Features
 
 - Download up to 3 mods at the same time to save waiting
+
+### Bug Fixes
+
+- App build error after adding library change detection
 ## [0.9.0] - 2026-06-25
 
 ### Features

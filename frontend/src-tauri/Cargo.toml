@@ -1,6 +1,6 @@
 [package]
 name = "kotor-mod-installer"
-version = "0.10.0"
+version = "0.10.1"
 description = "KOTOR Mod Installer"
 authors = ["Christopher van Rooyen"]
 edition = "2021"
