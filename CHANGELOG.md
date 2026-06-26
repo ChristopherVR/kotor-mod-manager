@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.4] - 2026-06-26
+
+### Bug Fixes
+
+- Add disable buttons to file-conflict cards in the Conflicts tab
 ## [0.14.3] - 2026-06-26
 
 ### Bug Fixes
