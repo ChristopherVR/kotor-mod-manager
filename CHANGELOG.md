@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.5] - 2026-06-26
+
+### Bug Fixes
+
+- Stop the installer showing Finished with 0 mods done when something went wrong mid-run
 ## [0.14.4] - 2026-06-26
 
 ### Bug Fixes
