@@ -139,6 +139,14 @@ class Directives:
     # Files to delete from Override/Modules AFTER the mod installs successfully.
     # Populated from "delete X from Override" instructions in the build guide.
     post_install_delete: list[str] = field(default_factory=list)
+    # Files to delete from the game's Override/Modules folder BEFORE this mod
+    # installs. Build guides say "delete X before install" to clear old texture
+    # versions that would otherwise shadow the replacement.
+    pre_install_delete: list[str] = field(default_factory=list)
+    # Mod name keywords: skip this mod if any appear in the current install batch.
+    # Handles "skip if using X" mutual exclusions (e.g. 4GB Patcher skips when
+    # 3C-FD Patcher is present because 3C-FD already applies the same patch).
+    skip_if: list[str] = field(default_factory=list)
     raw: str = ""
 
     def is_empty(self) -> bool:
@@ -149,6 +157,7 @@ class Directives:
             self.patch_first, self.requires_patch, self.multi_run,
             self.manual_notes, self.rename_copies, self.rename_base_copies,
             self.multi_run_options, self.post_install_delete,
+            self.pre_install_delete, self.skip_if,
         ])
 
     def summary(self) -> str:
@@ -328,19 +337,33 @@ def _parse_file_selection(text: str, dirs: Directives) -> None:
         for m in re.finditer(r"except\s+(?:for\s+)?(?:the\s+)?([A-Za-z][A-Za-z0-9 _-]{2,40}?)\s+folder", after, re.I):
             dirs.file_except.append(m.group(1).strip())
 
-    # "delete X.tga" / "remove X.tga" before installing (pre-install exclusion).
-    # Exclude "delete from Override/game" which is a post-install cleanup instruction.
-    _POST_OVERRIDE_RE = re.compile(
-        r"\bdelete\b.{0,60}?\bfrom\s+(?:the\s+)?(?:override|your\s+game|the\s+game|the\s+install)",
+    # "delete X" instructions split into three cases based on context:
+    #   "delete X from Override/Modules/game" -> post-install cleanup (handled below)
+    #   "delete X from [mod subfolder]"       -> skip that file from the archive (file_except)
+    #   "delete X" with no "from" clause      -> pre-install: remove from game Override first
+    _DEL_FROM_GAME_RE = re.compile(
+        r"\bdelete\b.{0,80}?\bfrom\s+(?:the\s+)?(?:override|your\s+override|modules|the\s+game)\b",
         re.I,
     )
+    _DEL_FROM_ANY_RE = re.compile(r"\bdelete\b.{0,80}?\bfrom\b", re.I)
     for sent in _split_sentences(text):
         sl = sent.lower()
-        if ("delete" not in sl and "remove" not in sl) or _POST_OVERRIDE_RE.search(sent):
+        if "delete" not in sl:
             continue
-        for fn in _FILENAME_RE.findall(sent):
-            if not fn.lower().endswith(_IMG_EXTS) and _is_real_filename(fn):
-                dirs.file_except.append(fn)
+        if re.search(r"\bdo\s+not\s+delete\b|\bdon't\s+delete\b", sl):
+            continue
+        if _DEL_FROM_GAME_RE.search(sent):
+            continue  # "delete X from Override" - handled by post_install_delete below
+        fns = [fn for fn in _FILENAME_RE.findall(sent)
+               if not fn.lower().endswith(_IMG_EXTS) and _is_real_filename(fn)]
+        if not fns:
+            continue
+        if _DEL_FROM_ANY_RE.search(sent):
+            # "delete X from [mod subfolder]" - exclude these files from the archive copy
+            dirs.file_except.extend(fns)
+        else:
+            # No "from" clause - delete these from the game's Override before installing
+            dirs.pre_install_delete.extend(fns)
 
     # "do not move/install/use X.tga" - explicit single-file negation.
     for m in re.finditer(
@@ -614,6 +637,30 @@ def select_paths(rel_paths: list[str], dirs: "Directives") -> tuple[list[str], l
     return kept, dropped
 
 
+def _parse_skip_if(text: str, dirs: Directives) -> None:
+    """Parse 'skip if using X' / 'not needed if X installed' mutual exclusion hints."""
+    _SKIP_IF_RE = re.compile(
+        r"\b(?:skip|not\s+needed|omit|unnecessary|already\s+applied|already\s+included)"
+        r".{0,80}?\b(?:if|when)\b.{0,80}?"
+        r"\b(?:using|installed?|have|applied|chose(?:n)?)\b\s+"
+        r"(?:the\s+)?([A-Za-z0-9][A-Za-z0-9 _-]{2,50})(?=[,;.()\s]|$)",
+        re.I,
+    )
+    _STOPWORDS = {
+        "main", "mod", "this", "it", "default", "above", "below",
+        "recommended", "option", "patcher", "installer", "following",
+    }
+    _TRAIL_RE = re.compile(
+        r"\s+(?:installed?|applied|used?|enabled?|selected?|chosen?|present|active)\s*$",
+        re.I,
+    )
+    for m in _SKIP_IF_RE.finditer(text):
+        name = _TRAIL_RE.sub("", m.group(1)).strip(" .,'\"")
+        if len(name) >= 3 and name.lower() not in _STOPWORDS:
+            dirs.skip_if.append(name)
+    dirs.skip_if = _dedupe(dirs.skip_if)
+
+
 def parse_directives(instructions: str, warnings: str = "",
                      install_method: str = "") -> Directives:
     """Parse the build page's per-mod text into actionable install directives."""
@@ -635,4 +682,5 @@ def parse_directives(instructions: str, warnings: str = "",
     _parse_order_and_deps(text, dirs)
     _parse_rename_copies(text, dirs)
     _parse_manual_notes(text, dirs)
+    _parse_skip_if(text, dirs)
     return dirs

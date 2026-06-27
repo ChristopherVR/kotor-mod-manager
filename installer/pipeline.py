@@ -181,6 +181,8 @@ class Pipeline:
 
     def _run(self) -> None:
         pending = [pm for pm in self._mods if pm.status not in (ModStatus.DONE, ModStatus.SKIPPED)]
+        self._resolve_skip_constraints()
+        self._check_dependencies()
         try:
             with ThreadPoolExecutor(max_workers=3, thread_name_prefix="mod-dl") as pool:
                 futures: dict = {}  # Future -> PipelineMod
@@ -351,6 +353,7 @@ class Pipeline:
         dirs = pm.build_mod.directives
         self._apply_build_guide_order(pm, dirs)
         self._log_build_guide_notes(pm, dirs)
+        self._apply_pre_delete(pm, dirs)
 
         self._set_status(pm, ModStatus.INSTALLING)
         total = len(pm.plans)
@@ -769,6 +772,100 @@ class Pipeline:
                             f"    Cleaned up {subdir}/{fn} (per build guide)", "muted")
                     except OSError as e:
                         self._log(f"    Could not clean up {fn}: {e}", "warning")
+
+    def _apply_pre_delete(self, pm: PipelineMod, dirs) -> None:
+        """Delete stale files from Override/Modules before installing this mod.
+
+        Build guides say "delete X before install" to clear old texture versions
+        that would otherwise shadow the replacement from this mod.
+        """
+        filenames = getattr(dirs, "pre_install_delete", [])
+        if not filenames:
+            return
+        deleted: list[str] = []
+        for fn in filenames:
+            for subdir in ("Override", "Modules"):
+                target = self._game_path / subdir / fn
+                if not target.exists():
+                    parent = self._game_path / subdir
+                    if parent.is_dir():
+                        for f in parent.iterdir():
+                            if f.name.lower() == fn.lower():
+                                target = f
+                                break
+                if target.exists():
+                    try:
+                        target.unlink()
+                        deleted.append(f"{subdir}/{fn}")
+                    except OSError as e:
+                        self._log(f"    Could not remove {subdir}/{fn}: {e}", "warning")
+        if deleted:
+            n = len(deleted)
+            listed = ", ".join(deleted[:5])
+            extra = f" +{n - 5} more" if n > 5 else ""
+            self._log(f"  Pre-install: removed {n} outdated file(s): {listed}{extra}", "muted")
+
+    def _resolve_skip_constraints(self) -> None:
+        """Mark mods as SKIPPED when a mutex alternative is in the same batch.
+
+        Handles build-guide notes like 'skip if using 3C-FD Patcher' so the
+        pipeline never installs two mutually-exclusive mods at once.
+        """
+        batch = [
+            (pm.build_mod.name.lower(), (pm.build_mod.slug or "").lower())
+            for pm in self._mods
+        ]
+        for pm in self._mods:
+            if pm.status != ModStatus.PENDING:
+                continue
+            skip_if = getattr(pm.build_mod.directives, "skip_if", [])
+            for skip_name in skip_if:
+                sn = skip_name.lower().strip()
+                if len(sn) < 3:
+                    continue
+                for name, slug in batch:
+                    if name == pm.build_mod.name.lower():
+                        continue
+                    if sn in name or sn in slug:
+                        self._set_status(pm, ModStatus.SKIPPED)
+                        self._log(
+                            f"  [{pm.build_mod.name}] Skipped - not needed "
+                            f"when '{skip_name}' is also being installed.",
+                            "muted",
+                        )
+                        break
+                if pm.status == ModStatus.SKIPPED:
+                    break
+
+    def _check_dependencies(self) -> None:
+        """Warn when mods that need a community patch don't have it in the batch."""
+        pending = [pm for pm in self._mods if pm.status == ModStatus.PENDING]
+        if not pending:
+            return
+        haystack = " ".join(
+            f"{pm.build_mod.name.lower()} {(pm.build_mod.slug or '').lower()}"
+            for pm in pending
+        )
+        compat_needers = [
+            pm for pm in pending
+            if getattr(pm.build_mod.directives, "prefer_compatible", False)
+        ]
+        if not compat_needers:
+            return
+        _CP_TOKENS = [
+            "k1cp", "k2cp", "tslrcm", "community patch",
+            "kotor-1-community-patch", "kotor-2-community-patch",
+            "tsl-restored", "sith-lords-restored",
+        ]
+        if any(tok in haystack for tok in _CP_TOKENS):
+            return
+        names = ", ".join(f"'{pm.build_mod.name}'" for pm in compat_needers[:3])
+        extra = f" and {len(compat_needers) - 3} more" if len(compat_needers) > 3 else ""
+        self._log(
+            f"Warning: {names}{extra} need a community patch (K1CP / TSLRCM / K2CP) "
+            f"that isn't in the selected mods. They may not install correctly without it.",
+            "warning",
+        )
 
     def _apply_build_guide_order(self, pm: PipelineMod, dirs) -> None:
         """
