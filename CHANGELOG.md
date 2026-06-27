@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.4] - 2026-06-27
+
+### Bug Fixes
+
+- Hide no-action conflicts, skip installed mods on Select All, and cache mod details to disk
 ## [0.15.3] - 2026-06-27
 
 ### Bug Fixes
