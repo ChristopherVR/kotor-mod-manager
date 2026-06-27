@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.1] - 2026-06-27
+
+### Bug Fixes
+
+- Prevent path traversal in build-guide file deletion
 ## [0.15.0] - 2026-06-27
 
 ### Features
