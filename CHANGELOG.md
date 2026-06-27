@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.3] - 2026-06-27
+
+### Bug Fixes
+
+- Extract archives with very long paths and fix the pywinauto fallback crash
 ## [0.15.2] - 2026-06-27
 
 ### Bug Fixes
