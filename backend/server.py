@@ -12,8 +12,10 @@ Run standalone:  python -m backend.server --port 8756
 
 import argparse
 import asyncio
+import json
 import os
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -505,8 +507,51 @@ def set_active(req: ActiveProfileRequest) -> dict:
 
 _BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                "(KHTML, like Gecko) Chrome/120.0 Safari/537.36")
-_MODINFO_CACHE: dict = {}
-_NEXUS_CACHE: dict = {}
+_CACHE_TTL = 86400  # 24 hours
+
+
+def _mod_cache_dir() -> Path:
+    d = cfg.CONFIG_DIR / "cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _read_json_cache(filename: str) -> dict:
+    """Load a JSON cache file and return only entries that are still within TTL."""
+    path = _mod_cache_dir() / filename
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw: dict = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    cutoff = time.time() - _CACHE_TTL
+    return {k: v["data"] for k, v in raw.items()
+            if isinstance(v, dict) and v.get("_ts", 0) > cutoff}
+
+
+def _write_json_cache(filename: str, key: str, data) -> None:
+    """Persist a single cache entry to disk with a timestamp."""
+    path = _mod_cache_dir() / filename
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw: dict = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        raw = {}
+    now = time.time()
+    raw[key] = {"data": data, "_ts": now}
+    # Prune stale entries while we have the file open.
+    cutoff = now - _CACHE_TTL
+    raw = {k: v for k, v in raw.items()
+           if isinstance(v, dict) and v.get("_ts", 0) > cutoff}
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(raw, f, ensure_ascii=False)
+    except OSError:
+        pass
+
+
+_MODINFO_CACHE: dict = _read_json_cache("mod_info.json")
+_NEXUS_CACHE: dict = _read_json_cache("nexus_urls.json")
 
 
 def _resolve_nexus_url(name: str, game: str) -> str:
@@ -532,6 +577,7 @@ def _resolve_nexus_url(name: str, game: str) -> str:
             url = nexus.search_by_name(name, game, api_key)
             if url:
                 _NEXUS_CACHE[ckey] = url
+                _write_json_cache("nexus_urls.json", ckey, url)
                 return url
         except Exception:
             pass
@@ -547,6 +593,7 @@ def _resolve_nexus_url(name: str, game: str) -> str:
     except Exception:
         pass
     _NEXUS_CACHE[ckey] = result
+    _write_json_cache("nexus_urls.json", ckey, result)
     return result
 
 
@@ -560,6 +607,7 @@ def mod_info(file_id: str, slug: str = "", game: str = "KOTOR1") -> dict:
     details["nexus_url"] = _resolve_nexus_url(name, game)
     if not details.get("error"):
         _MODINFO_CACHE[cache_key] = details
+        _write_json_cache("mod_info.json", cache_key, details)
     return details
 
 

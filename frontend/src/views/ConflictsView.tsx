@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GitMerge, CheckCircle2, AlertTriangle } from "lucide-react";
 import { api, type Conflict, type ConflictParticipant, type Profile } from "@/lib/api";
 import { ConflictCard, type ConflictGroup } from "@/components/ConflictCard";
@@ -37,7 +37,6 @@ export function ConflictsView({
       const r = await api.conflicts(activeProfile);
       const list = r.conflicts ?? [];
       setConflicts(list);
-      onCountChange?.(list.length);
       setLoadError(false);
     } catch {
       setLoadError(true);
@@ -52,12 +51,11 @@ export function ConflictsView({
     if (updated) {
       setConflicts(updated);
       setLoadError(false);
-      onCountChange?.(updated.length);
     } else {
       load();
     }
     onResolved();
-  }, [load, onResolved, onCountChange]);
+  }, [load, onResolved]);
 
   // Group conflicts that share the exact same set of participants.
   const allGroups = useMemo<ConflictGroup[]>(() => {
@@ -90,26 +88,39 @@ export function ConflictsView({
     () => allGroups.filter(g => g.items[0]?.type === "declared"),
     [allGroups],
   );
+  // Exclude info-severity groups (same build / no action needed) - they require no user attention.
   const fileGroups = useMemo(
-    () => allGroups.filter(g => g.items[0]?.type !== "declared"),
+    () => allGroups.filter(g => g.items[0]?.type !== "declared" && g.severity !== "info"),
     [allGroups],
   );
+
+  // Sync the tab badge count with the number of actionable conflict groups.
+  const prevCount = useRef<number | null>(null);
+  useEffect(() => {
+    const n = declaredGroups.length + fileGroups.length;
+    if (n !== prevCount.current) {
+      prevCount.current = n;
+      onCountChange?.(n);
+    }
+  }, [declaredGroups.length, fileGroups.length, onCountChange]);
 
   const switchProfile = (id: string) => {
     setActiveProfile(id);
     api.setActiveProfile(id).catch(() => {});
   };
 
+  const visibleCount = declaredGroups.length + fileGroups.length;
+
   // Subtitle that distinguishes real incompatibilities from load-order notes.
   const subtitle = useMemo(() => {
-    if (allGroups.length === 0) return t("conflicts.noneShort");
+    if (visibleCount === 0) return t("conflicts.noneShort");
     const parts: string[] = [];
     if (declaredGroups.length === 1) parts.push(t("conflicts.summaryDeclared", { count: 1 }));
     else if (declaredGroups.length > 1) parts.push(t("conflicts.summaryDeclaredPlural", { count: declaredGroups.length }));
     if (fileGroups.length === 1) parts.push(t("conflicts.summaryNotes", { count: 1 }));
     else if (fileGroups.length > 1) parts.push(t("conflicts.summaryNotesPlural", { count: fileGroups.length }));
     return parts.join(", ");
-  }, [t, allGroups.length, declaredGroups.length, fileGroups.length]);
+  }, [t, visibleCount, declaredGroups.length, fileGroups.length]);
 
   return (
     <div className="flex h-full flex-col">
@@ -134,7 +145,7 @@ export function ConflictsView({
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading ? (
           <EmptyState icon={GitMerge} title={t("conflicts.checking")} />
-        ) : allGroups.length === 0 ? (
+        ) : visibleCount === 0 ? (
           loadError ? (
             <EmptyState icon={AlertTriangle} title={t("conflicts.checkFailedTitle")} subtitle={t("conflicts.checkFailedSubtitle")} />
           ) : (

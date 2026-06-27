@@ -97,7 +97,7 @@ export function BuildsView(props: BuildsViewProps) {
       return next;
     });
   };
-  const selectAll = () => setSelected(new Set(mods.map((m) => m.file_id)));
+  const selectAll = () => setSelected(new Set(mods.filter(m => !m.installed).map((m) => m.file_id)));
   const selectNone = () => setSelected(new Set());
 
   const selectedCount = useMemo(
