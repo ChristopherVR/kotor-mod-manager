@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.2] - 2026-06-27
+
+### Bug Fixes
+
+- Stream HoloPatcher logs live and stop it immediately when you cancel
 ## [0.15.1] - 2026-06-27
 
 ### Bug Fixes
