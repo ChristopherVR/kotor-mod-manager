@@ -5,6 +5,7 @@ Low-level patcher runners.
 """
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -69,12 +70,12 @@ def run_holopatcher(
     namespace_index: int = 0,
     cb: Optional[ProgressCallback] = None,
     timeout: int = 600,
+    stop_event: Optional[threading.Event] = None,
 ) -> None:
     """
-    Run HoloPatcher headlessly.
+    Run HoloPatcher headlessly, streaming its output line by line to cb.
     namespace_index: 0-based index into namespaces.ini options.
-    Note: index 0 is falsy in HoloPatcher's argparse check, so we omit the
-    flag for index 0 and pass it only for index > 0.
+    stop_event: when set, terminates the subprocess and raises PatcherError.
     """
     if not exe.exists():
         raise PatcherError(f"HoloPatcher not found: {exe}")
@@ -93,40 +94,57 @@ def run_holopatcher(
         _log(f"  namespace index: {namespace_index}", cb)
 
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             cmd,
             cwd=str(exe.parent),
-            timeout=timeout,
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # merge stderr so one stream to read
             text=True,
             errors="replace",
         )
-    except subprocess.TimeoutExpired:
-        raise PatcherError(f"HoloPatcher timed out after {timeout}s")
     except FileNotFoundError:
         raise PatcherError(f"Could not launch HoloPatcher: {exe}")
 
-    stdout = result.stdout.strip()
-    stderr = result.stderr.strip()
-    combined = f"{stdout}\n{stderr}"
-    if stdout:
-        for line in stdout.splitlines()[-20:]:
-            _log(f"  {line}", cb)
+    all_lines: list[str] = []
+    try:
+        assert proc.stdout is not None
+        for raw_line in proc.stdout:
+            stripped = raw_line.rstrip()
+            if stripped:
+                _log(f"  {stripped}", cb)
+                all_lines.append(stripped)
+            if stop_event and stop_event.is_set():
+                proc.terminate()
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                raise PatcherError("Installation cancelled.")
+    except PatcherError:
+        raise
+    except Exception as e:
+        proc.kill()
+        raise PatcherError(f"Error reading HoloPatcher output: {e}") from e
+
+    try:
+        proc.wait(timeout=max(1, timeout))
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        raise PatcherError(f"HoloPatcher timed out after {timeout}s")
+
+    combined = "\n".join(all_lines)
 
     # A non-zero (other than 1 = "completed with warnings") exit is a failure.
-    if result.returncode not in (0, 1):
-        _log(f"  [stderr] {stderr[:300]}", cb)
+    if proc.returncode not in (0, 1):
         raise PatcherError(
-            f"HoloPatcher exited with code {result.returncode}.\n"
-            f"{(stderr or stdout)[:400]}"
+            f"HoloPatcher exited with code {proc.returncode}.\n"
+            f"{combined[-400:]}"
         )
 
     # Even on a 0/1 exit, HoloPatcher may have logged a fatal error (e.g. an
     # invalid game directory). Surface it instead of falsely reporting success.
     err_line = _scan_patcher_output(combined)
     if err_line:
-        if stderr:
-            _log(f"  [stderr] {stderr[:300]}", cb)
         raise PatcherError(f"HoloPatcher reported an error: {err_line}")
 
     _log("[HoloPatcher] Complete.", cb)

@@ -357,6 +357,7 @@ class Pipeline:
 
         self._set_status(pm, ModStatus.INSTALLING)
         total = len(pm.plans)
+        any_succeeded = False
         manual: Optional[ManualInstallRequired] = None
         try:
             for i, plan in enumerate(pm.plans, 1):
@@ -368,10 +369,19 @@ class Pipeline:
                 pre = self._pre_install_snapshot(plan)
                 try:
                     self._install_one(pm, plan)
+                    any_succeeded = True
                 except ManualInstallRequired as m:
-                    # Not a failure: this component needs hand-installing. Remember
-                    # it, finish any other components, then flag the mod as manual.
-                    manual = m
+                    if any_succeeded:
+                        # Core mod already installed. This is a supplementary component
+                        # (e.g. an optional language pack) - log a note but don't block.
+                        name = plan.mod_root.name if plan.mod_root else f"component {i}"
+                        self._log(
+                            f"  Optional component '{name}' needs a manual step "
+                            f"- skip it if it is a language pack or variant you do not need.",
+                            "muted",
+                        )
+                    else:
+                        manual = m
                     continue
                 self._apply_post_delete(dirs)
                 self._record_install(pm, plan, pre)
@@ -447,7 +457,8 @@ class Pipeline:
                     self._log(
                         f"    Namespace: {plan.namespaces[ns_index].name} "
                         f"(default of {len(plan.namespaces)})", "muted")
-            run_holopatcher(exe, game_path, tslpatchdata, ns_index, log_cb)
+            run_holopatcher(exe, game_path, tslpatchdata, ns_index, log_cb,
+                            stop_event=self._stop_event)
             pm.strategy_used = "holopatcher"
             self._apply_compat_patches(pm, plan)
 
@@ -613,7 +624,8 @@ class Pipeline:
                         tslpatchdata = candidate
                         break
             if exe and tslpatchdata:
-                run_holopatcher(exe, game_path, tslpatchdata, 0, log_cb)
+                run_holopatcher(exe, game_path, tslpatchdata, 0, log_cb,
+                                stop_event=self._stop_event)
 
         elif method == InstallMethod.TSLPATCHER:
             def on_waiting_sub() -> None:
@@ -710,6 +722,8 @@ class Pipeline:
                 self._log(f"    Compat {folder_name} failed: {e}", "warning")
             except Exception as e:
                 self._log(f"    Compat {folder_name} failed: {e}", "warning")
+            if self._stop_event.is_set():
+                break
 
         if applied:
             self._log(f"    Applied {applied} compat patch(es).", "muted")
