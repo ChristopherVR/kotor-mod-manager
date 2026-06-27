@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.0] - 2026-06-27
+
+### Features
+
+- Automatically handle mod conflicts, ordering rules, and pre-install cleanup
 ## [0.14.6] - 2026-06-26
 
 ### Bug Fixes
