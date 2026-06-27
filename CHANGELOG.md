@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.5] - 2026-06-27
+
+### Bug Fixes
+
+- Mod download and compatibility issues
 ## [0.15.4] - 2026-06-27
 
 ### Bug Fixes
