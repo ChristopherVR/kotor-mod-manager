@@ -757,6 +757,29 @@ class Pipeline:
             extra = f" +{n - 5} more" if n > 5 else ""
             self._log(f"    Removed {n} outdated file(s): {listed}{extra}", "muted")
 
+    @staticmethod
+    def _safe_delete_target(game_path: Path, subdir: str, fn: str) -> "Path | None":
+        """Return a validated path for a build-guide delete directive, or None if unsafe.
+
+        Rejects filenames containing path separators or '..' components so a
+        crafted build guide cannot traverse outside the intended subdirectory.
+        """
+        p = Path(fn)
+        # Reject multi-component paths and any '..' traversal attempt.
+        if len(p.parts) != 1 or ".." in p.parts:
+            return None
+        # Also reject embedded separators that Path() might not split on Windows.
+        if "/" in fn or "\\" in fn:
+            return None
+        target = game_path / subdir / fn
+        allowed_root = (game_path / subdir).resolve()
+        try:
+            if not target.resolve().is_relative_to(allowed_root):
+                return None
+        except (OSError, ValueError):
+            return None
+        return target
+
     def _apply_post_delete(self, dirs) -> None:
         """Delete files from Override per explicit build-guide post-install directives."""
         filenames = getattr(dirs, "post_install_delete", [])
@@ -764,8 +787,8 @@ class Pipeline:
             return
         for fn in filenames:
             for subdir in ("Override", "Modules"):
-                target = self._game_path / subdir / fn
-                if target.exists():
+                target = self._safe_delete_target(self._game_path, subdir, fn)
+                if target and target.exists():
                     try:
                         target.unlink()
                         self._log(
@@ -785,7 +808,9 @@ class Pipeline:
         deleted: list[str] = []
         for fn in filenames:
             for subdir in ("Override", "Modules"):
-                target = self._game_path / subdir / fn
+                target = self._safe_delete_target(self._game_path, subdir, fn)
+                if target is None:
+                    continue
                 if not target.exists():
                     parent = self._game_path / subdir
                     if parent.is_dir():
