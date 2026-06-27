@@ -2,6 +2,8 @@
 
 import shutil
 import subprocess
+import sys
+import urllib.parse
 import zipfile
 from pathlib import Path
 from typing import Optional
@@ -25,6 +27,16 @@ class ExtractionError(Exception):
     pass
 
 
+def _unc(p: Path) -> Path:
+    """Return a UNC-prefixed path on Windows to bypass MAX_PATH (260 char) limits."""
+    if sys.platform != "win32":
+        return p
+    resolved = str(p.resolve())
+    if resolved.startswith("\\\\"):
+        return p
+    return Path("\\\\?\\" + resolved)
+
+
 def _extract_zip(archive: Path, dest: Path) -> None:
     # Opening the archive can briefly fail with WinError 32 if antivirus is still
     # scanning the freshly downloaded file; retry through the transient lock.
@@ -35,13 +47,32 @@ def _extract_zip(archive: Path, dest: Path) -> None:
 
 
 def _extract_7z(archive: Path, dest: Path) -> None:
+    # Try system 7z first - it supports more compression methods (BCJ2, etc.)
+    # and handles long Windows paths better than py7zr.
+    cmd_7z = _find_7z()
+    if cmd_7z:
+        result = subprocess.run(
+            [cmd_7z, "x", str(archive), f"-o{dest}", "-y"],
+            capture_output=True
+        )
+        if result.returncode == 0:
+            return
+
     if not HAS_7Z:
-        raise ExtractionError("py7zr is not installed - cannot extract .7z files.")
+        raise ExtractionError(
+            "py7zr is not installed and system 7z not found - cannot extract .7z files."
+        )
 
     def _open_and_extract() -> None:
         with py7zr.SevenZipFile(archive, mode="r") as z:
-            z.extractall(path=dest)
-    with_lock_retry(_open_and_extract)
+            z.extractall(path=_unc(dest))
+    try:
+        with_lock_retry(_open_and_extract)
+    except Exception as e:
+        raise ExtractionError(
+            f"Cannot extract '{archive.name}': {e}. "
+            "Install 7-Zip (https://www.7-zip.org/) to handle all archive types."
+        ) from e
 
 
 _7Z_CANDIDATES = [
@@ -150,17 +181,18 @@ def extract(archive: Path, dest: Optional[Path] = None) -> Path:
     Returns the extraction directory.
     """
     if dest is None:
-        # Strip extension(s) - handle .tar.gz etc
         stem = archive.stem
         if stem.endswith(".tar"):
             stem = stem[:-4]
+        # URL-decode the stem so %5BK1%5D becomes [K1], reducing nested path length.
+        stem = urllib.parse.unquote(stem)
         dest = archive.parent / stem
 
     dest.mkdir(parents=True, exist_ok=True)
     suffix = archive.suffix.lower()
 
     if suffix == ".zip":
-        _extract_zip(archive, dest)
+        _extract_zip(archive, _unc(dest))
     elif suffix == ".7z":
         _extract_7z(archive, dest)
     elif suffix == ".rar":
@@ -170,7 +202,7 @@ def extract(archive: Path, dest: Optional[Path] = None) -> Path:
     else:
         # Try zip first (many mods use .zip regardless of extension)
         try:
-            _extract_zip(archive, dest)
+            _extract_zip(archive, _unc(dest))
         except zipfile.BadZipFile:
             if HAS_7Z:
                 try:

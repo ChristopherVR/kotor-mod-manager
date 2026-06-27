@@ -350,13 +350,18 @@ def automate_pywinauto(
 
     _cb(f"[pywinauto] Starting: {exe.name}", cb)
 
+    # Launch the process ourselves so we can pass the correct cwd.
+    # pywinauto's Application.start() does not accept a cwd parameter.
+    proc = subprocess.Popen(
+        [str(exe), str(game_dir)], cwd=str(exe.parent),
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+
     app = None
     wnd = None
     for backend in backends:
         try:
-            app = Application(backend=backend).start(
-                str(exe), cwd=str(exe.parent), timeout=15
-            )
+            app = Application(backend=backend).connect(process=proc.pid, timeout=15)
             deadline = time.time() + 20
             while time.time() < deadline:
                 try:
@@ -378,6 +383,11 @@ def automate_pywinauto(
         if app:
             try:
                 app.kill()
+            except Exception:
+                pass
+        else:
+            try:
+                proc.kill()
             except Exception:
                 pass
         raise AutomationError(f"Could not find patcher window with pywinauto. Tried: {backends}")
