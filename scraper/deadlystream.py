@@ -6,6 +6,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Callable, Optional
+from urllib.parse import unquote
 
 import keyring
 import requests
@@ -21,6 +22,37 @@ CSRF_PARAM_RE = re.compile(r'csrfKey=([a-f0-9]{16,})', re.IGNORECASE)
 
 BASE = "https://deadlystream.com"
 LOGIN_URL = f"{BASE}/login/"
+
+
+def _parse_content_disposition(cd: str) -> str:
+    """
+    Pull a human-readable filename out of a Content-Disposition header.
+
+    DeadlyStream sends percent-encoded names (e.g.
+    filename="JC%27s%20Jedi%20Tailor.zip" or the RFC 5987 extended
+    filename*=UTF-8''JC%27s%20Jedi%20Tailor.zip). Both must be percent-decoded,
+    otherwise the archive - and the folder it extracts into - keeps the encoded
+    name. That breaks TSLPatcher mods whose tslpatchdata is then looked up under
+    a path that doesn't exist, and it bloats nested paths past Windows limits.
+
+    Returns the decoded filename, or "" if none was present.
+    """
+    if not cd:
+        return ""
+    # Prefer the RFC 5987 extended form: filename*=UTF-8''<percent-encoded>.
+    ext = re.search(r"filename\*\s*=\s*([^;\r\n]+)", cd, re.IGNORECASE)
+    if ext:
+        value = ext.group(1).strip().strip('"\'')
+        # Strip the optional "<charset>'<lang>'" prefix (e.g. UTF-8'').
+        value = re.sub(r"^[\w-]*'[^']*'", "", value)
+        decoded = unquote(value).strip()
+        if decoded:
+            return decoded
+    # Fall back to the plain form: filename="<maybe percent-encoded>".
+    plain = re.search(r'filename\s*=\s*"?([^";\r\n]+)"?', cd, re.IGNORECASE)
+    if plain:
+        return unquote(plain.group(1).strip().strip('"\'')).strip()
+    return ""
 
 
 def download_name_matches(record_name: str, keep_names: list[str]) -> bool:
@@ -498,13 +530,10 @@ class DeadlyStreamClient:
             )
 
         cd = resp.headers.get("Content-Disposition", "")
-        filename_match = re.search(r'filename[*]?=["\']?([^"\';\r\n]+)["\']?', cd)
-        if filename_match:
-            filename = filename_match.group(1).strip().strip('"\'')
-            filename = re.sub(r"^UTF-8''", "", filename)
-        else:
-            filename = fallback_name or f"mod_{file_id}.zip"
-        # Sanitise
+        filename = _parse_content_disposition(cd) or fallback_name or f"mod_{file_id}.zip"
+        # Sanitise: strip directory separators / illegal chars, but keep the
+        # decoded human name (spaces, apostrophes) so the extracted folder and
+        # any tslpatchdata paths inside it stay valid on disk.
         filename = re.sub(r'[<>:"/\\|?*]', "_", filename)
 
         # "Download only X" filtering: the per-file name is only reliable here in

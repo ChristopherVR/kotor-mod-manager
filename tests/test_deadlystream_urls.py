@@ -127,6 +127,46 @@ def test_html_interstitial_guard():
     raise AssertionError("expected DownloadError on HTML response")
 
 
+def test_percent_encoded_filename_is_decoded():
+    # DeadlyStream sends percent-encoded names in Content-Disposition. The saved
+    # file (and the folder it extracts into) must use the decoded human name,
+    # otherwise TSLPatcher mods break on the garbled tslpatchdata path.
+    import tempfile
+    from scraper.deadlystream import _parse_content_disposition
+
+    # plain quoted form with percent-encoding
+    assert _parse_content_disposition(
+        'filename="JC%27s%20Jedi%20Tailor%20for%20K1%20v1.4.zip"'
+    ) == "JC's Jedi Tailor for K1 v1.4.zip"
+    # RFC 5987 extended form
+    assert _parse_content_disposition(
+        "attachment; filename*=UTF-8''JC%27s%20Jedi%20Tailor.zip"
+    ) == "JC's Jedi Tailor.zip"
+    # already-clean names pass through unchanged
+    assert _parse_content_disposition('filename="normal name.7z"') == "normal name.7z"
+    assert _parse_content_disposition("") == ""
+
+    dest = Path(tempfile.mkdtemp())
+
+    def handler(url, kw):
+        if url.endswith("/") and "do=download" not in url:
+            return FakeResp(text='{"csrfKey":"abc123"}')
+        return FakeResp(
+            headers={
+                "Content-Disposition":
+                    'filename="Effixian%27s%20Qel-Droma%20Robes.zip"',
+                "Content-Type": "application/zip", "Content-Length": "4",
+            },
+            content=b"data",
+        )
+
+    c, _ = _client_with_capture(handler)
+    out = c.download_file("2019", dest, slug="effixians-qel-droma")
+    assert out is not None
+    assert out.name == "Effixian's Qel-Droma Robes.zip", out.name
+    print("PASS: percent-encoded download filename is decoded on disk")
+
+
 def test_backcompat_no_slug_callable():
     # download_all_files(file_id, dest) without slug must still be callable.
     import inspect
@@ -140,5 +180,6 @@ if __name__ == "__main__":
     test_single_file_download_url_and_referer()
     test_multifile_records_slugged()
     test_html_interstitial_guard()
+    test_percent_encoded_filename_is_decoded()
     test_backcompat_no_slug_callable()
     print("\nALL DEADLYSTREAM URL TESTS PASSED")

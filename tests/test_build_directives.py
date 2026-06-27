@@ -192,6 +192,20 @@ def test_match_option_index_senni_vek():
     print("PASS: match picks Ambush (recommended), index 1 not 0")
 
 
+def test_match_option_index_skips_cosmetic_compatibility_patch():
+    # JC's Jedi Tailor offers a "100% Brown Compatibility Patch" secondary option
+    # that must run AFTER the main install. The guide mentions a "compatibility
+    # patch", but that must not auto-select the add-on over the main namespace.
+    d = parse_directives(
+        "Installation Instructions If you use Cloaked Jedi Robes's 100% Brown "
+        "option, make sure to install the 100% Brown compatibility patch after "
+        "the main mod installation (re-run the executable)."
+    )
+    names = ["Main", "100% Brown Compatibility Patch"]
+    assert match_option_index(names, d) is None, match_option_index(names, d)
+    print("PASS: a cosmetic 'Compatibility Patch' add-on is not auto-selected")
+
+
 def test_match_option_index_no_opinion():
     d = parse_directives("Installation Instructions Run the patcher.")
     assert match_option_index(["A", "B"], d) is None
@@ -309,6 +323,7 @@ if __name__ == "__main__":
         test_multi_run_tslrcm_tweak_pack,
         test_match_option_index_compatible,
         test_match_option_index_senni_vek,
+        test_match_option_index_skips_cosmetic_compatibility_patch,
         test_match_option_index_no_opinion,
         test_download_ignore_not_captured_as_only,
         test_descriptive_download_mention_not_captured,

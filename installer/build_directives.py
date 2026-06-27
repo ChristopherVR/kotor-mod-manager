@@ -20,7 +20,14 @@ from dataclasses import dataclass, field
 # Tokens that identify a "compatible with the community patch" install option.
 # The builds ALWAYS install the K1 Community Patch / TSLRCM first, so whenever a
 # later mod offers a compatible option, that is the one to pick.
-_COMPAT_TOKENS = ["community patch", "k1cp", "tslrcm", "k2cp", "compatib"]
+# Use the adjective "compatible" (as in "K1CP Compatible version"), NOT the
+# broader "compatib" stem. "compatib" also matches a mod's own cosmetic add-on
+# named "...Compatibility Patch" (e.g. JC's Jedi Tailor "100% Brown Compatibility
+# Patch"), which is a secondary patch that must run after the main install and
+# must never be auto-selected as the primary option. "compatible" is not a
+# substring of "compatibility", so this keeps the community-patch matches while
+# excluding those add-ons.
+_COMPAT_TOKENS = ["community patch", "k1cp", "tslrcm", "k2cp", "compatible"]
 
 # Phrases that introduce a recommended / required option choice.
 _RECO_RE = re.compile(

@@ -881,16 +881,26 @@ class Pipeline:
         pending = [pm for pm in self._mods if pm.status == ModStatus.PENDING]
         if not pending:
             return
-        haystack = " ".join(
-            f"{pm.build_mod.name.lower()} {(pm.build_mod.slug or '').lower()}"
-            for pm in pending
-        )
         compat_needers = [
             pm for pm in pending
             if getattr(pm.build_mod.directives, "prefer_compatible", False)
         ]
         if not compat_needers:
             return
+        haystack = " ".join(
+            f"{pm.build_mod.name.lower()} {(pm.build_mod.slug or '').lower()}"
+            for pm in pending
+        )
+        # The community patch is often installed in an earlier run and deselected
+        # this time round. Count anything already recorded in the library as
+        # present so we don't warn about a patch the player already has.
+        if self._game_type:
+            try:
+                from installer.mod_manager import load_manifest
+                for im in load_manifest(self._game_type).mods:
+                    haystack += f" {im.name.lower()} {(im.source_slug or '').lower()}"
+            except Exception:
+                pass
         _CP_TOKENS = [
             "k1cp", "k2cp", "tslrcm", "community patch",
             "kotor-1-community-patch", "kotor-2-community-patch",
