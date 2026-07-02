@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.8] - 2026-07-02
+
+### Bug Fixes
+
+- UI automation issues
 ## [0.15.7] - 2026-07-02
 
 ### Miscellaneous
