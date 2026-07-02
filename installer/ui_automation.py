@@ -183,10 +183,16 @@ def automate_win32(
         raise AutomationError(f"Could not find patcher window. Tried titles: {title_hints}")
 
     _cb(f"  Window: '{_get_window_title(patcher_hwnd)}'", cb)
-    time.sleep(0.5)  # Let the window fully initialise
 
-    # Enumerate child controls
-    children = _enum_children(patcher_hwnd)
+    # The window can appear before its controls are populated, so poll for a
+    # button to show up instead of trusting a single fixed-length sleep.
+    children: list[int] = []
+    ready_deadline = time.time() + 5
+    while time.time() < ready_deadline:
+        children = _enum_children(patcher_hwnd)
+        if any(_get_class_name(h) in ("Button", "TButton", "TBitBtn") for h in children):
+            break
+        time.sleep(0.3)
 
     # Find the game path field and fill it
     path_controls = [h for h in children if _get_class_name(h) in path_classes]
@@ -339,7 +345,7 @@ def automate_pywinauto(
         )
 
     from pywinauto import Application
-    from pywinauto.findwindows import ElementNotFoundError
+    from pywinauto.findwindows import ElementAmbiguousError, ElementNotFoundError
 
     window_re     = config.get("window_title_re", ".*[Pp]atcher.*")
     path_controls = config.get("path_controls", ["TEdit:0", "Edit:0"])
@@ -370,6 +376,19 @@ def automate_pywinauto(
                         wnd.wait("ready", timeout=10)
                         break
                 except ElementNotFoundError:
+                    time.sleep(0.3)
+                except ElementAmbiguousError:
+                    # wnd.exists() always searches with visible_only=False, so a
+                    # patcher with a hidden owner window alongside its real
+                    # dialog (common in Delphi/VB6 apps) matches more than
+                    # once. Narrow to the visible match and pin its handle
+                    # instead of aborting this whole backend attempt.
+                    visible = app.windows(title_re=window_re, visible_only=True)
+                    if visible:
+                        wnd = app.window(handle=visible[0].handle)
+                        if wnd.exists(timeout=1):
+                            wnd.wait("ready", timeout=10)
+                            break
                     time.sleep(0.3)
             if wnd and wnd.exists():
                 _cb(f"  Window found ({backend}): {wnd.window_text()}", cb)
