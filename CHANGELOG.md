@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.15.7] - 2026-07-02
+
+### Miscellaneous
+
+- Update fastapi requirement from >=0.138.0 to >=0.138.1
+- Update requests requirement from >=2.31.0 to >=2.34.2
+- Bump actions/setup-python from 5 to 6
+- Bump actions/upload-artifact from 4 to 7
+- Bump softprops/action-gh-release from 2 to 3
+- Bump the npm-minor-and-patch group across 1 directory with 7 updates
 ## [0.15.6] - 2026-07-02
 
 ### Bug Fixes
