@@ -97,6 +97,9 @@ def run_holopatcher(
         proc = subprocess.Popen(
             cmd,
             cwd=str(exe.parent),
+            stdin=subprocess.DEVNULL,  # HoloPatcher shells out to nwnnsscomp.exe,
+            # which inherits our stdin handle; an unset/invalid one here causes
+            # "OSError: [WinError 6] The handle is invalid" in that grandchild.
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # merge stderr so one stream to read
             text=True,
