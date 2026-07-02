@@ -25,11 +25,15 @@ def _log(msg: str, cb: Optional[ProgressCallback]) -> None:
 
 
 def _copy_files(plan: InstallPlan, game_path: Path, cb: Optional[ProgressCallback]) -> None:
+    # Extraction writes with a \\?\ prefix, so deeply nested archives can put
+    # sources past the 260-char MAX_PATH limit; read them the same way or the
+    # copy fails on machines without the long-path policy enabled.
+    from installer.extractor import _unc
     for mapping in plan.file_mappings:
         dest = game_path / mapping.dest_relative
         dest.parent.mkdir(parents=True, exist_ok=True)
         _log(f"  {'[overwrite]' if dest.exists() else '[copy]':12s} {mapping.dest_relative}", cb)
-        shutil.copy2(mapping.source, dest)
+        shutil.copy2(_unc(mapping.source), _unc(dest))
 
 
 def _run_patcher(
@@ -157,6 +161,15 @@ def install(
     elif method == InstallMethod.MULTIPLE:
         _log(f"[multi] Installing {len(plan.sub_plans)} sub-mod(s)...", cb)
         for i, sub in enumerate(plan.sub_plans, 1):
+            if sub.method == InstallMethod.MANUAL:
+                # Extras like Screenshots/ or docs-only folders detect as
+                # MANUAL. They must not fail the whole mod after the real
+                # components already installed - note them and move on.
+                _log(
+                    f"  [{i}/{len(plan.sub_plans)}] {sub.mod_root.name}: no "
+                    f"auto-installable files (skipped - see the mod's readme "
+                    f"if you wanted something from it)", cb)
+                continue
             _log(f"  [{i}/{len(plan.sub_plans)}] {sub.mod_root.name}", cb)
             install(sub, game_path, cb, namespace_chooser, tlk_variant_chooser)
 

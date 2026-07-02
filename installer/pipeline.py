@@ -10,9 +10,11 @@ For each mod in build order: download (up to 3 at once) → extract → detect �
 - Install-phase progress is reported so the UI can show live status.
 """
 import copy
+import json
 import re
 import shutil
 import threading
+from urllib.parse import unquote
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from enum import Enum
@@ -105,6 +107,8 @@ class Pipeline:
         game_key: str = "",
         game_type: str = "",
         record_to_library: bool = True,
+        language: str = "en",
+        screen_resolution: str = "1920x1080",
     ):
         self._mods = [PipelineMod(m) for m in mods]
         self._game_path = game_path
@@ -123,6 +127,12 @@ class Pipeline:
         self._game_key = game_key
         self._game_type = game_type or game_key
         self._record_to_library = record_to_library and bool(game_key)
+        # Player's game language: bundled translation patches for other
+        # languages are skipped at download AND at install (stale caches).
+        self._language = language or "en"
+        # Used to pick ONE variant when a mod ships per-resolution packs
+        # (some cutscene packs are 15+ GB per resolution).
+        self._screen_resolution = screen_resolution
 
         self._stop_event = threading.Event()
         self._pause_event = threading.Event()
@@ -240,11 +250,13 @@ class Pipeline:
             # This makes pressing Install again (or Retry) resumable without
             # restarting every download from zero.
             if dest_dir.exists():
-                cached = sorted(
-                    [f for f in dest_dir.iterdir()
-                     if not f.name.endswith(".part") and f.stat().st_size > 0],
-                    key=lambda f: f.name,
-                )
+                self._migrate_encoded_cache_names(dest_dir)
+                cached = self._cached_archives(dest_dir)
+                # Honour the guide's download filters on cache reuse too - an
+                # old cache may hold every variant of a submission (e.g. HQ
+                # Skyboxes' per-mod editions) when the guide wants just one.
+                if len(cached) > 1:
+                    cached = self._filter_cached(cached, mod)
                 if cached:
                     pm.archive_paths = cached
                     total_kb = sum(f.stat().st_size for f in cached) // 1024
@@ -285,8 +297,22 @@ class Pipeline:
                 pause_event=self._pause_event,
                 keep_names=keep_names,
                 ignore_names=ignore_names,
+                language=self._language,
+                screen_resolution=self._screen_resolution,
             )
             pm.archive_paths = archives
+            if not archives:
+                # Everything was filtered out: an over-broad "do not download"
+                # instruction. Without this check the mod would sail through
+                # the install loop and be reported as installed with nothing
+                # on disk.
+                self._set_status(pm, ModStatus.ERROR,
+                                 "No files were downloaded for this mod.")
+                pm.error = ("No files were downloaded for this mod (the build "
+                            "guide's download filter matched nothing).")
+                self._log(f"  {pm.error}", "error")
+                return
+            self._write_cache_manifest(dest_dir, archives)
             if len(archives) > 1:
                 self._log(f"  Downloaded {len(archives)} files.")
             for a in archives:
@@ -301,10 +327,121 @@ class Pipeline:
             self._log(f"  Unexpected download error: {e}", "error")
             pm.error = str(e)
 
+    # Cache bookkeeping for downloaded archives -------------------------------
+
+    _CACHE_MANIFEST = ".downloads.json"
+
+    def _write_cache_manifest(self, dest_dir: Path, archives: list[Path]) -> None:
+        """Record which files make up a completed download, in page order."""
+        try:
+            (dest_dir / self._CACHE_MANIFEST).write_text(
+                json.dumps({"files": [a.name for a in archives]}),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
+
+    def _cached_archives(self, dest_dir: Path) -> list[Path]:
+        """
+        Return the cached archives for a mod, or [] when the cache must not be
+        trusted (missing/partial files) so the download runs again.
+
+        With a manifest the exact recorded set is required, in page order - a
+        multi-file download that failed halfway is re-fetched instead of being
+        silently installed incomplete. Without a manifest (downloads from
+        older versions) fall back to "every complete file in the folder".
+        """
+        manifest = dest_dir / self._CACHE_MANIFEST
+        if manifest.exists():
+            try:
+                names = json.loads(manifest.read_text(encoding="utf-8")).get("files", [])
+            except (OSError, ValueError):
+                names = []
+            files = [dest_dir / n for n in names]
+            if files and all(f.is_file() and f.stat().st_size > 0 for f in files):
+                return files
+            return []
+        # Legacy cache (no manifest). Only files count as archives: a big
+        # extracted folder can have a non-zero st_size on NTFS, so a size
+        # check alone would treat it as an archive and later fail with
+        # Permission denied.
+        return sorted(
+            [f for f in dest_dir.iterdir()
+             if f.is_file() and not f.name.startswith(".")
+             and not f.name.endswith(".part") and f.stat().st_size > 0],
+            key=lambda f: f.name,
+        )
+
+    def _filter_cached(self, cached: list[Path], mod: BuildMod) -> list[Path]:
+        """Apply the guide's keep/ignore download filters to cached archives."""
+        from scraper.deadlystream import (download_name_excluded,
+                                          select_keep_matches)
+        dirs = mod.directives
+        names = [c.name for c in cached]
+        keep = set(select_keep_matches(names, dirs.download_only) or names)
+        out = []
+        for c in cached:
+            if c.name not in keep:
+                self._log(f"  Cached {c.name} skipped (build guide keeps "
+                          f"{', '.join(dirs.download_only)})", "muted")
+                continue
+            if dirs.download_ignore and download_name_excluded(
+                    c.name, dirs.download_ignore):
+                self._log(f"  Cached {c.name} skipped (build guide says not "
+                          f"to download it)", "muted")
+                continue
+            out.append(c)
+        return out or cached
+
+    def _migrate_encoded_cache_names(self, dest_dir: Path) -> None:
+        """
+        Rename percent-encoded leftovers from older versions (e.g.
+        'HR%20Menu%20Patch.zip') to their decoded names. Those names broke
+        build-guide file matching and inflated nested paths; new downloads are
+        decoded, but cached files kept the old names forever.
+        """
+        try:
+            entries = list(dest_dir.iterdir())
+        except OSError:
+            return
+        for f in entries:
+            if not f.is_file() or "%" not in f.name:
+                continue
+            decoded = unquote(f.name)
+            if decoded == f.name:
+                continue
+            decoded = re.sub(r'[<>:"/\\|?*]', "_", decoded)
+            target = f.with_name(decoded)
+            try:
+                if target.exists():
+                    # A decoded copy was downloaded next to the stale encoded
+                    # one; keep the decoded file, drop the duplicate.
+                    f.unlink()
+                else:
+                    f.rename(target)
+            except OSError:
+                continue
+
     def _extract_and_install(self, pm: PipelineMod) -> None:
         """Extract downloaded archives then detect and install the mod. Called sequentially."""
         if self._stop_event.is_set():
             return
+
+        # Stale caches may still hold bundled translation patches for other
+        # languages (new downloads already filter them). Never install those:
+        # e.g. K1CP's Russian patch would overwrite an English game's credits
+        # font, and Manaan Fast Travel would be patched in five languages.
+        if len(pm.archive_paths) > 1:
+            from scraper.deadlystream import is_other_language_file
+            keep = [a for a in pm.archive_paths
+                    if not is_other_language_file(a.name, self._language)]
+            if keep and len(keep) < len(pm.archive_paths):
+                for a in pm.archive_paths:
+                    if a not in keep:
+                        self._log(
+                            f"  Skipped {a.name} (translation patch for "
+                            f"another language)", "muted")
+                pm.archive_paths = keep
 
         # ---- Extract archives; treat loose mod files (e.g. .tga) as direct copies ----
         _ARCHIVE_SUFFIXES = {".zip", ".rar", ".7z", ".exe"}
@@ -457,8 +594,19 @@ class Pipeline:
                     self._log(
                         f"    Namespace: {plan.namespaces[ns_index].name} "
                         f"(default of {len(plan.namespaces)})", "muted")
-            run_holopatcher(exe, game_path, tslpatchdata, ns_index, log_cb,
-                            stop_event=self._stop_event)
+            # "Install the main option, then re-run for X": when the guide asks
+            # for a second run and matched a non-default option, that option is
+            # the SECOND step - running it alone fails (e.g. Yavin Station
+            # Hangar's visible-forcefield add-on needs the main install first).
+            indices = [ns_index]
+            if dirs.multi_run and ns_index != 0:
+                indices = [0, ns_index]
+                self._log(
+                    "    Build guide: installing the main option first, then "
+                    f"re-running for '{plan.namespaces[ns_index].name}'.", "muted")
+            for idx in indices:
+                run_holopatcher(exe, game_path, tslpatchdata, idx, log_cb,
+                                stop_event=self._stop_event)
             pm.strategy_used = "holopatcher"
             self._apply_compat_patches(pm, plan)
 
@@ -472,14 +620,19 @@ class Pipeline:
                     "warning"
                 )
 
-            if dirs.multi_run_options:
+            multi_opts = dirs.multi_run_options
+            if not multi_opts and dirs.multi_run and dirs.namespace_preferences:
+                # "Re-run the installer for the X option": main install first,
+                # then the named option.
+                multi_opts = ["", dirs.namespace_preferences[0]]
+            if multi_opts:
                 # Run the patcher once per named option in the order the build
                 # guide specifies (e.g. TSLRCM Tweak Pack's 6 separate options).
                 strategies: list[str] = []
-                for i, opt in enumerate(dirs.multi_run_options, 1):
+                for i, opt in enumerate(multi_opts, 1):
                     label = opt if opt else "main (default)"
                     self._log(
-                        f"    Run {i}/{len(dirs.multi_run_options)}: {label}", "muted")
+                        f"    Run {i}/{len(multi_opts)}: {label}", "muted")
                     run_dirs = copy.copy(dirs)
                     # Empty string = install the default/main option; non-empty = named option.
                     if opt:
@@ -671,8 +824,12 @@ class Pipeline:
         included by _collect_loose_files and do not need a second pass.
         """
         dirs = pm.build_mod.directives
+        # source/src variants hold the mod's script SOURCE code (.nss), which
+        # detection would otherwise happily copy into Override.
         _SKIP_NAMES = {"tslpatchdata", "backup", "__macosx", ".ds_store",
-                       "data", "docs", "documentation", "readme"}
+                       "data", "docs", "documentation", "readme",
+                       "source", "sources", "src", "_source", "script source",
+                       "script_source", "scripts source", "screenshots"}
         _PATCHER_METHODS = {InstallMethod.TSLPATCHER, InstallMethod.HOLOPATCHER,
                             InstallMethod.MULTIPLE}
         try:
@@ -687,10 +844,50 @@ class Pipeline:
         if not subdirs:
             return
 
+        # Locations belonging to the install that JUST ran. Many archives wrap
+        # the whole mod in one top-level folder (ModName/tslpatchdata/...); that
+        # wrapper is a subdir of mod_root, so without this check the sweep
+        # would re-detect it and run the same patcher a second time, writing
+        # duplicate 2DA rows and TLK entries into the game.
+        own_patch_locations = [
+            p for p in (
+                plan.tslpatcher_ini.parent if plan.tslpatcher_ini else None,
+                plan.tslpatcher_exe,
+                plan.holopatcher_exe,
+            ) if p is not None
+        ]
+        if self._is_patcher_plan(plan):
+            # The cascade resolves tslpatchdata by first rglob match; mirror
+            # that so the folder it ran from is recognised as already done.
+            from installer.detector import _find_dir
+            own_td = _find_dir(plan.mod_root, "tslpatchdata")
+            if own_td:
+                own_patch_locations.append(own_td)
+
+        def _is_own_install(d: Path) -> bool:
+            for loc in own_patch_locations:
+                try:
+                    if loc.resolve().is_relative_to(d.resolve()):
+                        return True
+                except OSError:
+                    continue
+            return False
+
         applied = 0
         for sub_dir in subdirs:
             folder_name = sub_dir.name
             folder_low = folder_name.lower()
+
+            if _is_own_install(sub_dir):
+                continue
+
+            # Per-language variant folders (Deutsch/, Français/, ...) are not
+            # compat patches; only the player's language belongs in the game.
+            from scraper.deadlystream import is_other_language_file
+            if is_other_language_file(folder_name, self._language):
+                self._log(
+                    f"    Compat skipped: {folder_name} (another language)", "muted")
+                continue
 
             # Respect explicit build-guide exclusions.
             if dirs.file_except and any(
@@ -894,10 +1091,12 @@ class Pipeline:
         # The community patch is often installed in an earlier run and deselected
         # this time round. Count anything already recorded in the library as
         # present so we don't warn about a patch the player already has.
-        if self._game_type:
+        # Installs are recorded under the profile scope (game_key), so check
+        # that manifest first; the plain game manifest covers older recordings.
+        for scope in {self._game_key, self._game_type} - {""}:
             try:
                 from installer.mod_manager import load_manifest
-                for im in load_manifest(self._game_type).mods:
+                for im in load_manifest(scope).mods:
                     haystack += f" {im.name.lower()} {(im.source_slug or '').lower()}"
             except Exception:
                 pass

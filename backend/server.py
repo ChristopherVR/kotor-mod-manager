@@ -53,6 +53,24 @@ BUILD_LABELS = {
 }
 
 
+def _screen_resolution() -> str:
+    """The primary display's resolution, used to pick ONE variant when a mod
+    ships separate multi-gigabyte packs per resolution."""
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        try:
+            user32.SetProcessDPIAware()
+        except Exception:
+            pass
+        w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+        if w and h:
+            return f"{w}x{h}"
+    except Exception:
+        pass
+    return "1920x1080"
+
+
 def _all_builds() -> list[dict]:
     """Built-in builds plus any the user has added, in one list."""
     builtin = [
@@ -885,6 +903,8 @@ def install_start(req: StartInstallRequest) -> dict:
         auto_unattended=req.unattended,
         game_key=scope,
         game_type=game,
+        language=conf.get("language", "en"),
+        screen_resolution=conf.get("preferred_resolution") or _screen_resolution(),
     )
     state.pipeline.start()
     hub.publish({"type": "pipeline", "event": "started",

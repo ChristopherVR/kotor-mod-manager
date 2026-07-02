@@ -154,14 +154,17 @@ def _extract_rar(archive: Path, dest: Path) -> None:
 
 def _extract_self_extracting_exe(archive: Path, dest: Path) -> None:
     """Try to unpack a self-extracting .exe with 7z."""
-    for cmd in ["7z", "7za"]:
-        if shutil.which(cmd):
-            result = subprocess.run(
-                [cmd, "x", str(archive), f"-o{dest}", "-y"],
-                capture_output=True
-            )
-            if result.returncode == 0:
-                return
+    # Use the same lookup as .7z/.rar extraction: a standard 7-Zip install
+    # lives in Program Files and is NOT on PATH, so a which()-only check
+    # would fail on most player machines.
+    cmd_7z = _find_7z()
+    if cmd_7z:
+        result = subprocess.run(
+            [cmd_7z, "x", str(archive), f"-o{dest}", "-y"],
+            capture_output=True
+        )
+        if result.returncode == 0:
+            return
     if HAS_7Z:
         try:
             with py7zr.SevenZipFile(archive, mode="r") as z:

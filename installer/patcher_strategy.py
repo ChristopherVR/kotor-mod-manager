@@ -102,6 +102,60 @@ def _parse_namespace_options(tslpatchdata: Path) -> list[tuple[str, str]]:
     return options
 
 
+def _normalize_namespaces_ini(tslpatchdata: Path,
+                              cb: Optional[ProgressCallback] = None) -> None:
+    """
+    Add missing IniName=/InfoName= lines to each namespace section of
+    namespaces.ini.
+
+    The original TSLPatcher treats both as optional (defaulting to changes.ini
+    and info.rtf inside the section's DataPath), and some mods rely on that
+    (e.g. JC's Mandalorian Armor). HoloPatcher requires the keys and crashes
+    with a KeyError while opening the mod, so fill in the defaults before
+    handing the folder to the shim.
+    """
+    ns_ini = tslpatchdata / "namespaces.ini"
+    if not ns_ini.exists():
+        return
+    try:
+        text = ns_ini.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+
+    ns_section = re.search(r"\[Namespaces\](.*?)(?=\n\[|\Z)", text, re.S | re.I)
+    if not ns_section:
+        return
+    keys = re.findall(r"^\s*Namespace\d+\s*=\s*(\S+)", ns_section.group(1), re.M | re.I)
+
+    _DEFAULTS = {"IniName": "changes.ini", "InfoName": "info.rtf"}
+    changed = False
+    for key in keys:
+        # Section body runs to the next section header LINE (a '[' may also
+        # appear inside Description text, so match headers at line start only).
+        section = re.search(
+            rf"^(\[{re.escape(key)}\][^\n]*\n)(.*?)(?=^\[|\Z)",
+            text, re.M | re.S)
+        if not section:
+            continue
+        missing = [
+            f"{k}={v}" for k, v in _DEFAULTS.items()
+            if not re.search(rf"^\s*{k}\s*=", section.group(2), re.M | re.I)
+        ]
+        if not missing:
+            continue
+        text = text.replace(
+            section.group(1),
+            section.group(1) + "".join(f"{line}\n" for line in missing), 1)
+        changed = True
+
+    if changed:
+        try:
+            ns_ini.write_text(text, encoding="utf-8")
+            _log("    Fixed namespaces.ini (added default IniName/InfoName entries)", cb)
+        except OSError:
+            pass
+
+
 def resolve_namespace_index(tslpatchdata: Path, option_hint: str = "",
                             cb: Optional[ProgressCallback] = None,
                             directives=None) -> int:
@@ -145,6 +199,7 @@ def _try_holopatcher_shim(
     if not tslpatchdata:
         raise PatcherError("No tslpatchdata/ found for HoloPatcher shim")
 
+    _normalize_namespaces_ini(tslpatchdata, cb)
     ns_index = resolve_namespace_index(tslpatchdata, option_hint, cb, directives)
     _log(f"  [shim] Using headless HoloPatcher: {holo.name}", cb)
     run_holopatcher(holo, game_dir, tslpatchdata, ns_index, cb)

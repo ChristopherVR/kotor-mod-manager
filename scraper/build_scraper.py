@@ -234,6 +234,11 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None,
 
     r = s.get(url, timeout=30)
     r.raise_for_status()
+    # Build pages are UTF-8 but don't always declare a charset; requests then
+    # falls back to latin-1 and curly quotes turn into mojibake in mod names
+    # and instructions.
+    if not r.encoding or r.encoding.lower() in ("iso-8859-1", "latin-1"):
+        r.encoding = r.apparent_encoding or "utf-8"
     soup = BeautifulSoup(r.text, "lxml")
     main = soup.find("main") or soup
 

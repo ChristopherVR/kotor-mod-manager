@@ -104,6 +104,92 @@ def download_name_excluded(filename: str, ignore_names: list[str]) -> bool:
     return False
 
 
+# Filename markers for per-language patch files that some submissions bundle
+# next to the main mod (e.g. K1 Community Patch ships German/French/Russian
+# translation patches as separate downloads). Grouped by the game language
+# they apply to, so a player's own language is never filtered out.
+LANGUAGE_NAME_TOKENS = {
+    "de": ["deutsch", "german", "ubersetzung", "übersetzung"],
+    "fr": ["francais", "français", "french", "traduction"],
+    "ru": ["russian", "russkogo", "russkij", "perevod", "русск"],
+    "es": ["espanol", "español", "spanish", "castellano", "traduccion"],
+    "it": ["italiano", "italian", "traduzione"],
+    "pl": ["polski", "polish", "spolszczenie"],
+    "pt": ["portugues", "português", "portuguese"],
+}
+
+
+def select_keep_matches(names: list[str], keep_names: list[str]) -> list[str]:
+    """
+    Pick which of `names` a "download only X" instruction keeps, preferring
+    EXACT (normalised-stem) matches over substring matches.
+
+    Substring matching alone is too greedy for variant families: keeping
+    'HQSkyboxesII_K1.7z' must not also keep 'HQSkyboxesII_K1_1k_BOSSR.7z',
+    whose stem merely starts with the wanted one. Returns [] when nothing
+    matches (callers fall back to keeping everything).
+    """
+    if not keep_names:
+        return list(names)
+
+    def norm(s: str) -> str:
+        return re.sub(r"[^a-z0-9]", "", s.lower())
+
+    def stem(s: str) -> str:
+        return norm(s.rsplit(".", 1)[0] if "." in s else s)
+
+    keep_stems = {stem(k) for k in keep_names if stem(k)}
+    exact = [n for n in names if stem(n) in keep_stems]
+    if exact:
+        return exact
+    return [n for n in names if download_name_matches(n, keep_names)]
+
+
+_RES_RE = re.compile(r"(\d{3,4})\s*[x×]\s*(\d{3,4})", re.I)
+
+
+def select_resolution_records(records: list[dict],
+                              preferred: str = "1920x1080") -> list[dict]:
+    """
+    When a submission offers the same content at several screen resolutions
+    (e.g. K1 Cutscenes Rescaled ships 15 GB movie packs at 1080p/1440p/4K),
+    keep only the variant closest to the player's screen instead of
+    downloading all of them. Records without a WxH marker in their name are
+    always kept. With fewer than two resolution variants, nothing changes.
+    Ties (e.g. 30fps vs 60fps at the same resolution) keep page order, which
+    lists the guide-recommended option first.
+    """
+    def res_of(name: str):
+        m = _RES_RE.search(unquote(name or ""))
+        return (int(m.group(1)), int(m.group(2))) if m else None
+
+    tagged = [(r, res_of(r.get("name", ""))) for r in records]
+    with_res = [(r, wh) for r, wh in tagged if wh]
+    if len(with_res) < 2:
+        return records
+
+    pm = _RES_RE.search(preferred or "")
+    pw, ph = (int(pm.group(1)), int(pm.group(2))) if pm else (1920, 1080)
+    best = min(with_res, key=lambda t: abs(t[1][0] - pw) + abs(t[1][1] - ph))[0]
+    return [r for r, wh in tagged if wh is None or r is best]
+
+
+def is_other_language_file(filename: str, language: str = "en") -> bool:
+    """
+    Whether a download record's filename looks like a translation patch for a
+    language other than the player's. Percent-encoded names (stale caches)
+    are decoded before matching.
+    """
+    name = unquote(filename).lower()
+    lang = (language or "en").lower()[:2]
+    for code, tokens in LANGUAGE_NAME_TOKENS.items():
+        if code == lang:
+            continue
+        if any(t in name for t in tokens):
+            return True
+    return False
+
+
 class AuthError(Exception):
     pass
 
@@ -406,8 +492,15 @@ class DeadlyStreamClient:
         list_url = f"{page_url}?do=download"
         records: list[dict] = []
         try:
-            resp = self._session.get(list_url, timeout=20, headers={"Referer": page_url})
+            resp = self._session.get(list_url, timeout=20, stream=True,
+                                     headers={"Referer": page_url})
             resp.raise_for_status()
+            # Single-file submissions can serve the archive itself here; don't
+            # pull megabytes into memory just to look for a record list.
+            ctype = resp.headers.get("Content-Type", "").lower()
+            if ctype and "text/html" not in ctype:
+                resp.close()
+                raise requests.RequestException("not an HTML record list")
             soup = BeautifulSoup(resp.text, "lxml")
 
             for a in soup.find_all("a", href=True):
@@ -447,6 +540,8 @@ class DeadlyStreamClient:
         keep_names: Optional[list[str]] = None,
         ignore_names: Optional[list[str]] = None,
         pause_event: Optional[threading.Event] = None,
+        language: str = "",
+        screen_resolution: str = "",
     ) -> list[Path]:
         """
         Download files in a (possibly multi-file) submission.
@@ -459,13 +554,25 @@ class DeadlyStreamClient:
         ignore_names: if set (from a "do not download X" instruction), records
         matching any of these are skipped. Applied after keep_names filtering.
 
+        language: the player's game language ("en", "de", ...). In multi-file
+        submissions, bundled translation patches for OTHER languages are
+        skipped so e.g. a Russian credits font never lands in an English game.
+        If that would filter out every file, the filter is dropped.
+
+        screen_resolution: when the submission offers the same content at
+        several resolutions (WxH in the record names), only the variant
+        closest to this is downloaded - these packs can be 15+ GB each.
+
         Returns the list of downloaded local paths in page order.
         """
         records = self.list_download_records(file_id, slug)
+        if screen_resolution and not keep_names:
+            records = select_resolution_records(records, screen_resolution)
         referer = self._file_page_url(file_id, slug)
 
-        def _fetch(recs, names, excl):
+        def _fetch(recs, names, excl, lang=""):
             out: list[Path] = []
+            taken: set = set()
             for rec in recs:
                 if cancel_event and cancel_event.is_set():
                     raise DownloadError("Download cancelled.")
@@ -478,6 +585,8 @@ class DeadlyStreamClient:
                     referer=referer,
                     keep_names=names,
                     ignore_names=excl,
+                    taken_names=taken,
+                    language=lang,
                 )
                 if path is not None:
                     out.append(path)
@@ -485,12 +594,21 @@ class DeadlyStreamClient:
 
         # DeadlyStream's download page rarely exposes per-file names, so we
         # decide from the real filename in each download's headers (see
-        # _download_from_url). If the "download only X" filter ends up matching
-        # nothing, fall back to downloading everything rather than nothing.
-        if keep_names and len(records) > 1:
-            paths = _fetch(records, keep_names, ignore_names)
-            if paths:
-                return paths
+        # _download_from_url). If a filter ends up matching nothing, fall back
+        # to downloading everything rather than nothing.
+        if len(records) > 1:
+            if keep_names:
+                paths = _fetch(records, keep_names, ignore_names, language)
+                if paths:
+                    # The per-record substring match can keep a whole variant
+                    # family (X, X_1k, X_BOSSR...); narrow to exact matches
+                    # when any exist.
+                    kept = select_keep_matches([p.name for p in paths], keep_names)
+                    return [p for p in paths if p.name in kept] or paths
+            if language:
+                paths = _fetch(records, None, ignore_names, language)
+                if paths:
+                    return paths
         return _fetch(records, None, ignore_names)
 
     def _download_from_url(
@@ -505,6 +623,8 @@ class DeadlyStreamClient:
         keep_names: Optional[list[str]] = None,
         ignore_names: Optional[list[str]] = None,
         pause_event: Optional[threading.Event] = None,
+        taken_names: Optional[set] = None,
+        language: str = "",
     ) -> "Path | None":
         headers = {"Referer": referer} if referer else {}
 
@@ -544,6 +664,23 @@ class DeadlyStreamClient:
         if ignore_names and download_name_excluded(filename, ignore_names):
             resp.close()
             return None
+        # Skip translation patches for other languages (only ever set for
+        # multi-file submissions, so the main mod is never filtered).
+        if language and is_other_language_file(filename, language):
+            resp.close()
+            return None
+
+        # Two records of the same submission can serve identical filenames
+        # (e.g. an old and a new version). Without a rename the second would
+        # silently overwrite the first and the mod would install twice from
+        # one file.
+        if taken_names is not None:
+            base, dot, ext = filename.rpartition(".")
+            n = 2
+            while filename.lower() in taken_names:
+                filename = f"{base} ({n}){dot}{ext}" if dot else f"{filename} ({n})"
+                n += 1
+            taken_names.add(filename.lower())
 
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / filename
@@ -601,6 +738,19 @@ class DeadlyStreamClient:
                     headers={**headers, "Range": f"bytes={downloaded}-"},
                 )
                 current.raise_for_status()
+                # Same guard as the initial request: if the session or CSRF
+                # expired while paused, the "resume" comes back as an HTML
+                # login page with HTTP 200. Without this check that page would
+                # be written into the archive and the corrupt file cached
+                # forever as a completed download.
+                if "text/html" in current.headers.get("Content-Type", "").lower():
+                    f.close()
+                    current.close()
+                    part_path.unlink(missing_ok=True)
+                    raise DownloadError(
+                        "Session expired while the download was paused - "
+                        "please sign in to DeadlyStream again and retry."
+                    )
                 if current.status_code != 206:
                     # Server ignored the range (sent the whole file again) - start
                     # over so we don't append a duplicate body onto the partial.

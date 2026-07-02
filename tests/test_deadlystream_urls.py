@@ -175,6 +175,56 @@ def test_backcompat_no_slug_callable():
     print("PASS: download_all_files is back-compatible (slug defaults to '')")
 
 
+def test_record_listing_ignores_file_response():
+    # If the ?do=download URL serves the archive itself (single-file
+    # submission), the record lister must not read the body into memory -
+    # it should fall back to the primary download record.
+    def handler(url, kw):
+        if "do=download" in url:
+            return FakeResp(
+                headers={"Content-Type": "application/zip",
+                         "Content-Length": "99999999"},
+                content=b"ZIPDATA",
+            )
+        return FakeResp(text='{"csrfKey":"abcd12"}')
+
+    c, calls = _client_with_capture(handler)
+    recs = c.list_download_records("2000", "multi")
+    assert len(recs) == 1
+    assert recs[0]["record_id"] is None
+    listing = [x for x in calls if "do=download" in x["url"]][0]
+    assert listing.get("headers") is not None
+    print("PASS: record listing falls back when served a file")
+
+
+def test_other_language_records_skipped():
+    # In a multi-file submission, translation patches for other languages
+    # are skipped for an English game; the main file still downloads.
+    import tempfile
+    dest = Path(tempfile.mkdtemp())
+    served = ["Main_Mod.zip", "Patch_Deutsche_Ubersetzung.zip"]
+
+    def handler(url, kw):
+        if "do=download" in url:
+            name = served[0] if "r=11" in url else served[1]
+            return FakeResp(
+                headers={"Content-Disposition": f'filename="{name}"',
+                         "Content-Type": "application/zip",
+                         "Content-Length": "4"},
+                content=b"data",
+            )
+        return FakeResp(text='{"csrfKey":"abc123"}')
+
+    c, _ = _client_with_capture(handler)
+    c.list_download_records = lambda fid, slug="": [
+        {"name": "Main", "url": "https://x/?do=download&r=11", "record_id": "11"},
+        {"name": "German", "url": "https://x/?do=download&r=12", "record_id": "12"},
+    ]
+    paths = c.download_all_files("2000", dest, slug="multi", language="en")
+    assert [p.name for p in paths] == ["Main_Mod.zip"], paths
+    print("PASS: other-language records are skipped for an English game")
+
+
 if __name__ == "__main__":
     test_csrf_url_includes_slug()
     test_single_file_download_url_and_referer()
@@ -182,4 +232,6 @@ if __name__ == "__main__":
     test_html_interstitial_guard()
     test_percent_encoded_filename_is_decoded()
     test_backcompat_no_slug_callable()
+    test_record_listing_ignores_file_response()
+    test_other_language_records_skipped()
     print("\nALL DEADLYSTREAM URL TESTS PASSED")
