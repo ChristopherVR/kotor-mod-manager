@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.15.6] - 2026-07-02
+
+### Bug Fixes
+
+- Stop double installs, wrong-language patches, and reinstall crashes
+
+### Build & CI
+
+- Run the full offline test suite on every build
+
+### Testing
+
+- Add a test that installs every mod in a build guide
 ## [0.15.5] - 2026-06-27
 
 ### Bug Fixes
