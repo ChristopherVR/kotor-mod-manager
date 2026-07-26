@@ -31,6 +31,17 @@ from scraper.build_scraper import BuildMod
 from scraper.deadlystream import DeadlyStreamClient, DownloadError
 
 
+def _dedupe_keep_order(seq: list) -> list:
+    out: list = []
+    seen: set = set()
+    for s in seq:
+        k = str(s).lower().strip()
+        if k and k not in seen:
+            seen.add(k)
+            out.append(s)
+    return out
+
+
 class ModStatus(Enum):
     PENDING          = "Pending"
     DOWNLOADING      = "Downloading"
@@ -182,14 +193,29 @@ class Pipeline:
             self._on_status(mod.build_mod.file_id, status, detail)
 
     def _log(self, msg: str, tag: str = "") -> None:
-        if self._on_log:
+        """
+        Emit a log line, swallowing any failure in the consumer's callback.
+
+        This runs inside the per-mod install try block, so an exception raised by
+        a caller's logging code would mark the mod itself as failed. That is a
+        real trap on Windows: the pipeline logs box-drawing characters and mod
+        names with curly quotes, and printing those to a cp1252 console raises
+        UnicodeEncodeError. Losing a log line is acceptable; losing an install
+        because of one is not.
+        """
+        if not self._on_log:
+            return
+        try:
             self._on_log(msg, tag)
+        except Exception:
+            pass
 
     def _install_progress(self, mod: PipelineMod, pct: float, label: str) -> None:
         if self._on_install_progress:
             self._on_install_progress(mod.build_mod.file_id, pct, label)
 
     def _run(self) -> None:
+        self._apply_layer_order()
         pending = [pm for pm in self._mods if pm.status not in (ModStatus.DONE, ModStatus.SKIPPED)]
         self._resolve_skip_constraints()
         self._check_dependencies()
@@ -443,6 +469,8 @@ class Pipeline:
                             f"another language)", "muted")
                 pm.archive_paths = keep
 
+        self._order_main_before_patch(pm)
+
         # ---- Extract archives; treat loose mod files (e.g. .tga) as direct copies ----
         _ARCHIVE_SUFFIXES = {".zip", ".rar", ".7z", ".exe"}
         try:
@@ -488,9 +516,35 @@ class Pipeline:
         # applies its patcher before its loose files, and surface the steps we
         # can't safely automate (multi-run, required external patches).
         dirs = pm.build_mod.directives
+
+        # A mod whose prerequisite is genuinely absent installs wrongly rather
+        # than failing loudly (patches land on files that aren't there, options
+        # get picked for a mod that isn't installed), so hold it back instead.
+        unmet = self._unmet_requirements(pm)
+        if unmet:
+            self._set_status(pm, ModStatus.SKIPPED)
+            self._log(
+                f"  Held back '{pm.build_mod.name}': it needs "
+                f"{', '.join(unmet)} installed first, and that is not part of "
+                f"this run. Install the prerequisite, then run this mod again.",
+                "warning")
+            return
+
+        # Some steps genuinely cannot be automated (interactive .bat files, a
+        # patcher that would break a Steam executable). Say so rather than
+        # doing something destructive.
+        if getattr(dirs, "manual_only", False):
+            reason = getattr(dirs, "manual_reason", "") or "This mod needs manual steps."
+            self._log(f"  '{pm.build_mod.name}' needs a manual step: {reason}", "warning")
+            self._flag_manual(pm, ManualInstallRequired(
+                pm.plans[0].mod_root if pm.plans else pm.extracted_paths[0],
+                reason))
+            return
+
         self._apply_build_guide_order(pm, dirs)
         self._log_build_guide_notes(pm, dirs)
         self._apply_pre_delete(pm, dirs)
+        self._apply_pre_patch_delete(pm, dirs)
 
         self._set_status(pm, ModStatus.INSTALLING)
         total = len(pm.plans)
@@ -507,6 +561,18 @@ class Pipeline:
                 try:
                     self._install_one(pm, plan)
                     any_succeeded = True
+                except PatcherError as e:
+                    # A few mods are documented as reporting an error that is
+                    # harmless (High Quality Blasters warns you to expect
+                    # exactly one). Only those are allowed through; every other
+                    # patcher failure still fails the mod.
+                    if not getattr(dirs, "tolerate_patcher_errors", False):
+                        raise
+                    self._log(
+                        f"  The installer reported an error, which the build "
+                        f"guide says to expect for this mod: {str(e)[:200]}",
+                        "muted")
+                    any_succeeded = True
                 except ManualInstallRequired as m:
                     if any_succeeded:
                         # Core mod already installed. This is a supplementary component
@@ -520,6 +586,7 @@ class Pipeline:
                     else:
                         manual = m
                     continue
+                self._apply_rename_after(dirs)
                 self._apply_post_delete(dirs)
                 self._record_install(pm, plan, pre)
                 self._install_progress(pm, i / total, "Done")
@@ -695,6 +762,11 @@ class Pipeline:
         elif method in (InstallMethod.OVERRIDE_COPY, InstallMethod.DIRECT_COPY, InstallMethod.MULTIPLE):
             self._apply_file_selection(plan, dirs)
             self._apply_renames(plan, dirs)
+            skipped = self._apply_no_overwrite(plan, dirs, game_path)
+            if skipped:
+                self._log(
+                    f"    Build guide: left {skipped} existing file(s) alone "
+                    f"(this mod must not overwrite).", "muted")
             install(plan, game_path, log_cb)
             self._remove_dds_conflicts(plan)
             # Apply any patcher-based compat patches in subfolders (e.g. Ebon Hawk K1
@@ -1073,6 +1145,179 @@ class Pipeline:
                 if pm.status == ModStatus.SKIPPED:
                     break
 
+    def _apply_layer_order(self) -> None:
+        """
+        Sort the batch into the build guide's install layers.
+
+        The guide's own numbering already runs roughly in layer order, but a
+        player can select a subset in any order, and a few mods (the duplicate
+        texture cleanup, the widescreen work) must run at a fixed point
+        regardless of where they sit in the list. Sorting by layer and then by
+        the mod's position on the page preserves the guide's sequence within a
+        layer while pinning those to the right place.
+        """
+        if not self._mods:
+            return
+        before = [pm.build_mod.file_id for pm in self._mods]
+
+        def key(pm: PipelineMod):
+            mod = pm.build_mod
+            layer = getattr(mod.directives, "layer", 0) or 0
+            page_pos = getattr(mod, "guide_index", 0) or mod.install_order
+            return (layer, page_pos)
+
+        self._mods.sort(key=key)
+        if [pm.build_mod.file_id for pm in self._mods] != before:
+            self._log("Ordered the mods into the build guide's install layers.", "muted")
+
+    def _installed_ids(self) -> set:
+        """Ids of mods already installed - this run plus the recorded library."""
+        done = {pm.build_mod.file_id for pm in self._mods
+                if pm.status == ModStatus.DONE}
+        done |= {f"guide:{getattr(pm.build_mod, 'guide_index', 0)}"
+                 for pm in self._mods if pm.status == ModStatus.DONE}
+        for scope in {self._game_key, self._game_type} - {""}:
+            try:
+                from installer.mod_manager import load_manifest
+                for im in load_manifest(scope).mods:
+                    if im.source_ref:
+                        done.add(str(im.source_ref))
+            except Exception:
+                pass
+        return done
+
+    def _unmet_requirements(self, pm: PipelineMod) -> list[str]:
+        """
+        Which of this mod's prerequisites are not installed and not coming up
+        later in this run. A prerequisite still queued is fine - layer ordering
+        puts it first - so only genuinely absent ones are reported.
+        """
+        required = getattr(pm.build_mod.directives, "requires", [])
+        if not required:
+            return []
+        available = self._installed_ids()
+        for other in self._mods:
+            if other is pm or other.status == ModStatus.SKIPPED:
+                continue
+            available.add(other.build_mod.file_id)
+            gi = getattr(other.build_mod, "guide_index", 0)
+            if gi:
+                available.add(f"guide:{gi}")
+        return [r for r in required if r not in available]
+
+    # Filename markers for the secondary/patch half of a multi-archive mod.
+    _PATCH_NAME_TOKENS = ("patch", "compatch", "compat", "hotfix", "fix",
+                          "addon", "add-on", "update", "replacement")
+
+    @classmethod
+    def _looks_like_patch(cls, name: str) -> bool:
+        low = re.sub(r"[^a-z0-9]+", " ", name.lower())
+        return any(f" {t} " in f" {low} " or low.endswith(f" {t}")
+                   for t in cls._PATCH_NAME_TOKENS)
+
+    def _order_main_before_patch(self, pm: PipelineMod) -> None:
+        """
+        Within one mod, install the base archive before its patch archive.
+
+        A submission split across several downloads (main mod + compatibility
+        patch) has no reliable ordering: the download order is whatever order the
+        guide happened to list the links in. Getting it backwards is not a
+        cosmetic problem - JAO's saber replacement patches Juhani's .utc, so
+        running it before the main mod means the file it edits does not exist yet
+        and the patcher fails outright.
+
+        Only reorders when the mod has both kinds, so a submission whose files
+        are all patches (or all main) keeps its given order.
+        """
+        if len(pm.archive_paths) < 2:
+            return
+        patches = [p for p in pm.archive_paths if self._looks_like_patch(p.stem)]
+        mains = [p for p in pm.archive_paths if p not in patches]
+        if not patches or not mains:
+            return
+        reordered = [*mains, *patches]
+        if reordered == pm.archive_paths:
+            return
+        pm.archive_paths = reordered
+        self._log(
+            f"  Installing the main download before its patch: "
+            f"{', '.join(p.name for p in reordered)}", "muted")
+
+    def _apply_pre_patch_delete(self, pm: PipelineMod, dirs) -> None:
+        """
+        Remove files from the mod's OWN tslpatchdata before its patcher runs.
+
+        High Quality Blasters ships keblastore.utm, which conflicts with this
+        build; the guide says to delete it from the mod folder before running
+        the installer, not from the game afterwards.
+        """
+        names = getattr(dirs, "pre_patch_delete", [])
+        if not names or not pm.extracted_paths:
+            return
+        removed: list[str] = []
+        for root in pm.extracted_paths:
+            for name in names:
+                if "/" in name or "\\" in name or ".." in name:
+                    continue
+                for found in root.rglob(name):
+                    try:
+                        found.unlink()
+                        removed.append(found.name)
+                    except OSError as e:
+                        self._log(f"    Could not remove {found.name}: {e}", "warning")
+        if removed:
+            self._log(f"  Build guide: removed {', '.join(removed)} from the mod "
+                      f"before running its installer.", "muted")
+
+    def _apply_rename_after(self, dirs) -> None:
+        """
+        Rename files inside Override after a mod installs.
+
+        Distinct from post_install_delete: the guide sometimes wants a file kept
+        under a different name (HQ Blasters' w_ionrfl_04 -> w_ionrfl_004).
+        Deleting it instead, which is how the free-text parser used to read the
+        sentence, loses the model entirely.
+        """
+        pairs = getattr(dirs, "rename_after", [])
+        if not pairs:
+            return
+        for src_name, dst_name in pairs:
+            for subdir in ("Override", "Modules"):
+                src = self._safe_delete_target(self._game_path, subdir, src_name)
+                dst = self._safe_delete_target(self._game_path, subdir, dst_name)
+                if src is None or dst is None or not src.exists():
+                    continue
+                try:
+                    from installer.fs_retry import with_lock_retry
+                    import os as _os
+                    with_lock_retry(lambda: _os.replace(src, dst))
+                    self._log(f"    Renamed {subdir}/{src_name} -> {dst_name} "
+                              f"(per build guide)", "muted")
+                except OSError as e:
+                    self._log(f"    Could not rename {src_name}: {e}", "warning")
+
+    @staticmethod
+    def _apply_no_overwrite(plan: InstallPlan, dirs, game_path: Path) -> int:
+        """
+        Drop mappings whose destination already exists.
+
+        "Pretty Good! Icons" is explicit that you must not overwrite when
+        prompted - its icons are meant to fill gaps, not replace icons an
+        earlier mod supplied. Returns how many files were skipped.
+        """
+        if not getattr(dirs, "no_overwrite", False):
+            return 0
+        skipped = 0
+        for p in [plan, *plan.sub_plans]:
+            keep = []
+            for fm in p.file_mappings:
+                if (game_path / fm.dest_relative).exists():
+                    skipped += 1
+                    continue
+                keep.append(fm)
+            p.file_mappings = keep
+        return skipped
+
     def _check_dependencies(self) -> None:
         """Warn when mods that need a community patch don't have it in the batch."""
         pending = [pm for pm in self._mods if pm.status == ModStatus.PENDING]
@@ -1171,6 +1416,17 @@ class Pipeline:
         handles). Applied to the plan and any sub-plans (MULTIPLE).
         """
         from installer.build_directives import select_paths
+
+        # "Delete X before moving to override" means the mod's OWN copy of X must
+        # not be installed. Clearing X from Override beforehand does nothing on
+        # its own, because the very next step copies the mod's copy straight back
+        # in. So a pre-install delete also excludes that file from this mod's
+        # payload; the delete still runs, to clear a copy an earlier mod left.
+        pre_delete = list(getattr(dirs, "pre_install_delete", []))
+        if pre_delete:
+            dirs = copy.copy(dirs)
+            dirs.file_except = _dedupe_keep_order(
+                [*dirs.file_except, *pre_delete])
 
         if not dirs.file_only and not dirs.file_except:
             return
