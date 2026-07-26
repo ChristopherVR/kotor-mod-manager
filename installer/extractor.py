@@ -178,6 +178,63 @@ def _extract_self_extracting_exe(archive: Path, dest: Path) -> None:
     )
 
 
+# File types that mean "this folder actually contains mod content".
+_PAYLOAD_SUFFIXES = {
+    ".tga", ".tpc", ".dds", ".txi", ".mdl", ".mdx", ".2da", ".tlk", ".gui",
+    ".utc", ".uti", ".utp", ".uts", ".utt", ".utm", ".utd", ".ute", ".utw",
+    ".dlg", ".ncs", ".nss", ".mod", ".rim", ".erf", ".wav", ".mp3", ".bik",
+    ".lip", ".ssf", ".ini", ".exe",
+}
+_NESTED_ARCHIVE_SUFFIXES = {".zip", ".7z", ".rar"}
+
+
+def has_mod_payload(root: Path) -> bool:
+    """
+    Whether an extracted folder holds anything installable.
+
+    Used to decide if a nested archive still needs unpacking: a folder with only
+    a readme and a screenshot is not a mod, it is a wrapper around one.
+    """
+    try:
+        for p in root.rglob("*"):
+            if p.is_dir() and p.name.lower() == "tslpatchdata":
+                return True
+            if p.is_file() and p.suffix.lower() in _PAYLOAD_SUFFIXES:
+                return True
+    except OSError:
+        pass
+    return False
+
+
+def _extract_nested(dest: Path, depth: int = 0) -> None:
+    """
+    Unpack archives found inside an extraction that produced no mod content.
+
+    Some submissions wrap the real mod in a second archive (Effixian's Qel-Droma
+    Robes ships a .zip inside the .zip). Without this the detector sees only a
+    readme and reports the mod as needing a manual install.
+
+    Deliberately conservative: this only runs when nothing installable was found,
+    so a mod that legitimately ships an optional extra archive alongside its real
+    payload is left untouched. Depth-limited so a nest of archives cannot loop.
+    """
+    if depth >= 3 or has_mod_payload(dest):
+        return
+    try:
+        nested = [p for p in dest.rglob("*")
+                  if p.is_file() and p.suffix.lower() in _NESTED_ARCHIVE_SUFFIXES]
+    except OSError:
+        return
+    if not nested:
+        return
+    for inner in nested:
+        try:
+            extract(inner, inner.parent / urllib.parse.unquote(inner.stem))
+        except Exception:
+            continue  # a nested archive we cannot read is not fatal
+    _extract_nested(dest, depth + 1)
+
+
 def extract(archive: Path, dest: Optional[Path] = None) -> Path:
     """
     Extract an archive to dest (defaults to archive_name/ next to the archive).
@@ -216,6 +273,9 @@ def extract(archive: Path, dest: Optional[Path] = None) -> Path:
                     ) from e
             else:
                 raise ExtractionError(f"Unsupported archive format: {suffix}")
+
+    # A wrapper archive yields no installable files; unpack what is inside it.
+    _extract_nested(dest)
 
     return dest
 
