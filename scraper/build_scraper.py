@@ -51,6 +51,11 @@ class BuildMod:
     install_method: str = ""  # the page's "Installation Method:" line (free text)
     description: str = ""      # the page's "Description:" line
     author: str = ""
+    # Position of this mod on the build page, counting every entry including
+    # ones hosted off DeadlyStream. install_order only counts the mods we can
+    # download, so the two diverge; the curated rules in build_overrides.py are
+    # keyed on this page position for non-DeadlyStream mods.
+    guide_index: int = 0
 
     @property
     def ds_url(self) -> str:
@@ -58,9 +63,19 @@ class BuildMod:
 
     @property
     def directives(self):
-        """Parsed, actionable install directives from the page text (lazy)."""
+        """
+        Actionable install directives for this mod (lazy).
+
+        The page text is parsed first, then the hand-verified rules in
+        installer/build_overrides.py are overlaid. The curated layer wins,
+        because a regex reading of the guide's prose is a best guess whereas
+        those entries were checked against the guide line by line.
+        """
         from installer.build_directives import parse_directives
-        return parse_directives(self.instructions, self.warnings, self.install_method)
+        from installer.build_overrides import apply as apply_overrides
+        dirs = parse_directives(self.instructions, self.warnings, self.install_method)
+        return apply_overrides(dirs, self.build_key, self.file_id,
+                               self.guide_index or self.install_order)
 
 
 # Anchor text that is NOT a mod name (download links, mirrors, etc.)
@@ -245,6 +260,9 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None,
     mods: list[BuildMod] = []
     seen: set[str] = set()
     order = 0
+    # Counts every "Name:" block on the page, not just the DeadlyStream ones,
+    # so guide_index lines up with the mod's real position in the guide.
+    guide_index = 0
     h2 = h3 = h4 = ""
 
     for el in main.descendants:
@@ -253,6 +271,9 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None,
         tag = getattr(el, "name", None)
         if not tag:
             continue
+
+        if tag == "p" and _is_name_p(el):
+            guide_index += 1
 
         if tag == "h2":
             h2 = el.get_text(" ", strip=True)
@@ -304,6 +325,7 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None,
                 install_method=block["install_method"][:200],
                 description=block["description"][:600],
                 author=block["author"][:120],
+                guide_index=guide_index,
             ))
 
     return mods

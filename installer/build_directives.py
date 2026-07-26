@@ -154,6 +154,30 @@ class Directives:
     # Handles "skip if using X" mutual exclusions (e.g. 4GB Patcher skips when
     # 3C-FD Patcher is present because 3C-FD already applies the same patch).
     skip_if: list[str] = field(default_factory=list)
+
+    # ---- Curated build-guide fields (see installer/build_overrides.py) ----
+    # These express guide instructions the free-text parser cannot safely infer.
+    # Mods that must already be installed, as build-guide entry ids. The pipeline
+    # holds a mod back (rather than installing it wrongly) when one is missing.
+    requires: list[str] = field(default_factory=list)
+    # Files to RENAME in place inside Override after the mod installs:
+    # [(current_name, new_name), ...]. Distinct from rename_copies, which keeps
+    # the original as well. HQ Blasters needs w_ionrfl_04.mdl -> w_ionrfl_004.mdl.
+    rename_after: list = field(default_factory=list)
+    # Files to delete from the mod's OWN tslpatchdata before the patcher runs
+    # (e.g. HQ Blasters ships keblastore.utm, which must not be applied).
+    pre_patch_delete: list[str] = field(default_factory=list)
+    # The mod's patcher is expected to report an error; do not fail the install.
+    tolerate_patcher_errors: bool = False
+    # Copy files only where the destination does not already exist. "Pretty
+    # Good! Icons" says explicitly: do not overwrite when prompted.
+    no_overwrite: bool = False
+    # Install layer from the build guide's ordering (lower installs first).
+    layer: int = 0
+    # Force a mod to manual with an explanation instead of installing it (e.g.
+    # the 4GB Patcher breaks the Steam executable unless widescreen was applied).
+    manual_only: bool = False
+    manual_reason: str = ""
     raw: str = ""
 
     def is_empty(self) -> bool:
@@ -165,6 +189,8 @@ class Directives:
             self.manual_notes, self.rename_copies, self.rename_base_copies,
             self.multi_run_options, self.post_install_delete,
             self.pre_install_delete, self.skip_if,
+            self.requires, self.rename_after, self.pre_patch_delete,
+            self.tolerate_patcher_errors, self.no_overwrite, self.manual_only,
         ])
 
     def summary(self) -> str:
