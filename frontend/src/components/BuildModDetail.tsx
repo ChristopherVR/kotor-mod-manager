@@ -58,6 +58,19 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
               <Badge variant={mod.game === "KOTOR1" ? "info" : "secondary"}>{mod.game}</Badge>
               {mod.install_method_hint && <Badge variant="muted">{mod.install_method_hint}</Badge>}
+              {mod.source_label && (
+                <Badge
+                  variant={mod.auto_downloadable === false ? "warning" : "muted"}
+                  title={
+                    mod.auto_downloadable === false
+                      ? `${mod.source_label} needs you to start the download on their site`
+                      : `Downloaded automatically from ${mod.source_label}`
+                  }
+                >
+                  {mod.source_label}
+                  {mod.auto_downloadable === false && " · manual"}
+                </Badge>
+              )}
               {info?.author && <span className="text-xs text-muted-foreground">{info.author}</span>}
             </div>
           </div>

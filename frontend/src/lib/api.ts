@@ -38,6 +38,10 @@ export interface BuildMod {
   description?: string;
   author?: string;
   directive_summary?: string;
+  /** Where the mod is hosted, and whether the app can fetch it unattended. */
+  source_host?: string;
+  source_label?: string;
+  auto_downloadable?: boolean;
   installed?: boolean;
 }
 
@@ -112,7 +116,18 @@ export type LibraryDetail = LibraryMod & {
   baked_files: BakedFile[];
 };
 
-export interface ConflictParticipant { mod_id: string; mod_name: string; enabled: boolean; build_key?: string | null; }
+export interface ConflictParticipant {
+  mod_id: string; mod_name: string; enabled: boolean;
+  build_key?: string | null;
+  logical_id?: string;
+  // Patcher mods bake their changes into shared files and cannot be switched
+  // off, so offering a Disable button for them only ever fails.
+  toggleable?: boolean;
+  install_method?: string;
+  // What this mod writes, so a conflict can show evidence rather than assert.
+  files?: string[];
+  file_count?: number;
+}
 
 export interface Conflict {
   id: string; resource: string;
@@ -122,6 +137,9 @@ export interface Conflict {
   same_build?: boolean;
   description: string;
   recommendation: string;
+  // Files both mods actually write (declared incompatibilities only).
+  shared_files?: string[];
+  shared_file_count?: number;
 }
 
 // WebSocket event shapes
@@ -136,6 +154,8 @@ export type WsEvent =
   | { type: "update_progress"; pct: number; downloaded: number; total: number }
   | { type: "library"; event: "import_folder_done"; count: number; [k: string]: unknown }
   | { type: "library"; event: "changed"; [k: string]: unknown }
+  | { type: "library"; event: "bulk_progress"; action: string; current: number;
+      total: number; mod: string; done?: boolean }
   | { type: "pipeline"; event: "started" | "finished"; [k: string]: unknown };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -182,10 +202,16 @@ export const api = {
   getSettings: () => req<Settings>("/api/settings"),
   setSettings: (s: Settings) =>
     req<{ ok: boolean }>("/api/settings", { method: "POST", body: JSON.stringify(s) }),
-  loadBuild: (key: string, profile?: string) =>
-    req<{ ok: boolean; build_key: string; mods: BuildMod[] }>(
-      `/api/builds/${key}/load${profile ? `?profile=${encodeURIComponent(profile)}` : ""}`,
-      { method: "POST" }),
+  /** refresh forces a fresh fetch of the guide instead of using the cache. */
+  loadBuild: (key: string, profile?: string, refresh = false) => {
+    const q = new URLSearchParams();
+    if (profile) q.set("profile", profile);
+    if (refresh) q.set("refresh", "true");
+    const qs = q.toString();
+    return req<{ ok: boolean; build_key: string; from_cache?: boolean;
+                 mods: BuildMod[] }>(
+      `/api/builds/${key}/load${qs ? `?${qs}` : ""}`, { method: "POST" });
+  },
   startInstall: (
     build_key: string,
     game_path?: string,
@@ -254,6 +280,47 @@ export const api = {
   conflicts: (profile: string) =>
     req<{ conflicts: Conflict[] }>(
       `/api/conflicts?profile=${encodeURIComponent(profile)}`),
+  resolveConflicts: (
+    profile: string,
+    body: { action: "dismiss" | "undismiss" | "disable_losers";
+            conflict_ids?: string[]; all_of_severity?: string },
+  ) =>
+    req<{ ok: boolean; requested: number; dismissed: number;
+          disabled: string[]; skipped: { id: string; reason: string }[] }>(
+      `/api/conflicts/resolve?profile=${encodeURIComponent(profile)}`,
+      { method: "POST", body: JSON.stringify(body) }),
+  bulkUninstall: (profile: string, mod_ids: string[], force = false) =>
+    req<{ ok: boolean; removed: string[];
+          failed: { mod: string; reason: string }[]; requested: number }>(
+      `/api/library/bulk/uninstall?profile=${encodeURIComponent(profile)}`,
+      { method: "POST", body: JSON.stringify({ mod_ids, force }) }),
+  cacheStats: (profile: string) =>
+    req<{ path: string; total_bytes: number; count: number; in_use_bytes: number;
+          entries: { name: string; bytes: number; in_use: boolean; files: number }[] }>(
+      `/api/cache?profile=${encodeURIComponent(profile)}`),
+  openCache: (profile: string, name = "") =>
+    req<{ ok: boolean; path?: string }>(
+      `/api/cache/open?profile=${encodeURIComponent(profile)}`
+      + `&name=${encodeURIComponent(name)}`, { method: "POST" }),
+  clearCache: (profile: string, opts: { keep_installed?: boolean; names?: string[] }) =>
+    req<{ ok: boolean; removed: string[]; freed_bytes: number;
+          failed: { name: string; reason: string }[] }>(
+      `/api/cache/clear?profile=${encodeURIComponent(profile)}`,
+      { method: "POST", body: JSON.stringify({
+          keep_installed: opts.keep_installed ?? true, names: opts.names ?? [] }) }),
+  baselineStatus: (profile: string) =>
+    req<{ has_baseline: boolean; game_path: string }>(
+      `/api/library/baseline?profile=${encodeURIComponent(profile)}`),
+  baselineReset: (profile: string) =>
+    req<{ ok: boolean; override_removed: number; modules_removed: number;
+          restored: string[] }>(
+      `/api/library/baseline/reset?profile=${encodeURIComponent(profile)}`,
+      { method: "POST" }),
+  bulkToggle: (profile: string, mod_ids: string[], action: "enable" | "disable") =>
+    req<{ ok: boolean; action: string; changed: string[];
+          failed: { mod: string; reason: string }[] }>(
+      `/api/library/bulk/toggle?profile=${encodeURIComponent(profile)}&action=${action}`,
+      { method: "POST", body: JSON.stringify({ mod_ids }) }),
   importFolder: (body: { game: string; path: string; profile?: string }) =>
     req<{ ok: boolean; count: number }>("/api/library/import-folder", {
       method: "POST",

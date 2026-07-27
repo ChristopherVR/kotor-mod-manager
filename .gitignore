@@ -55,3 +55,6 @@ frontend/src-tauri/target/
 frontend/src-tauri/gen/
 # Sidecar binaries are produced at build time (PyInstaller), never committed
 frontend/src-tauri/binaries/
+
+# Scratch output from build-guide scraping sessions
+.playwright-mcp/

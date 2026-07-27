@@ -10,11 +10,14 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 import config as cfg
 from backend.models import (
+    BulkModRequest,
+    ClearCacheRequest,
+    ResolveConflictsRequest,
     ImportFolderRequest,
     ImportRequest,
     ReorderRequest,
@@ -161,6 +164,255 @@ def _toggle(mod_id: str, game: str, profile: str, action: str):
     return {"ok": True, "mod": _mod_dict(mod, counts.get(mod.id, 0)), "conflicts": conflicts}
 
 
+# NOTE: these must be declared before the "/library/{mod_id}/..." routes.
+# FastAPI matches in declaration order, so with the parameterised route
+# first, a request to /library/bulk/uninstall binds mod_id="bulk" and
+# fails with "Mod bulk not found" instead of reaching this handler.
+@library_router.get("/cache")
+def get_cache(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """What the downloaded-mod cache currently holds."""
+    scope, _root, _gt = _resolve(game, profile)
+    refs = {str(m.source_ref) for m in mod_manager.load_manifest(scope).mods
+            if m.source_ref}
+    return mod_manager.cache_stats(_download_dir(), in_use_refs=refs)
+
+
+@library_router.post("/cache/open")
+def open_cache(name: str = Query(""), game: str = Query("KOTOR1"),
+               profile: str = Query("")) -> dict:
+    """
+    Open the downloads folder in the file manager.
+
+    name selects one cached mod's folder; without it the downloads root opens.
+    Useful for the mods the app cannot fetch itself - a player can drop the
+    archive straight into the right folder and the installer will pick it up.
+    """
+    from backend.fsutil import reveal_path
+    base = _download_dir()
+    target = base
+    if name:
+        # Never let a name walk out of the downloads folder.
+        candidate = (base / name).resolve()
+        try:
+            if candidate.is_relative_to(base.resolve()) and candidate.is_dir():
+                target = candidate
+        except (OSError, ValueError):
+            pass
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return JSONResponse(status_code=404,
+                            content={"ok": False, "error": "download_unavailable"})
+    if not reveal_path(target):
+        return JSONResponse(status_code=500,
+                            content={"ok": False, "error": "open_failed"})
+    return {"ok": True, "path": str(target)}
+
+
+@library_router.post("/cache/clear")
+def clear_cache(req: ClearCacheRequest, game: str = Query("KOTOR1"),
+                profile: str = Query("")) -> dict:
+    """
+    Delete cached downloads.
+
+    keep_installed spares the archives belonging to mods that are still
+    installed, so a later repair or reinstall does not have to fetch them again.
+    """
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    scope, _root, _gt = _resolve(game, profile)
+    keep = set()
+    if req.keep_installed:
+        keep = {str(m.source_ref) for m in mod_manager.load_manifest(scope).mods
+                if m.source_ref}
+
+    _publish({"type": "log", "message": "Clearing cached downloads…",
+              "tag": "info"})
+    result = mod_manager.clear_cache(
+        _download_dir(), keep_refs=keep, names=req.names or None,
+        on_log=lambda m: _publish({"type": "log", "message": m, "tag": "muted"}))
+    mb = result["freed_bytes"] / (1024 * 1024)
+    _publish({"type": "log",
+              "message": f"Removed {len(result['removed'])} cached download(s), "
+                         f"freeing {mb:.0f} MB.",
+              "tag": "success" if result["removed"] else "muted"})
+    return {"ok": True, **result}
+
+
+@library_router.get("/library/baseline")
+def baseline_status(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """Whether a clean snapshot exists to reset back to."""
+    scope, root, _gt = _resolve(game, profile)
+    return {"has_baseline": mod_manager.has_baseline(scope),
+            "game_path": str(root) if root else ""}
+
+
+@library_router.post("/library/baseline/capture")
+def baseline_capture(game: str = Query("KOTOR1"), profile: str = Query(""),
+                     force: bool = Query(False)) -> dict:
+    """
+    Record the game's clean state so it can be restored later.
+
+    Only meaningful on an unmodded install: capturing over a modded one would
+    save the mods as the "clean" reference, so an existing snapshot is never
+    replaced unless explicitly forced.
+    """
+    scope, root, _gt = _resolve(game, profile)
+    if not root or not root.exists():
+        return JSONResponse(status_code=400,
+                            content={"ok": False, "error": "game_path_required"})
+    return mod_manager.capture_baseline(scope, root, force=force)
+
+
+@library_router.post("/library/baseline/reset")
+def baseline_reset(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """
+    Put the game back to its clean snapshot and empty the library.
+
+    This is the only reliable undo for a build full of patcher mods, which
+    rewrite shared game files in place and so cannot be removed one at a time.
+    """
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    scope, root, _gt = _resolve(game, profile)
+    if not root or not root.exists():
+        return JSONResponse(status_code=400,
+                            content={"ok": False, "error": "game_path_required"})
+
+    _publish({"type": "log", "message": "Resetting the game to its clean state…",
+              "tag": "info"})
+    try:
+        result = mod_manager.reset_to_vanilla(
+            scope, root,
+            on_log=lambda m: _publish({"type": "log", "message": m, "tag": "muted"}))
+    except mod_manager.ModManagerError as e:
+        _publish({"type": "log", "message": str(e), "tag": "error"})
+        return JSONResponse(status_code=409,
+                            content={"ok": False, "error": "no_baseline",
+                                     "message": str(e)})
+    _publish({"type": "log",
+              "message": f"Game reset. Removed {result['override_removed']} "
+                         f"Override file(s) and {result['modules_removed']} module(s).",
+              "tag": "success"})
+    _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, **result}
+
+
+@library_router.post("/library/bulk/uninstall")
+def bulk_uninstall(req: BulkModRequest,
+                   game: str = Query("KOTOR1"),
+                   profile: str = Query("")) -> dict:
+    """
+    Uninstall many mods in one go.
+
+    Removing a 178-mod build one dialog at a time is not realistic, so this
+    takes a list. Each mod is attempted independently: one that cannot be
+    removed (a patcher mod with no backup, unless force is set) is reported in
+    `failed` and the rest still come out.
+    """
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    scope, root, _gt = _resolve(game, profile)
+    if not root or not root.exists():
+        return JSONResponse(status_code=400,
+                            content={"ok": False, "error": "game_path_required"})
+
+    manifest = mod_manager.load_manifest(scope)
+    names = {m.id: m.name for m in manifest.mods}
+    removed, failed = [], []
+    # Reverse load order: later mods overwrote earlier ones, so undoing them
+    # last-first restores the files the earlier mods had displaced.
+    order = {m.id: m.load_order for m in manifest.mods}
+    targets = sorted(set(req.mod_ids or []),
+                     key=lambda i: order.get(i, 0), reverse=True)
+    total = len(targets)
+    # Removing a large build takes a while, so report each mod as it goes
+    # rather than leaving the window silent until the whole batch finishes.
+    _publish({"type": "log",
+              "message": f"Uninstalling {total} mod(s)…", "tag": "info"})
+    for i, mod_id in enumerate(targets, 1):
+        name = names.get(mod_id, mod_id)
+        # Two channels on purpose: the log line is the permanent record on the
+        # Activity tab, the progress event drives the live counter on whatever
+        # screen the player is actually looking at.
+        _publish({"type": "library", "event": "bulk_progress", "action": "uninstall",
+                  "current": i, "total": total, "mod": name})
+        _publish({"type": "log",
+                  "message": f"[{i}/{total}] Removing {name}…", "tag": "muted"})
+        try:
+            mod_manager.uninstall(scope, root, mod_id, force=req.force)
+            removed.append(name)
+        except mod_manager.ModManagerError as e:
+            failed.append({"mod": name, "reason": str(e)[:160]})
+            _publish({"type": "log",
+                      "message": f"Could not remove {name}: {str(e)[:120]}",
+                      "tag": "warning"})
+        except Exception as e:
+            failed.append({"mod": name, "reason": str(e)[:160]})
+            _publish({"type": "log",
+                      "message": f"Could not remove {name}: {str(e)[:120]}",
+                      "tag": "warning"})
+    _publish({"type": "library", "event": "bulk_progress", "action": "uninstall",
+              "current": total, "total": total, "mod": "", "done": True})
+    _publish({"type": "log",
+              "message": f"Removed {len(removed)} of {total} mod(s).",
+              "tag": "success" if removed else "warning"})
+
+    _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, "removed": removed, "failed": failed,
+            "requested": len(set(req.mod_ids or []))}
+
+
+@library_router.post("/library/bulk/toggle")
+def bulk_toggle(req: BulkModRequest, action: str = Query("disable"),
+                game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """Enable or disable many mods at once."""
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    if action not in ("enable", "disable"):
+        raise HTTPException(status_code=400, detail="action must be enable or disable")
+    scope, root, _gt = _resolve(game, profile)
+    if not root or not root.exists():
+        return JSONResponse(status_code=400,
+                            content={"ok": False, "error": "game_path_required"})
+
+    manifest = mod_manager.load_manifest(scope)
+    names = {m.id: m.name for m in manifest.mods}
+    fn = mod_manager.enable if action == "enable" else mod_manager.disable
+    changed, failed = [], []
+    targets = sorted(set(req.mod_ids or []))
+    total = len(targets)
+    _publish({"type": "log",
+              "message": f"{action.capitalize()[:-1]}ing {total} mod(s)…",
+              "tag": "info"})
+    for i, mod_id in enumerate(targets, 1):
+        name = names.get(mod_id, mod_id)
+        try:
+            fn(scope, root, mod_id)
+            changed.append(name)
+            _publish({"type": "library", "event": "bulk_progress", "action": action,
+                      "current": i, "total": total, "mod": name})
+            if total > 20 and i % 10 == 0:
+                _publish({"type": "log",
+                          "message": f"[{i}/{total}] {action}d so far…",
+                          "tag": "muted"})
+        except mod_manager.ModManagerError as e:
+            failed.append({"mod": name, "reason": str(e)[:160]})
+    _publish({"type": "library", "event": "bulk_progress", "action": action,
+              "current": total, "total": total, "mod": "", "done": True})
+    _publish({"type": "log",
+              "message": f"{action.capitalize()}d {len(changed)} of {total} mod(s)."
+                         + (f" {len(failed)} could not be changed." if failed else ""),
+              "tag": "success" if changed else "warning"})
+
+    _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, "action": action, "changed": changed, "failed": failed}
+
+
 @library_router.post("/library/{mod_id}/enable")
 def enable_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     return _toggle(mod_id, game, profile, "enable")
@@ -207,6 +459,40 @@ def reorder_mods(req: ReorderRequest, profile: str = Query("")) -> dict:
 def get_conflicts(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     scope, _root, _gt = _resolve(game, profile)
     return {"conflicts": mod_manager.compute_conflicts(scope)}
+
+
+@library_router.post("/conflicts/resolve")
+def resolve_conflicts(req: ResolveConflictsRequest,
+                      game: str = Query("KOTOR1"),
+                      profile: str = Query("")) -> dict:
+    """
+    Apply one action to many conflicts at once.
+
+    A completed build reports hundreds of intentional file overlaps, so the list
+    is only usable if it can be cleared in bulk. Pass ids explicitly, or set
+    all_of_severity to sweep everything at one level (typically "info").
+    """
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    scope, root, _gt = _resolve(game, profile)
+
+    ids = list(req.conflict_ids or [])
+    if req.all_of_severity:
+        ids += [c["id"] for c in mod_manager.compute_conflicts(scope)
+                if c["severity"] == req.all_of_severity]
+    if not ids:
+        return {"ok": True, "action": req.action, "requested": 0,
+                "disabled": [], "skipped": [], "dismissed": 0}
+
+    try:
+        result = mod_manager.resolve_conflicts(
+            scope, sorted(set(ids)), req.action, game_path=root)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, **result}
 
 
 # ---------------------------------------------------------------------------

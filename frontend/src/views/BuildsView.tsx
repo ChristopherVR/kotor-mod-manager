@@ -148,16 +148,29 @@ export function BuildsView(props: BuildsViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buildGame, activeProfile]);
 
-  const loadBuild = async () => {
+  // Show the saved copy of a build the moment it is selected, so switching
+  // builds is instant. The Load button re-fetches the guide for the latest.
+  useEffect(() => {
+    if (!selectedBuild) return;
+    let cancelled = false;
+    api.loadBuild(selectedBuild, activeProfile || undefined, false)
+      .then(r => { if (!cancelled) setMods(r.mods); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBuild, activeProfile]);
+
+  const loadBuild = async (refresh = true) => {
     setLoading(true);
     resetRuntime();
     try {
-      const r = await api.loadBuild(selectedBuild, activeProfile || undefined);
+      const r = await api.loadBuild(selectedBuild, activeProfile || undefined, refresh);
       setMods(r.mods);
       const alreadyInstalled = r.mods.filter(m => m.installed).length;
+      const where = r.from_cache ? " from your saved copy" : "";
       const msg = alreadyInstalled > 0
-        ? `Loaded ${r.mods.length} mods for ${labelFor(selectedBuild)} (${alreadyInstalled} already installed, deselected).`
-        : `Loaded ${r.mods.length} mods for ${labelFor(selectedBuild)}.`;
+        ? `Loaded ${r.mods.length} mods for ${labelFor(selectedBuild)}${where} (${alreadyInstalled} already installed, deselected).`
+        : `Loaded ${r.mods.length} mods for ${labelFor(selectedBuild)}${where}.`;
       addLog(msg, "success");
     } catch (e: any) {
       addLog(`Load failed: ${e?.message}`, "error");
@@ -297,7 +310,13 @@ export function BuildsView(props: BuildsViewProps) {
             <option key={b.key} value={b.key}>{b.label}</option>
           ))}
         </Select>
-        <Button variant="secondary" size="sm" onClick={loadBuild} disabled={loading || running}>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => loadBuild(true)}
+          disabled={loading || running}
+          title="Fetches the latest version of this list from the mod build guide"
+        >
           <Download /> {loading ? t("builds.loading") : t("builds.loadList")}
         </Button>
         <Button

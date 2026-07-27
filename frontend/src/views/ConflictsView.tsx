@@ -88,11 +88,15 @@ export function ConflictsView({
     () => allGroups.filter(g => g.items[0]?.type === "declared"),
     [allGroups],
   );
-  // Exclude info-severity groups (same build / no action needed) - they require no user attention.
+  // File-level groups needing attention. Curated-build overlaps come back as
+  // "info" because the build's install order already decided them; they are
+  // hidden by default but counted, so the list is quiet without being a lie
+  // about what was found.
   const fileGroups = useMemo(
     () => allGroups.filter(g => g.items[0]?.type !== "declared" && g.severity !== "info"),
     [allGroups],
   );
+
 
   // Sync the tab badge count with the number of actionable conflict groups.
   const prevCount = useRef<number | null>(null);
@@ -109,18 +113,21 @@ export function ConflictsView({
     api.setActiveProfile(id).catch(() => {});
   };
 
-  const visibleCount = declaredGroups.length + fileGroups.length;
+  // Overlaps a curated build settles by install order are not conflicts, so the
+  // backend no longer returns them at all. Everything left here needs a look.
+  const actionableCount = declaredGroups.length + fileGroups.length;
+  const visibleCount = actionableCount;
 
   // Subtitle that distinguishes real incompatibilities from load-order notes.
   const subtitle = useMemo(() => {
-    if (visibleCount === 0) return t("conflicts.noneShort");
+    if (actionableCount === 0) return t("conflicts.noneShort");
     const parts: string[] = [];
     if (declaredGroups.length === 1) parts.push(t("conflicts.summaryDeclared", { count: 1 }));
     else if (declaredGroups.length > 1) parts.push(t("conflicts.summaryDeclaredPlural", { count: declaredGroups.length }));
     if (fileGroups.length === 1) parts.push(t("conflicts.summaryNotes", { count: 1 }));
     else if (fileGroups.length > 1) parts.push(t("conflicts.summaryNotesPlural", { count: fileGroups.length }));
     return parts.join(", ");
-  }, [t, visibleCount, declaredGroups.length, fileGroups.length]);
+  }, [t, actionableCount, declaredGroups.length, fileGroups.length]);
 
   return (
     <div className="flex h-full flex-col">

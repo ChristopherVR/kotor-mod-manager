@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from installer.mod_manager import InstalledMod
 from installer.pipeline import PipelineMod
-from scraper.build_scraper import BuildMod
+from scraper.build_scraper import HOST_LABELS, BuildMod
 
 
 class LoginRequest(BaseModel):
@@ -46,6 +46,12 @@ class UninstallRequest(BaseModel):
     force: bool = False
 
 
+class BulkModRequest(BaseModel):
+    """Apply one action to many library mods at once."""
+    mod_ids: list[str] = []
+    force: bool = False          # uninstall baked mods that have no backup
+
+
 class ImportFolderRequest(BaseModel):
     game: str
     path: str            # a folder containing mod archives (zip/7z/rar)
@@ -57,6 +63,20 @@ class ImportFolderRequest(BaseModel):
 class ReorderRequest(BaseModel):
     game: str
     ordered_ids: list[str]
+
+
+class ClearCacheRequest(BaseModel):
+    """Clear downloaded mod archives. Empty names means 'everything', subject
+    to keep_installed."""
+    names: list[str] = []
+    keep_installed: bool = True
+
+
+class ResolveConflictsRequest(BaseModel):
+    """Bulk conflict action. Either name the conflicts, or sweep a severity."""
+    action: str                                   # dismiss | undismiss | disable_losers
+    conflict_ids: list[str] = []
+    all_of_severity: Optional[str] = None         # e.g. "info"
 
 
 class ProfileCreate(BaseModel):
@@ -148,6 +168,13 @@ def build_mod_to_dict(m: BuildMod) -> dict:
         # A short, player-readable summary of the special handling we apply, so
         # the UI can flag mods that need extra steps.
         "directive_summary": d.summary(),
+        # Where the mod comes from, and whether the app can fetch it by itself.
+        # Nexus needs a click on their site for free accounts, so a player is
+        # better off knowing that before starting a build than finding out when
+        # the download does not happen.
+        "source_host": m.source_host,
+        "source_label": HOST_LABELS.get(m.source_host, m.source_host),
+        "auto_downloadable": m.auto_downloadable,
     }
 
 

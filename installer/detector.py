@@ -1,9 +1,50 @@
 """Detect the installation method required for an extracted KOTOR mod."""
 
 import re
+import sys
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
+
+_UNC_PREFIX = "\\\\?\\"
+
+
+def _long(p: Path) -> Path:
+    """
+    UNC-prefixed copy of a path so traversal is not capped at MAX_PATH.
+
+    Windows silently stops enumerating below 260 characters rather than
+    erroring, so a mod wrapped in a few deeply-named folders looks empty and
+    gets reported as needing a manual install. Effixian's Qel-Droma Robes is
+    triple-nested under a 60-character folder name and its textures sit at 287
+    characters, which is exactly what this hides.
+    """
+    if sys.platform != "win32":
+        return p
+    try:
+        resolved = str(p.resolve())
+    except OSError:
+        return p
+    if resolved.startswith("\\\\"):
+        return p
+    return Path(_UNC_PREFIX + resolved)
+
+
+def _short(p: Path) -> Path:
+    """Strip the UNC prefix again so callers see ordinary paths."""
+    s = str(p)
+    return Path(s[len(_UNC_PREFIX):]) if s.startswith(_UNC_PREFIX) else p
+
+
+def walk_files(root: Path):
+    """Yield every file under root, without the MAX_PATH blind spot."""
+    long_root = _long(root)
+    try:
+        for p in long_root.rglob("*"):
+            if p.is_file():
+                yield _short(p), p.relative_to(long_root)
+    except OSError:
+        return
 
 
 class InstallMethod(Enum):
@@ -66,7 +107,7 @@ class InstallPlan:
 
 def _find_file(root: Path, name: str) -> "Path | None":
     name_lower = name.lower()
-    for p in root.rglob("*"):
+    for p in _long(root).rglob("*"):
         if p.is_file() and p.name.lower() == name_lower:
             return p
     return None
@@ -74,9 +115,12 @@ def _find_file(root: Path, name: str) -> "Path | None":
 
 def _find_dir(root: Path, name: str) -> "Path | None":
     name_lower = name.lower()
-    for p in root.rglob("*"):
-        if p.is_dir() and p.name.lower() == name_lower:
-            return p
+    try:
+        for p in _long(root).rglob("*"):
+            if p.is_dir() and p.name.lower() == name_lower:
+                return _short(p)
+    except OSError:
+        pass
     return None
 
 
@@ -135,13 +179,11 @@ def _parse_namespaces(namespaces_ini: Path) -> list[NamespaceOption]:
 
 def _collect_loose_files(root: Path) -> list[ModFileMapping]:
     mappings = []
-    for p in root.rglob("*"):
-        if not p.is_file():
-            continue
-        rel = str(p.relative_to(root)).replace("\\", "/")
+    for p, rel_path in walk_files(root):
+        rel = str(rel_path).replace("\\", "/")
         ext = p.suffix.lower()
         # Skip files inside tslpatchdata or backup folders
-        parts_lower = [x.lower() for x in p.relative_to(root).parts]
+        parts_lower = [x.lower() for x in rel_path.parts]
         if "tslpatchdata" in parts_lower or "backup" in parts_lower:
             continue
 
@@ -158,7 +200,7 @@ def _collect_loose_files(root: Path) -> list[ModFileMapping]:
 
 
 def _find_holopatcher(root: Path) -> "Path | None":
-    for p in root.rglob("*.exe"):
+    for p in _long(root).rglob("*.exe"):
         if "holopatcher" in p.name.lower() or "holocron" in p.name.lower():
             return p
     return None
@@ -176,11 +218,11 @@ def _tslpatcher_exe_names() -> set:
 def _find_tslpatcher(root: Path) -> "Path | None":
     names = _tslpatcher_exe_names()
     # Exact name match is most reliable
-    for p in root.rglob("*.exe"):
+    for p in _long(root).rglob("*.exe"):
         if p.name.lower() in names:
             return p
     # Heuristic fallback for oddly-named patchers that still ship tslpatchdata
-    for p in root.rglob("*.exe"):
+    for p in _long(root).rglob("*.exe"):
         low = p.name.lower()
         if "patch" in low or "install" in low or "modder" in low:
             # Avoid uninstallers / unrelated tools
@@ -196,7 +238,7 @@ def _find_standalone_patcher(root: Path) -> "Path | None":
     if _collect_loose_files(root):
         return None
     _KEYWORDS = {"patch", "patcher", "fix", "fixer", "repair"}
-    for p in root.rglob("*.exe"):
+    for p in _long(root).rglob("*.exe"):
         low = p.name.lower()
         if "uninstall" in low:
             continue
@@ -208,7 +250,7 @@ def _find_standalone_patcher(root: Path) -> "Path | None":
 def _find_tlk_variants(root: Path) -> list[tuple[str, Path]]:
     """Find dialog.tlk files. Returns (label, path) pairs."""
     variants = []
-    for p in root.rglob("dialog.tlk"):
+    for p in _long(root).rglob("dialog.tlk"):
         # Label = parent folder name, or "Default" if at root
         label = p.parent.name if p.parent != root else "Default"
         variants.append((label, p))
@@ -276,7 +318,7 @@ def _plan_for_root(mod_root: Path) -> InstallPlan:
     override_dir = _find_dir(mod_root, "override")
     if override_dir:
         mappings = []
-        for p in override_dir.rglob("*"):
+        for p in _long(override_dir).rglob("*"):
             if p.is_file():
                 mappings.append(ModFileMapping(
                     source=p,
@@ -285,7 +327,7 @@ def _plan_for_root(mod_root: Path) -> InstallPlan:
         # Also check for Modules/, Movies/ siblings
         modules_dir = _find_dir(mod_root, "modules")
         if modules_dir:
-            for p in modules_dir.rglob("*"):
+            for p in _long(modules_dir).rglob("*"):
                 if p.is_file():
                     mappings.append(ModFileMapping(source=p, dest_relative=f"Modules/{p.name}"))
         return InstallPlan(

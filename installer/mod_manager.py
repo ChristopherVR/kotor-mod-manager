@@ -26,7 +26,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import config as cfg
 
@@ -119,6 +119,10 @@ class GameManifest:
     game: str = "KOTOR1"
     mods: list[InstalledMod] = field(default_factory=list)
     next_load_order: int = 0
+    # Conflict ids the player has reviewed and chosen to hide. A finished build
+    # legitimately reports hundreds of intentional file overlaps, so without
+    # this the list stays permanently noisy and real problems get lost in it.
+    dismissed_conflicts: list[str] = field(default_factory=list)
 
     def find(self, mod_id: str) -> Optional[InstalledMod]:
         return next((m for m in self.mods if m.id == mod_id), None)
@@ -175,6 +179,7 @@ def load_manifest(game: str) -> GameManifest:
         game=raw.get("game", game),
         mods=mods,
         next_load_order=raw.get("next_load_order", len(mods)),
+        dismissed_conflicts=raw.get("dismissed_conflicts", []) or [],
     )
 
 
@@ -186,6 +191,7 @@ def save_manifest(m: GameManifest) -> None:
         "schema_version": m.schema_version,
         "game": m.game,
         "next_load_order": m.next_load_order,
+        "dismissed_conflicts": list(m.dismissed_conflicts or []),
         "mods": [asdict(mod) for mod in m.mods],
     }
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -244,9 +250,49 @@ def parse_incompatibilities(readme_text: str) -> list[str]:
             # Trim trailing connective words and over-long captures.
             name = re.split(r"\b(?:and|or|but|because|since|as|if|when)\b", name, 1)[0].strip()
             name = name[:80].strip()
+            if not _looks_like_a_mod_name(name):
+                continue
             if len(name) >= 4 and name.lower() not in (x.lower() for x in found):
                 found.append(name)
     return found[:20]
+
+
+# Openings that mean the readme is describing a CATEGORY of mods rather than
+# naming one, e.g. "incompatible with any mods that alter the laser visual
+# effects for blasters". Matching those against the library is meaningless:
+# the phrase shares words with half the mod list, so it fuzzy-matches an
+# unrelated mod and reports a conflict that does not exist.
+_GENERIC_INCOMPAT_STARTS = (
+    "any ", "all ", "other ", "another ", "most ", "some ", "many ",
+    "anything ", "everything ", "mods that", "mod that", "any mods",
+    "similar ", "the same ", "each other", "one another",
+)
+# A capture consisting only of these carries no identifying information.
+_GENERIC_INCOMPAT_WORDS = {
+    "mod", "mods", "other", "others", "any", "all", "them", "these", "those",
+    "this", "that", "it", "one", "ones", "version", "versions", "file", "files",
+}
+
+
+def _looks_like_a_mod_name(text: str) -> bool:
+    """
+    Whether a captured incompatibility phrase actually names a mod.
+
+    Readmes mix specific names ("incompatible with TSLRCM") with category
+    descriptions ("incompatible with any mods that alter the laser visual
+    effects"). Only the former can be matched against the installed library;
+    the latter matches on shared words and invents conflicts.
+    """
+    t = _normalize(text)
+    if not t:
+        return False
+    if any(t.startswith(p.strip()) for p in _GENERIC_INCOMPAT_STARTS):
+        return False
+    words = [w for w in t.split() if w not in _GENERIC_INCOMPAT_WORDS]
+    if not words:
+        return False
+    # A real title is short. Anything rambling is prose describing a category.
+    return len(t.split()) <= 8
 
 
 def snapshot_targets(game_root: Path) -> dict[str, str]:
@@ -485,7 +531,8 @@ def reorder(game: str, ordered_ids: list[str]) -> GameManifest:
 # ---------------------------------------------------------------------------
 
 def _conflict_explanation(
-    ctype: str, kinds: set, winner: str, losers: list[str], same_build: bool = False
+    ctype: str, kinds: set, winner: str, losers: list[str], same_build: bool = False,
+    build_managed: bool = False,
 ) -> tuple[str, str]:
     """Return (description, recommendation) explaining a file conflict in plain terms."""
     others = ", ".join(f'"{n}"' for n in losers) or "another mod"
@@ -501,6 +548,14 @@ def _conflict_explanation(
             f"The build was designed this way - \"{winner}\" takes priority by install "
             f"order, which is intentional.",
             "No action needed. File sharing between mods in the same build is expected.",
+        )
+    if build_managed:
+        return (
+            f"Both mods came from curated builds, which are designed to layer over "
+            f"each other. \"{winner}\" provides the version the install order picked, "
+            f"and {others} supplies the same file earlier in the order.",
+            "No action needed. Later mods replacing an earlier mod's textures is "
+            "how these builds are meant to work.",
         )
     base = {
         "2da": (
@@ -541,19 +596,36 @@ def _logical_id(mod: "InstalledMod") -> str:
     Multiple manifest entries that share a source_ref (e.g. the two records
     written for a MULTIPLE-type mod whose main plan and patch plan each call
     record_install) must NOT conflict with each other - they are the same
-    logical mod installed in stages.  Use source_type+source_ref as the stable
-    identity when available, falling back to the entry's own id.
+    logical mod installed in stages.
+
+    The name is the primary identity rather than source_ref, because the SAME
+    mod can legitimately carry different refs: installed once as part of one
+    build and again as part of another, or obtained from DeadlyStream in one
+    run and from a mirror in the next. Keying on source_ref alone made those
+    records look like two different mods, so a mod ended up conflicting with
+    itself - hence reports like 'Blaster Visual Effects is incompatible with
+    Blaster Visual Effects'.
     """
+    norm = _normalize(mod.name or "")
+    if norm:
+        return f"name:{norm}"
     if mod.source_ref:
         return f"{mod.source_type}:{mod.source_ref}"
     return mod.id
 
 
-def compute_conflicts(game: str) -> list[dict]:
+def compute_conflicts(game: str, include_info: bool = False) -> list[dict]:
     """
     Compute file-level conflicts across ENABLED mods. Returns UI-shaped dicts:
     {id, resource, type, severity, participants:[{mod_id,mod_name,enabled}],
      winner_mod_id}.
+
+    include_info: whether to return the overlaps a curated build settles by
+    install order. Those are not conflicts - the guide chose these mods
+    together and the later one is meant to win - and on a finished build there
+    are hundreds of them, which buries the handful that do need attention. They
+    are excluded by default and available for anyone who wants the full
+    picture.
     """
     manifest = load_manifest(game)
     # rel_lower -> list of (load_order, mod, kind)
@@ -591,7 +663,14 @@ def compute_conflicts(game: str) -> list[dict]:
             len(build_keys_present) == 1
             and all(m.build_key for _, m, _ in parts_sorted)
         )
-        if kinds == {"baked"} or same_build:
+        # Every participant came from a curated build, so the overlap is the
+        # build's own design: the guide chose these mods together and its
+        # install order decides which one wins. That is true whether they came
+        # from the same guide or two guides applied to one game, so it is
+        # reported for information rather than as something to fix. Only an
+        # overlap involving a hand-imported mod is a genuine surprise.
+        all_curated = all(m.build_key for _, m, _ in parts_sorted)
+        if kinds == {"baked"} or same_build or all_curated:
             severity = "info"
         else:
             severity = "warning"
@@ -609,12 +688,28 @@ def compute_conflicts(game: str) -> list[dict]:
                 "mod_name": m.name,
                 "enabled": m.enabled,
                 "build_key": m.build_key,
+                "logical_id": lid,
+                # Patcher mods bake their changes into shared files, so they
+                # cannot be switched off. The UI needs this to avoid offering a
+                # Disable button that can only ever fail with not_toggleable.
+                "toggleable": m.toggleable,
             })
         ctype = _resource_type(key)
+        # Losers are the OTHER logical mods. Filtering on the raw record id let
+        # the winner's own name back into the list (it has several records), and
+        # repeated names made messages read
+        # '"KOTOR Community Patch" wins and the version from "KOTOR Community
+        # Patch", "KOTOR Community Patch", ... is shadowed'.
+        winner_lid = _logical_id(winner)
+        loser_names: list[str] = []
+        for p in participants:
+            if p["logical_id"] == winner_lid:
+                continue
+            if p["mod_name"] not in loser_names:
+                loser_names.append(p["mod_name"])
         desc, rec = _conflict_explanation(
-            ctype, kinds, winner.name,
-            [p["mod_name"] for p in participants if p["mod_id"] != winner.id],
-            same_build=same_build,
+            ctype, kinds, winner.name, loser_names, same_build=same_build,
+            build_managed=all_curated,
         )
         conflicts.append({
             "id": key,
@@ -630,16 +725,36 @@ def compute_conflicts(game: str) -> list[dict]:
 
     # ---- Declared incompatibilities (from the mods' own readmes) ----
     enabled_mods = [m for m in manifest.mods if m.enabled]
+
+    def _files_of(logical: str) -> set[str]:
+        """Every file the given logical mod installs, across all its records."""
+        out: set[str] = set()
+        for m in enabled_mods:
+            if _logical_id(m) != logical:
+                continue
+            out |= {d.rel_path for d in (m.deployed_files or [])}
+            out |= {b.rel_path for b in (m.baked_files or [])}
+        return out
+
     seen_pairs: set[tuple[str, str]] = set()
     for a in enabled_mods:
         if not a.incompatibilities:
             continue
         for b in enabled_mods:
-            if a.id == b.id:
+            # Same logical mod (two records of one install, or the same mod
+            # picked up by two builds) can never be incompatible with itself.
+            if _logical_id(a) == _logical_id(b):
                 continue
             if not _name_matches(b.name, a.incompatibilities):
                 continue
-            pair = tuple(sorted((a.id, b.id)))
+            # An add-on names the mod it extends: "HD Robe Icons for JC's
+            # Cloaked Jedi Robes" contains "Cloaked Jedi Robes". The readme
+            # scanner reads that as a declared incompatibility, when the
+            # relationship is the opposite - one exists to replace the other's
+            # files. Treat name containment as a companion, not a clash.
+            if _is_addon_of(a.name, b.name):
+                continue
+            pair = tuple(sorted((_logical_id(a), _logical_id(b))))
             if pair in seen_pairs:
                 continue
             seen_pairs.add(pair)
@@ -647,15 +762,30 @@ def compute_conflicts(game: str) -> list[dict]:
             ab_same_build = bool(
                 a.build_key and b.build_key and a.build_key == b.build_key
             )
+            # Which files the two actually both touch. A declared
+            # incompatibility with no shared files is usually a readme talking
+            # about behaviour rather than a real file clash, and showing the
+            # overlap (or its absence) is what lets a player judge it.
+            shared = sorted(_files_of(_logical_id(a)) & _files_of(_logical_id(b)))
             conflicts.append({
                 "id": f"declared:{pair[0]}:{pair[1]}",
                 "resource": f"{a.name}  ↔  {b.name}",
                 "type": "declared",
                 "severity": "error",
                 "same_build": ab_same_build,
+                "shared_files": shared[:50],
+                "shared_file_count": len(shared),
                 "participants": [
-                    {"mod_id": a.id, "mod_name": a.name, "enabled": a.enabled, "build_key": a.build_key},
-                    {"mod_id": b.id, "mod_name": b.name, "enabled": b.enabled, "build_key": b.build_key},
+                    {"mod_id": a.id, "mod_name": a.name, "enabled": a.enabled,
+                     "build_key": a.build_key, "logical_id": _logical_id(a),
+                     "toggleable": a.toggleable, "install_method": a.install_method,
+                     "files": sorted(_files_of(_logical_id(a)))[:12],
+                     "file_count": len(_files_of(_logical_id(a)))},
+                    {"mod_id": b.id, "mod_name": b.name, "enabled": b.enabled,
+                     "build_key": b.build_key, "logical_id": _logical_id(b),
+                     "toggleable": b.toggleable, "install_method": b.install_method,
+                     "files": sorted(_files_of(_logical_id(b)))[:12],
+                     "file_count": len(_files_of(_logical_id(b)))},
                 ],
                 "winner_mod_id": None,
                 "description": (
@@ -676,13 +806,334 @@ def compute_conflicts(game: str) -> list[dict]:
                 ),
             })
 
+    dismissed = set(manifest.dismissed_conflicts or [])
+    if dismissed:
+        for c in conflicts:
+            c["dismissed"] = c["id"] in dismissed
+        conflicts = [c for c in conflicts if not c["dismissed"]]
+
+    if not include_info:
+        conflicts = [c for c in conflicts if c["severity"] != "info"]
+
     sev_rank = {"error": 0, "warning": 1, "info": 2}
     conflicts.sort(key=lambda c: (sev_rank.get(c["severity"], 3), c["resource"]))
     return conflicts
 
 
+def conflict_summary(game: str) -> dict:
+    """Counts by severity, including the informational overlaps. Used to report
+    an install's outcome in the activity log without listing every overlap."""
+    from collections import Counter
+    counts = Counter(c["severity"] for c in compute_conflicts(game, include_info=True))
+    return {"error": counts.get("error", 0), "warning": counts.get("warning", 0),
+            "info": counts.get("info", 0)}
+
+
+# ---------------------------------------------------------------------------
+# Download cache
+# ---------------------------------------------------------------------------
+
+_CACHE_MANIFEST = ".downloads.json"
+
+
+def _dir_size(path: Path) -> int:
+    total = 0
+    try:
+        for f in path.rglob("*"):
+            if f.is_file():
+                try:
+                    total += f.stat().st_size
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return total
+
+
+def cache_stats(download_dir: Path, in_use_refs: "Optional[set]" = None) -> dict:
+    """
+    Summarise the downloaded-mod cache.
+
+    Reinstalling a build re-uses these archives instead of downloading gigabytes
+    again, so the cache is worth keeping - but a K1 build runs to tens of GB and
+    a cutscene pack alone is 15 GB, so it also has to be possible to see what is
+    there and reclaim the space.
+
+    in_use_refs: source_refs of currently-installed mods. Folders matching those
+    are reported separately so clearing can spare anything still installed.
+    """
+    entries: list[dict] = []
+    if not download_dir.is_dir():
+        return {"path": str(download_dir), "total_bytes": 0, "entries": [],
+                "count": 0, "in_use_bytes": 0}
+
+    in_use_refs = in_use_refs or set()
+    total = in_use_bytes = 0
+    for d in sorted(download_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        size = _dir_size(d)
+        # Folders are named "<source_ref>_<slug>" by the pipeline.
+        ref = d.name.split("_", 1)[0]
+        used = ref in in_use_refs or f"guide:{ref.replace('guide', '')}" in in_use_refs
+        total += size
+        if used:
+            in_use_bytes += size
+        entries.append({"name": d.name, "bytes": size, "in_use": used,
+                        "files": sum(1 for f in d.iterdir()
+                                     if f.is_file() and f.name != _CACHE_MANIFEST)})
+    entries.sort(key=lambda e: e["bytes"], reverse=True)
+    return {"path": str(download_dir), "total_bytes": total, "entries": entries,
+            "count": len(entries), "in_use_bytes": in_use_bytes}
+
+
+def clear_cache(download_dir: Path, keep_refs: "Optional[set]" = None,
+                names: "Optional[list[str]]" = None,
+                on_log: "Optional[Callable[[str], None]]" = None) -> dict:
+    """
+    Delete cached downloads.
+
+    names: only these folders. Otherwise everything except keep_refs, which is
+    how "clear everything I am not currently using" is expressed - re-downloading
+    an installed mod's archive is wasted bandwidth if the mod is staying put.
+    """
+    removed, freed, failed = [], 0, []
+    if not download_dir.is_dir():
+        return {"removed": [], "freed_bytes": 0, "failed": []}
+
+    keep_refs = keep_refs or set()
+    wanted = set(names or [])
+    for d in sorted(download_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        if wanted:
+            if d.name not in wanted:
+                continue
+        elif d.name.split("_", 1)[0] in keep_refs:
+            continue
+        size = _dir_size(d)
+        try:
+            shutil.rmtree(d)
+            removed.append(d.name)
+            freed += size
+            if on_log:
+                on_log(f"Removed cached download: {d.name}")
+        except OSError as e:
+            failed.append({"name": d.name, "reason": str(e)[:160]})
+    return {"removed": removed, "freed_bytes": freed, "failed": failed}
+
+
+# ---------------------------------------------------------------------------
+# Vanilla baseline: the only reliable way back from a patcher-heavy build
+# ---------------------------------------------------------------------------
+
+# Files a patcher rewrites in place, which therefore cannot be restored by
+# removing anything - only by putting the original back.
+_BASELINE_FILES = ("dialog.tlk", "chitin.key", "swkotor.exe", "swkotor2.exe")
+
+
+def _baseline_dir(game: str) -> Path:
+    return cfg.CONFIG_DIR / "baseline" / game
+
+
+def has_baseline(game: str) -> bool:
+    return (_baseline_dir(game) / "manifest.json").exists()
+
+
+def capture_baseline(game: str, game_root: Path, force: bool = False) -> dict:
+    """
+    Record what the game looks like before any mods, so it can be restored later.
+
+    Patcher mods edit dialog.tlk and the .2da tables in place. There is no undo
+    for that per mod, which is why uninstalling a build of them removes nothing.
+    Keeping a copy of the handful of rewritten files, plus a listing of the
+    stock Override and Modules contents, is enough to put the install back.
+
+    Refuses to overwrite an existing baseline unless force is set - capturing a
+    second time over a modded install would bake the mods into the "clean"
+    reference and make it worthless.
+    """
+    import json
+
+    root = _baseline_dir(game)
+    if root.exists() and not force:
+        return {"ok": False, "error": "baseline_exists",
+                "captured_at": json.loads((root / "manifest.json").read_text(
+                    encoding="utf-8")).get("captured_at")}
+
+    root.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for name in _BASELINE_FILES:
+        src = game_root / name
+        if src.is_file():
+            shutil.copy2(src, root / name)
+            saved.append(name)
+
+    def _listing(sub: str) -> list[str]:
+        d = game_root / sub
+        return sorted(f.name for f in d.iterdir() if f.is_file()) if d.is_dir() else []
+
+    data = {
+        "captured_at": time.time(),
+        "game_root": str(game_root),
+        "files": saved,
+        "override": _listing("Override"),
+        "modules": _listing("Modules") or _listing("modules"),
+    }
+    (root / "manifest.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return {"ok": True, "files": saved,
+            "override": len(data["override"]), "modules": len(data["modules"])}
+
+
+def reset_to_vanilla(game: str, game_root: Path,
+                     on_log: "Optional[Callable[[str], None]]" = None) -> dict:
+    """
+    Put the game back to its captured baseline and empty the mod library.
+
+    This is what the build guides mean by "reinstall the game", done without a
+    redownload: anything added to Override or Modules since the baseline is
+    removed, and the files patchers rewrote are restored from their copies.
+    """
+    import json
+
+    root = _baseline_dir(game)
+    manifest_path = root / "manifest.json"
+    if not manifest_path.exists():
+        raise ModManagerError(
+            "No clean snapshot was taken for this game, so there is nothing to "
+            "restore to. Snapshots are captured before the first install.")
+
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    def log(msg: str) -> None:
+        if on_log:
+            on_log(msg)
+
+    result = {"override_removed": 0, "modules_removed": 0, "restored": []}
+
+    for sub, key in (("Override", "override"), ("Modules", "modules")):
+        d = game_root / sub
+        if not d.is_dir():
+            d = game_root / sub.lower()
+        if not d.is_dir():
+            continue
+        keep = set(data.get(key, []))
+        for f in sorted(d.iterdir()):
+            if f.is_file() and f.name not in keep:
+                try:
+                    f.unlink()
+                    result["override_removed" if key == "override"
+                           else "modules_removed"] += 1
+                except OSError as e:
+                    log(f"Could not remove {sub}/{f.name}: {e}")
+
+    for name in data.get("files", []):
+        src = root / name
+        if src.is_file():
+            try:
+                shutil.copy2(src, game_root / name)
+                result["restored"].append(name)
+            except OSError as e:
+                log(f"Could not restore {name}: {e}")
+
+    manifest = GameManifest(game=game)
+    save_manifest(manifest)
+    for sub in ("disabled", "backups"):
+        shutil.rmtree(cfg.CONFIG_DIR / sub / game, ignore_errors=True)
+
+    log(f"Removed {result['override_removed']} file(s) from Override and "
+        f"{result['modules_removed']} from Modules; restored "
+        f"{', '.join(result['restored']) or 'nothing'}.")
+    return result
+
+
+BULK_ACTIONS = ("dismiss", "undismiss", "disable_losers")
+
+
+def resolve_conflicts(game: str, conflict_ids: list[str], action: str,
+                      game_path: "Path | None" = None) -> dict:
+    """
+    Apply one action to many conflicts at once.
+
+    A finished build reports hundreds of file overlaps that are working as
+    intended, so clearing them one at a time is not realistic. Actions:
+
+      dismiss         - hide these conflicts from the list. Nothing on disk
+                        changes; it only records that they have been reviewed.
+      undismiss       - bring them back.
+      disable_losers  - for file overlaps, turn off every mod whose version is
+                        being shadowed, leaving the winner active. Declared
+                        incompatibilities are skipped, because which side to
+                        keep is a judgement call the player has to make.
+
+    Returns {action, requested, dismissed?, disabled:[names], skipped:[...]}.
+    """
+    if action not in BULK_ACTIONS:
+        raise ValueError(f"Unknown bulk action: {action}")
+
+    manifest = load_manifest(game)
+    wanted = set(conflict_ids or [])
+    result: dict = {"action": action, "requested": len(wanted),
+                    "disabled": [], "skipped": [], "dismissed": 0}
+
+    if action in ("dismiss", "undismiss"):
+        current = set(getattr(manifest, "dismissed_conflicts", []) or [])
+        current = (current | wanted) if action == "dismiss" else (current - wanted)
+        manifest.dismissed_conflicts = sorted(current)
+        save_manifest(manifest)
+        result["dismissed"] = len(manifest.dismissed_conflicts)
+        return result
+
+    # disable_losers
+    conflicts = {c["id"]: c for c in compute_conflicts(game)}
+    to_disable: dict[str, str] = {}   # mod_id -> name
+    for cid in wanted:
+        c = conflicts.get(cid)
+        if not c:
+            result["skipped"].append({"id": cid, "reason": "not found"})
+            continue
+        if c["type"] == "declared":
+            result["skipped"].append(
+                {"id": cid, "reason": "declared incompatibility needs a manual choice"})
+            continue
+        winner_lid = next((p["logical_id"] for p in c["participants"]
+                           if p["mod_id"] == c.get("winner_mod_id")), None)
+        for p in c["participants"]:
+            if p["logical_id"] != winner_lid and p["enabled"]:
+                to_disable[p["mod_id"]] = p["mod_name"]
+
+    for mod_id, name in to_disable.items():
+        try:
+            disable(game, game_path, mod_id)
+            result["disabled"].append(name)
+        except Exception as e:
+            result["skipped"].append({"id": mod_id, "reason": str(e)[:120]})
+    return result
+
+
 def _normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+def _is_addon_of(name_a: str, name_b: str) -> bool:
+    """
+    Whether one of these mods is an add-on for the other, judged by its name.
+
+    Mods that extend another routinely say so in the title - "HD Robe Icons for
+    JC's Cloaked Jedi Robes", "Ebon Hawk Repairs Patch for Hi-Res Ebon Hawk".
+    Whole-word containment of the shorter name inside the longer one is a
+    reliable signal of that, and it means the two are meant to be used
+    together: the add-on replacing the base mod's files is the point of it, not
+    a conflict.
+    """
+    a, b = _normalize(name_a), _normalize(name_b)
+    if not a or not b or a == b:
+        return False
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    # Require a few real words, so a one-word name does not swallow everything.
+    if len([w for w in shorter.split() if len(w) > 2]) < 2:
+        return False
+    return f" {shorter} " in f" {longer} "
 
 
 def _name_matches(name: str, keywords: list[str]) -> bool:

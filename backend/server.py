@@ -42,7 +42,7 @@ from backend.models import (
 from installer._version import __version__
 from installer.config_loader import find_system_holopatcher
 from installer.pipeline import ModStatus, Pipeline
-from scraper.build_scraper import BUILD_GAME, BUILD_URLS, scrape_build
+from scraper.build_scraper import BUILD_GAME, BUILD_URLS, BuildMod, scrape_build
 from scraper.deadlystream import AuthError, DeadlyStreamClient
 
 BUILD_LABELS = {
@@ -723,18 +723,56 @@ def mod_image(url: str):
         return JSONResponse(status_code=502, content={"ok": False, "error": str(e)})
 
 
+# Build lists change rarely (the guides are edited every few weeks) but take a
+# few seconds to fetch and parse. Cache the scraped result so opening a build is
+# instant, and let the player force a fresh fetch when they want the latest.
+_BUILD_LIST_CACHE = "build_lists.json"
+
+
+def _cached_build_mods(build_key: str) -> "list | None":
+    entry = _read_json_cache(_BUILD_LIST_CACHE).get(build_key)
+    if not entry:
+        return None
+    try:
+        return [BuildMod(**m) for m in entry]
+    except (TypeError, ValueError):
+        return None   # cache written by an older version - refetch
+
+
 @app.post("/api/builds/{build_key}/load")
-def load_build(build_key: str, profile: str = "") -> dict:
+def load_build(build_key: str, profile: str = "", refresh: bool = False) -> dict:
+    """
+    Load a build's mod list.
+
+    Served from the on-disk cache when there is one, so switching between builds
+    does not re-scrape the guide every time. refresh=true forces a fresh fetch,
+    which is what the Load button does.
+    """
     custom = None if build_key in BUILD_URLS else cfg.get_custom_build(build_key)
     if build_key not in BUILD_URLS and not custom:
         return JSONResponse(status_code=404, content={"ok": False, "error": "Unknown build"})
-    try:
-        if custom:
-            mods = scrape_build(build_key, url=custom["url"], game=custom["game"])
+
+    from dataclasses import asdict
+
+    mods = None if refresh else _cached_build_mods(build_key)
+    from_cache = mods is not None
+    if mods is None:
+        try:
+            if custom:
+                mods = scrape_build(build_key, url=custom["url"], game=custom["game"])
+            else:
+                mods = scrape_build(build_key)
+        except Exception as e:
+            # A refresh that fails should not lose a list the player already had.
+            stale = _cached_build_mods(build_key)
+            if stale:
+                mods, from_cache = stale, True
+            else:
+                return JSONResponse(status_code=502,
+                                    content={"ok": False, "error": f"Scrape failed: {e}"})
         else:
-            mods = scrape_build(build_key)
-    except Exception as e:
-        return JSONResponse(status_code=502, content={"ok": False, "error": f"Scrape failed: {e}"})
+            _write_json_cache(_BUILD_LIST_CACHE, build_key,
+                              [asdict(m) for m in mods])
     state.loaded_mods[build_key] = mods
     state.current_build = build_key
 
@@ -752,6 +790,7 @@ def load_build(build_key: str, profile: str = "") -> dict:
     return {
         "ok": True,
         "build_key": build_key,
+        "from_cache": from_cache,
         "mods": [{**build_mod_to_dict(m), "installed": m.file_id in installed_refs} for m in mods],
     }
 

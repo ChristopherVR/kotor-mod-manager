@@ -53,6 +53,11 @@ export default function App() {
   const [showLogin, setShowLogin] = useState(false);
   const [username, setUsername] = useState("");
   const [conflictCount, setConflictCount] = useState(0);
+  // Live per-mod progress for a running bulk action, so the Library screen can
+  // name each mod as it goes instead of showing one static message.
+  const [bulkProgress, setBulkProgress] = useState<
+    { action: string; current: number; total: number; mod: string } | null
+  >(null);
   const [dataTick, setDataTick] = useState(0);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeProfile, setActiveProfile] = useState<string>("");
@@ -214,6 +219,14 @@ export default function App() {
         if (e.event === "import_folder_done") {
           addLog(`Imported ${e.count} mod(s) from folder.`, "success");
         }
+        if (e.event === "bulk_progress") {
+          setBulkProgress(e.done
+            ? null
+            : { action: e.action, current: e.current, total: e.total, mod: e.mod });
+          // A progress tick is not a data change; refreshing per mod would
+          // refetch the library hundreds of times during one removal.
+          break;
+        }
         // Refresh conflicts and data on any library event (import, toggle, delete).
         refreshConflicts();
         setDataTick((t) => t + 1);
@@ -318,6 +331,7 @@ export default function App() {
           profiles={profiles}
           activeProfile={activeProfile}
           setActiveProfile={setActiveProfile}
+          bulkProgress={bulkProgress}
         />
       )}
       {view === "conflicts" && (
