@@ -292,6 +292,10 @@ export const api = {
     req<{ path: string; total_bytes: number; count: number; in_use_bytes: number;
           entries: { name: string; bytes: number; in_use: boolean; files: number }[] }>(
       `/api/cache?profile=${encodeURIComponent(profile)}`),
+  openCache: (profile: string, name = "") =>
+    req<{ ok: boolean; path?: string }>(
+      `/api/cache/open?profile=${encodeURIComponent(profile)}`
+      + `&name=${encodeURIComponent(name)}`, { method: "POST" }),
   clearCache: (profile: string, opts: { keep_installed?: boolean; names?: string[] }) =>
     req<{ ok: boolean; removed: string[]; freed_bytes: number;
           failed: { name: string; reason: string }[] }>(

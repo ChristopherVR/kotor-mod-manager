@@ -39,6 +39,14 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
 
   const gb = (n: number) => `${(n / 1024 ** 3).toFixed(2)} GB`;
 
+  const openCache = async (name = "") => {
+    try {
+      await api.openCache("KOTOR1", name);
+    } catch {
+      addLog("Could not open the downloads folder.", "warning");
+    }
+  };
+
   const doClear = async (keepInstalled: boolean) => {
     setClearing(true);
     try {
@@ -165,7 +173,17 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
           {cache === null ? (
             <p className="text-xs text-muted-foreground">Checking…</p>
           ) : cache.count === 0 ? (
-            <p className="text-sm text-muted-foreground">Nothing is cached yet.</p>
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">Nothing is downloaded yet.</p>
+              <Button size="sm" variant="outline" onClick={() => openCache()}>
+                <FolderOpen className="mr-1.5 size-3.5" />
+                Open folder
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Mods the app cannot download for you can be put here by hand, in a
+                folder of their own. The installer picks them up from there.
+              </p>
+            </div>
           ) : (
             <>
               <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
@@ -185,7 +203,14 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
                     <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
                       {gb(e.bytes)}
                     </span>
-                    <span className="truncate" title={e.name}>{e.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => openCache(e.name)}
+                      className="min-w-0 flex-1 truncate text-left hover:underline"
+                      title={`Open ${e.name}`}
+                    >
+                      {e.name}
+                    </button>
                     {e.in_use && (
                       <span className="shrink-0 text-[10px] text-muted-foreground">
                         installed
@@ -214,6 +239,10 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
                   </>
                 ) : (
                   <>
+                    <Button size="sm" variant="outline" onClick={() => openCache()}>
+                      <FolderOpen className="mr-1.5 size-3.5" />
+                      Open folder
+                    </Button>
                     <Button size="sm" variant="outline" disabled={clearing}
                       onClick={() => setConfirmClear("unused")}>
                       Clear unused

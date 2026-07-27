@@ -177,6 +177,38 @@ def get_cache(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     return mod_manager.cache_stats(_download_dir(), in_use_refs=refs)
 
 
+@library_router.post("/cache/open")
+def open_cache(name: str = Query(""), game: str = Query("KOTOR1"),
+               profile: str = Query("")) -> dict:
+    """
+    Open the downloads folder in the file manager.
+
+    name selects one cached mod's folder; without it the downloads root opens.
+    Useful for the mods the app cannot fetch itself - a player can drop the
+    archive straight into the right folder and the installer will pick it up.
+    """
+    from backend.fsutil import reveal_path
+    base = _download_dir()
+    target = base
+    if name:
+        # Never let a name walk out of the downloads folder.
+        candidate = (base / name).resolve()
+        try:
+            if candidate.is_relative_to(base.resolve()) and candidate.is_dir():
+                target = candidate
+        except (OSError, ValueError):
+            pass
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return JSONResponse(status_code=404,
+                            content={"ok": False, "error": "download_unavailable"})
+    if not reveal_path(target):
+        return JSONResponse(status_code=500,
+                            content={"ok": False, "error": "open_failed"})
+    return {"ok": True, "path": str(target)}
+
+
 @library_router.post("/cache/clear")
 def clear_cache(req: ClearCacheRequest, game: str = Query("KOTOR1"),
                 profile: str = Query("")) -> dict:
