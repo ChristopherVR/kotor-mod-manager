@@ -123,7 +123,7 @@ export function ConflictCard({ group, profile, addLog, onResolved }: ConflictCar
 
   // ---- File-level warning (mods from different builds sharing files) ----
   if (!isDeclared) {
-    const enabledParticipants = participants.filter(p => p.enabled);
+    const enabledParticipants = participants.filter(p => p.enabled && p.toggleable !== false);
     return (
       <div className={cn("rounded-lg border bg-card/40 p-4", "border-[hsl(var(--warning)/0.25)]")}>
         <div className="flex items-start gap-2">
@@ -234,11 +234,22 @@ export function ConflictCard({ group, profile, addLog, onResolved }: ConflictCar
         </div>
       )}
 
-      {participants.some(p => p.enabled) && (
+      {participants.some(p => p.enabled && p.toggleable === false) && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          {participants
+            .filter(p => p.enabled && p.toggleable === false)
+            .map(p => p.mod_name)
+            .join(", ")}{" "}
+          cannot be switched off: patcher mods write their changes directly into
+          shared game files, so undoing them needs a reinstall rather than a toggle.
+        </p>
+      )}
+
+      {participants.some(p => p.enabled && p.toggleable !== false) && (
         <div className="mt-3 space-y-2 border-t pt-3">
           <p className="text-xs text-muted-foreground">{t("conflicts.ifIssuesDisable")}</p>
           <div className="flex flex-wrap gap-2">
-            {participants.filter(p => p.enabled).map(p => (
+            {participants.filter(p => p.enabled && p.toggleable !== false).map(p => (
               <Button key={p.mod_id} size="sm" variant="outline" disabled={busy}
                 onClick={() => disableMods([p.mod_id])}>
                 {t("conflicts.disableMod", { mod: p.mod_name })}

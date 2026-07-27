@@ -187,6 +187,50 @@ def test_shared_file_list_is_capped_but_the_count_is_not(manifest):
     assert declared["shared_file_count"] == 80
 
 
+@pytest.mark.parametrize("a,b,is_addon", [
+    ("Cloaked Jedi Robes", "HD Robe Icons for JC's Cloaked Jedi Robes", True),
+    ("Hi-Res Ebon Hawk", "Ebon Hawk Repairs Patch for Hi-Res Ebon Hawk", True),
+    ("HD Darth Malak", "CineMalak - HD Darth Malak", True),
+    # Two genuinely separate mods that merely share a couple of words.
+    ("Blaster Visual Effects", "Realistic Visual Effects", False),
+    ("HD Astromech Droids", "Protocol Droids HD", False),
+])
+def test_addon_naming_is_recognised_without_swallowing_similar_names(a, b, is_addon):
+    from installer.mod_manager import _is_addon_of
+    assert _is_addon_of(a, b) is is_addon
+    assert _is_addon_of(b, a) is is_addon      # order must not matter
+
+
+def test_an_addon_is_not_reported_as_incompatible_with_what_it_extends(manifest):
+    """The icon pack exists to replace the robe mod's icons. A readme scanner
+    reading 'for Cloaked Jedi Robes' as an incompatibility gets the
+    relationship exactly backwards."""
+    manifest.mods = [
+        _mod("Cloaked Jedi Robes", "a", ["Override/ia_kghtrobe_001.tpc"],
+             incompat=["HD Robe Icons for JC's Cloaked Jedi Robes"]),
+        _mod("HD Robe Icons for JC's Cloaked Jedi Robes", "b",
+             ["Override/ia_kghtrobe_001.tpc"], load_order=1),
+    ]
+    assert [c for c in compute_conflicts("KOTOR1") if c["type"] == "declared"] == []
+
+
+def test_participants_say_whether_they_can_be_switched_off(manifest):
+    """Patcher mods bake into shared files. Without this the UI offers a
+    Disable button that always fails with not_toggleable."""
+    baked = _mod("Cloaked Jedi Robes", "a", [])
+    baked.deploy_kind = DeployKind.BAKED.value
+    baked.baked_files = []
+    manifest.mods = [
+        baked,
+        _mod("Some Texture Mod", "b", ["Override/x.tga"], incompat=["Cloaked Jedi Robes"]),
+    ]
+    for c in compute_conflicts("KOTOR1"):
+        for p in c["participants"]:
+            assert "toggleable" in p
+            if p["mod_name"] == "Cloaked Jedi Robes":
+                assert p["toggleable"] is False
+
+
 def test_an_unknown_action_is_rejected(manifest):
     with pytest.raises(ValueError):
         resolve_conflicts("KOTOR1", ["x"], "delete_everything")

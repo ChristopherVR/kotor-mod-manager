@@ -642,6 +642,10 @@ def compute_conflicts(game: str) -> list[dict]:
                 "enabled": m.enabled,
                 "build_key": m.build_key,
                 "logical_id": lid,
+                # Patcher mods bake their changes into shared files, so they
+                # cannot be switched off. The UI needs this to avoid offering a
+                # Disable button that can only ever fail with not_toggleable.
+                "toggleable": m.toggleable,
             })
         ctype = _resource_type(key)
         # Losers are the OTHER logical mods. Filtering on the raw record id let
@@ -696,6 +700,13 @@ def compute_conflicts(game: str) -> list[dict]:
                 continue
             if not _name_matches(b.name, a.incompatibilities):
                 continue
+            # An add-on names the mod it extends: "HD Robe Icons for JC's
+            # Cloaked Jedi Robes" contains "Cloaked Jedi Robes". The readme
+            # scanner reads that as a declared incompatibility, when the
+            # relationship is the opposite - one exists to replace the other's
+            # files. Treat name containment as a companion, not a clash.
+            if _is_addon_of(a.name, b.name):
+                continue
             pair = tuple(sorted((_logical_id(a), _logical_id(b))))
             if pair in seen_pairs:
                 continue
@@ -718,8 +729,12 @@ def compute_conflicts(game: str) -> list[dict]:
                 "shared_files": shared[:50],
                 "shared_file_count": len(shared),
                 "participants": [
-                    {"mod_id": a.id, "mod_name": a.name, "enabled": a.enabled, "build_key": a.build_key},
-                    {"mod_id": b.id, "mod_name": b.name, "enabled": b.enabled, "build_key": b.build_key},
+                    {"mod_id": a.id, "mod_name": a.name, "enabled": a.enabled,
+                     "build_key": a.build_key, "logical_id": _logical_id(a),
+                     "toggleable": a.toggleable},
+                    {"mod_id": b.id, "mod_name": b.name, "enabled": b.enabled,
+                     "build_key": b.build_key, "logical_id": _logical_id(b),
+                     "toggleable": b.toggleable},
                 ],
                 "winner_mod_id": None,
                 "description": (
@@ -817,6 +832,27 @@ def resolve_conflicts(game: str, conflict_ids: list[str], action: str,
 
 def _normalize(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+def _is_addon_of(name_a: str, name_b: str) -> bool:
+    """
+    Whether one of these mods is an add-on for the other, judged by its name.
+
+    Mods that extend another routinely say so in the title - "HD Robe Icons for
+    JC's Cloaked Jedi Robes", "Ebon Hawk Repairs Patch for Hi-Res Ebon Hawk".
+    Whole-word containment of the shorter name inside the longer one is a
+    reliable signal of that, and it means the two are meant to be used
+    together: the add-on replacing the base mod's files is the point of it, not
+    a conflict.
+    """
+    a, b = _normalize(name_a), _normalize(name_b)
+    if not a or not b or a == b:
+        return False
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    # Require a few real words, so a one-word name does not swallow everything.
+    if len([w for w in shorter.split() if len(w) > 2]) < 2:
+        return False
+    return f" {shorter} " in f" {longer} "
 
 
 def _name_matches(name: str, keywords: list[str]) -> bool:

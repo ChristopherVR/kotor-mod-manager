@@ -112,7 +112,14 @@ export type LibraryDetail = LibraryMod & {
   baked_files: BakedFile[];
 };
 
-export interface ConflictParticipant { mod_id: string; mod_name: string; enabled: boolean; build_key?: string | null; }
+export interface ConflictParticipant {
+  mod_id: string; mod_name: string; enabled: boolean;
+  build_key?: string | null;
+  logical_id?: string;
+  // Patcher mods bake their changes into shared files and cannot be switched
+  // off, so offering a Disable button for them only ever fails.
+  toggleable?: boolean;
+}
 
 export interface Conflict {
   id: string; resource: string;
