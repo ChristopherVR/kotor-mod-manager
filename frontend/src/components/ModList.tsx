@@ -94,6 +94,18 @@ function Row({
             {rt.progressLabel}
           </span>
         ) : null}
+        {/* Where the mod comes from. Only shown when the app cannot fetch it
+            itself, since that is the case worth knowing before starting a
+            build - the rest download without you doing anything. */}
+        {mod.auto_downloadable === false && mod.source_label && (
+          <Badge
+            variant="warning"
+            className="shrink-0"
+            title={`${mod.source_label} does not allow this app to download for you. You will need to fetch this one yourself.`}
+          >
+            {mod.source_label}
+          </Badge>
+        )}
         {mod.installed && rt.status === "PENDING" && (
           <Badge variant="success" className="shrink-0">Installed</Badge>
         )}
