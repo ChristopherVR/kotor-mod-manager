@@ -119,6 +119,10 @@ export interface ConflictParticipant {
   // Patcher mods bake their changes into shared files and cannot be switched
   // off, so offering a Disable button for them only ever fails.
   toggleable?: boolean;
+  install_method?: string;
+  // What this mod writes, so a conflict can show evidence rather than assert.
+  files?: string[];
+  file_count?: number;
 }
 
 export interface Conflict {

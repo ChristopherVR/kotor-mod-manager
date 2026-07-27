@@ -216,15 +216,33 @@ def bulk_uninstall(req: BulkModRequest,
     # Reverse load order: later mods overwrote earlier ones, so undoing them
     # last-first restores the files the earlier mods had displaced.
     order = {m.id: m.load_order for m in manifest.mods}
-    for mod_id in sorted(set(req.mod_ids or []),
-                         key=lambda i: order.get(i, 0), reverse=True):
+    targets = sorted(set(req.mod_ids or []),
+                     key=lambda i: order.get(i, 0), reverse=True)
+    total = len(targets)
+    # Removing a large build takes a while, so report each mod as it goes
+    # rather than leaving the window silent until the whole batch finishes.
+    _publish({"type": "log",
+              "message": f"Uninstalling {total} mod(s)…", "tag": "info"})
+    for i, mod_id in enumerate(targets, 1):
+        name = names.get(mod_id, mod_id)
+        _publish({"type": "log",
+                  "message": f"[{i}/{total}] Removing {name}…", "tag": "muted"})
         try:
             mod_manager.uninstall(scope, root, mod_id, force=req.force)
-            removed.append(names.get(mod_id, mod_id))
+            removed.append(name)
         except mod_manager.ModManagerError as e:
-            failed.append({"mod": names.get(mod_id, mod_id), "reason": str(e)[:160]})
+            failed.append({"mod": name, "reason": str(e)[:160]})
+            _publish({"type": "log",
+                      "message": f"Could not remove {name}: {str(e)[:120]}",
+                      "tag": "warning"})
         except Exception as e:
-            failed.append({"mod": names.get(mod_id, mod_id), "reason": str(e)[:160]})
+            failed.append({"mod": name, "reason": str(e)[:160]})
+            _publish({"type": "log",
+                      "message": f"Could not remove {name}: {str(e)[:120]}",
+                      "tag": "warning"})
+    _publish({"type": "log",
+              "message": f"Removed {len(removed)} of {total} mod(s).",
+              "tag": "success" if removed else "warning"})
 
     _publish({"type": "library", "event": "changed", "profile": scope})
     return {"ok": True, "removed": removed, "failed": failed,
@@ -249,12 +267,26 @@ def bulk_toggle(req: BulkModRequest, action: str = Query("disable"),
     names = {m.id: m.name for m in manifest.mods}
     fn = mod_manager.enable if action == "enable" else mod_manager.disable
     changed, failed = [], []
-    for mod_id in set(req.mod_ids or []):
+    targets = sorted(set(req.mod_ids or []))
+    total = len(targets)
+    _publish({"type": "log",
+              "message": f"{action.capitalize()[:-1]}ing {total} mod(s)…",
+              "tag": "info"})
+    for i, mod_id in enumerate(targets, 1):
+        name = names.get(mod_id, mod_id)
         try:
             fn(scope, root, mod_id)
-            changed.append(names.get(mod_id, mod_id))
+            changed.append(name)
+            if total > 20 and i % 10 == 0:
+                _publish({"type": "log",
+                          "message": f"[{i}/{total}] {action}d so far…",
+                          "tag": "muted"})
         except mod_manager.ModManagerError as e:
-            failed.append({"mod": names.get(mod_id, mod_id), "reason": str(e)[:160]})
+            failed.append({"mod": name, "reason": str(e)[:160]})
+    _publish({"type": "log",
+              "message": f"{action.capitalize()}d {len(changed)} of {total} mod(s)."
+                         + (f" {len(failed)} could not be changed." if failed else ""),
+              "tag": "success" if changed else "warning"})
 
     _publish({"type": "library", "event": "changed", "profile": scope})
     return {"ok": True, "action": action, "changed": changed, "failed": failed}

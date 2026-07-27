@@ -167,97 +167,129 @@ export function ConflictCard({ group, profile, addLog, onResolved }: ConflictCar
   }
 
   // ---- Declared incompatibility ----
-  // Show prominently but with curated-build context. Disable buttons are shown
-  // but framed as "only if you're actually having problems".
+  // Structured to answer, in order: does this actually collide, what does each
+  // mod change, and what can I do about it. The old card asserted the mods were
+  // incompatible and then contradicted itself further down by admitting they
+  // shared no files; leading with the evidence avoids that.
+  const overlaps = sharedFileCount > 0;
   return (
-    <div className="rounded-lg border border-destructive/25 bg-card/40 p-4">
+    <div
+      className={cn(
+        "rounded-lg border bg-card/40 p-4",
+        overlaps ? "border-destructive/25" : "border-border",
+      )}
+    >
       <div className="flex items-start gap-2">
-        <span className="mt-1 size-2 shrink-0 rounded-full bg-destructive" />
+        <span
+          className={cn(
+            "mt-1 size-2 shrink-0 rounded-full",
+            overlaps ? "bg-destructive" : "bg-muted-foreground/40",
+          )}
+        />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">
-            {joinNames(modNames)}
+          <p className="text-sm font-medium text-foreground">{joinNames(modNames)}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {overlaps
+              ? `Both write ${sharedFileCount} of the same file${sharedFileCount === 1 ? "" : "s"}`
+              : "No files in common"}
           </p>
-          <p className="mt-0.5 text-xs text-muted-foreground">Declared incompatible</p>
         </div>
-        {sameBuild ? (
-          <Badge variant="warning" className="shrink-0">review needed</Badge>
-        ) : (
-          <Badge variant="destructive" className="shrink-0">incompatible</Badge>
-        )}
+        <Badge variant={overlaps ? "warning" : "info"} className="shrink-0">
+          {overlaps ? "review needed" : "no overlap"}
+        </Badge>
       </div>
 
-      {description && (
-        <p className="mt-2.5 text-sm leading-relaxed text-foreground">{description}</p>
-      )}
+      {/* Evidence first: what each mod actually writes, with the shared files
+          called out. This is the whole basis for the player's decision. */}
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {participants.map(p => {
+          const shared = new Set(sharedFiles);
+          const list = p.files ?? [];
+          return (
+            <div key={p.mod_id} className="rounded-md border bg-muted/20 p-2.5">
+              <p className="truncate text-xs font-medium text-foreground" title={p.mod_name}>
+                {p.mod_name}
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {p.file_count ?? list.length} file
+                {(p.file_count ?? list.length) === 1 ? "" : "s"}
+                {p.install_method ? ` · ${p.install_method.toLowerCase().replace(/_/g, " ")}` : ""}
+              </p>
+              <ul className="mt-1.5 space-y-0.5">
+                {(showAllFiles ? list : list.slice(0, 4)).map(f => (
+                  <li
+                    key={f}
+                    className={cn(
+                      "truncate font-mono text-[11px]",
+                      shared.has(f)
+                        ? "text-[hsl(var(--warning))]"
+                        : "text-muted-foreground/70",
+                    )}
+                    title={shared.has(f) ? `${f} (written by both)` : f}
+                  >
+                    {f.replace(/^Override\//, "")}
+                  </li>
+                ))}
+              </ul>
+              {list.length > 4 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAllFiles(v => !v)}
+                  className="mt-1 text-[11px] text-muted-foreground underline hover:text-foreground"
+                >
+                  {showAllFiles ? "Show fewer" : `Show all ${list.length}`}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
-      {/* Which files the two mods actually both write. A declared
-          incompatibility with no overlap is usually the readme describing a
-          behavioural clash rather than a file one, and saying so outright
-          saves the player hunting for a problem that is not on disk. */}
-      {sharedFiles.length > 0 ? (
-        <div className="mt-2.5 rounded-md border bg-muted/30 p-2.5">
-          <p className="text-xs font-medium text-foreground">
-            {sharedFileCount} file{sharedFileCount === 1 ? "" : "s"} written by both
-          </p>
-          <ul className="mt-1.5 space-y-0.5">
-            {(showAllFiles ? sharedFiles : sharedFiles.slice(0, 6)).map(f => (
-              <li key={f} className="truncate font-mono text-[11px] text-muted-foreground">
-                {f}
-              </li>
-            ))}
-          </ul>
-          {sharedFiles.length > 6 && (
-            <button
-              type="button"
-              onClick={() => setShowAllFiles(v => !v)}
-              className="mt-1.5 text-[11px] text-muted-foreground underline hover:text-foreground"
-            >
-              {showAllFiles
-                ? "Show fewer"
-                : `Show all ${sharedFiles.length}${
-                    sharedFileCount > sharedFiles.length ? ` of ${sharedFileCount}` : ""
-                  }`}
-            </button>
-          )}
-        </div>
+      {overlaps ? (
+        <p className="mt-2.5 text-xs text-muted-foreground">
+          Files written by both are highlighted. The one installed later wins.
+        </p>
       ) : (
         <p className="mt-2.5 text-xs text-muted-foreground">
-          These two mods do not write any of the same files, so the warning is
-          about how they behave together rather than a file clash.
+          {joinNames(modNames)} change different files, so nothing is being
+          overwritten. The warning comes from a mod readme describing the kind of
+          mod it clashes with, not from anything found in your install.
         </p>
       )}
 
-      {recommendation && (
-        <div className="mt-2.5 flex items-start gap-2 rounded-md border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning)/0.08)] p-2.5">
-          <Lightbulb className="mt-0.5 size-4 shrink-0 text-[hsl(var(--warning))]" />
-          <p className="text-sm text-muted-foreground">{recommendation}</p>
-        </div>
-      )}
-
-      {participants.some(p => p.enabled && p.toggleable === false) && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          {participants
-            .filter(p => p.enabled && p.toggleable === false)
-            .map(p => p.mod_name)
-            .join(", ")}{" "}
-          cannot be switched off: patcher mods write their changes directly into
-          shared game files, so undoing them needs a reinstall rather than a toggle.
+      {/* Per-mod action, with the reason inline when there is nothing to press.
+          A patcher mod has no toggle at all, so saying why beats a dead button
+          or an unexplained gap. */}
+      <div className="mt-3 space-y-2 border-t pt-3">
+        <p className="text-xs text-muted-foreground">
+          {overlaps
+            ? "If something looks wrong in game, turn one off:"
+            : "Nothing to do unless you see a problem in game."}
         </p>
-      )}
-
-      {participants.some(p => p.enabled && p.toggleable !== false) && (
-        <div className="mt-3 space-y-2 border-t pt-3">
-          <p className="text-xs text-muted-foreground">{t("conflicts.ifIssuesDisable")}</p>
-          <div className="flex flex-wrap gap-2">
-            {participants.filter(p => p.enabled && p.toggleable !== false).map(p => (
-              <Button key={p.mod_id} size="sm" variant="outline" disabled={busy}
-                onClick={() => disableMods([p.mod_id])}>
+        <div className="flex flex-wrap items-center gap-2">
+          {participants.filter(p => p.enabled).map(p =>
+            p.toggleable === false ? (
+              <span
+                key={p.mod_id}
+                className="rounded-sm border border-dashed px-2 py-1 text-[11px] text-muted-foreground"
+                title="Patcher mods write into shared game files"
+              >
+                {p.mod_name} · can only be removed by reinstalling
+              </span>
+            ) : (
+              <Button
+                key={p.mod_id}
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => disableMods([p.mod_id])}
+              >
                 {t("conflicts.disableMod", { mod: p.mod_name })}
               </Button>
-            ))}
-          </div>
+            ),
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

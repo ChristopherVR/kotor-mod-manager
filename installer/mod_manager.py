@@ -250,9 +250,49 @@ def parse_incompatibilities(readme_text: str) -> list[str]:
             # Trim trailing connective words and over-long captures.
             name = re.split(r"\b(?:and|or|but|because|since|as|if|when)\b", name, 1)[0].strip()
             name = name[:80].strip()
+            if not _looks_like_a_mod_name(name):
+                continue
             if len(name) >= 4 and name.lower() not in (x.lower() for x in found):
                 found.append(name)
     return found[:20]
+
+
+# Openings that mean the readme is describing a CATEGORY of mods rather than
+# naming one, e.g. "incompatible with any mods that alter the laser visual
+# effects for blasters". Matching those against the library is meaningless:
+# the phrase shares words with half the mod list, so it fuzzy-matches an
+# unrelated mod and reports a conflict that does not exist.
+_GENERIC_INCOMPAT_STARTS = (
+    "any ", "all ", "other ", "another ", "most ", "some ", "many ",
+    "anything ", "everything ", "mods that", "mod that", "any mods",
+    "similar ", "the same ", "each other", "one another",
+)
+# A capture consisting only of these carries no identifying information.
+_GENERIC_INCOMPAT_WORDS = {
+    "mod", "mods", "other", "others", "any", "all", "them", "these", "those",
+    "this", "that", "it", "one", "ones", "version", "versions", "file", "files",
+}
+
+
+def _looks_like_a_mod_name(text: str) -> bool:
+    """
+    Whether a captured incompatibility phrase actually names a mod.
+
+    Readmes mix specific names ("incompatible with TSLRCM") with category
+    descriptions ("incompatible with any mods that alter the laser visual
+    effects"). Only the former can be matched against the installed library;
+    the latter matches on shared words and invents conflicts.
+    """
+    t = _normalize(text)
+    if not t:
+        return False
+    if any(t.startswith(p.strip()) for p in _GENERIC_INCOMPAT_STARTS):
+        return False
+    words = [w for w in t.split() if w not in _GENERIC_INCOMPAT_WORDS]
+    if not words:
+        return False
+    # A real title is short. Anything rambling is prose describing a category.
+    return len(t.split()) <= 8
 
 
 def snapshot_targets(game_root: Path) -> dict[str, str]:
@@ -731,10 +771,14 @@ def compute_conflicts(game: str) -> list[dict]:
                 "participants": [
                     {"mod_id": a.id, "mod_name": a.name, "enabled": a.enabled,
                      "build_key": a.build_key, "logical_id": _logical_id(a),
-                     "toggleable": a.toggleable},
+                     "toggleable": a.toggleable, "install_method": a.install_method,
+                     "files": sorted(_files_of(_logical_id(a)))[:12],
+                     "file_count": len(_files_of(_logical_id(a)))},
                     {"mod_id": b.id, "mod_name": b.name, "enabled": b.enabled,
                      "build_key": b.build_key, "logical_id": _logical_id(b),
-                     "toggleable": b.toggleable},
+                     "toggleable": b.toggleable, "install_method": b.install_method,
+                     "files": sorted(_files_of(_logical_id(b)))[:12],
+                     "file_count": len(_files_of(_logical_id(b)))},
                 ],
                 "winner_mod_id": None,
                 "description": (
