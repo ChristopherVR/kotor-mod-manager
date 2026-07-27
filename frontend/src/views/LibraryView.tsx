@@ -56,6 +56,9 @@ export function LibraryView({
   const [menu, setMenu] = useState<{ x: number; y: number; mod: LibraryMod } | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [confirmBulk, setConfirmBulk] = useState(false);
+  // Progress for the running bulk action. The Activity log lives on another
+  // tab, so without this the window just freezes with no sign of life.
+  const [bulkStatus, setBulkStatus] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!activeProfile) { setMods([]); setLoading(false); return; }
@@ -112,6 +115,7 @@ export function LibraryView({
     if (!activeProfile || bulkBusy) return;
     setBulkBusy(true);
     try {
+      setBulkStatus(`${action === "enable" ? "Enabling" : "Disabling"} ${filtered.length} mod(s)…`);
       const r = await api.bulkToggle(activeProfile, filtered.map(m => m.id), action);
       addLog(`${action === "enable" ? "Enabled" : "Disabled"} ${r.changed.length} mod(s).`,
              "success");
@@ -121,6 +125,7 @@ export function LibraryView({
       addLog(`Bulk ${action} failed: ${e?.message ?? "error"}`, "error");
     } finally {
       setBulkBusy(false);
+      setBulkStatus(null);
     }
   }, [activeProfile, bulkBusy, filtered, addLog, load]);
 
@@ -128,6 +133,7 @@ export function LibraryView({
     if (!activeProfile || bulkBusy) return;
     setBulkBusy(true);
     try {
+      setBulkStatus(`Removing ${filtered.length} mod(s)… this can take a while.`);
       const r = await api.bulkUninstall(activeProfile, filtered.map(m => m.id));
       addLog(`Uninstalled ${r.removed.length} of ${r.requested} mod(s).`, "success");
       r.failed.forEach(f => addLog(`Could not remove ${f.mod}: ${f.reason}`, "warning"));
@@ -137,6 +143,7 @@ export function LibraryView({
     } finally {
       setBulkBusy(false);
       setConfirmBulk(false);
+      setBulkStatus(null);
     }
   }, [activeProfile, bulkBusy, filtered, addLog, load]);
 
@@ -287,6 +294,12 @@ export function LibraryView({
             mod{filtered.length === 1 ? "" : "s"} shown
             {filtered.length < total && ` of ${total}`}
           </span>
+          {bulkStatus && (
+            <span className="flex items-center gap-1.5 text-xs text-[hsl(var(--info))]">
+              <span className="size-1.5 animate-pulse rounded-full bg-[hsl(var(--info))]" />
+              {bulkStatus}
+            </span>
+          )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
             <Button size="sm" variant="ghost" disabled={bulkBusy}
               onClick={() => runBulkToggle("enable")}>

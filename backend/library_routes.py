@@ -163,33 +163,10 @@ def _toggle(mod_id: str, game: str, profile: str, action: str):
     return {"ok": True, "mod": _mod_dict(mod, counts.get(mod.id, 0)), "conflicts": conflicts}
 
 
-@library_router.post("/library/{mod_id}/enable")
-def enable_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
-    return _toggle(mod_id, game, profile, "enable")
-
-
-@library_router.post("/library/{mod_id}/disable")
-def disable_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
-    return _toggle(mod_id, game, profile, "disable")
-
-
-@library_router.post("/library/{mod_id}/uninstall")
-def uninstall_mod(mod_id: str, req: UninstallRequest,
-                  game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
-    busy = _guard_not_running()
-    if busy:
-        return busy
-    scope, root, _gt = _resolve(game, profile)
-    if not root or not root.exists():
-        return JSONResponse(status_code=400, content={"ok": False, "error": "game_path_required"})
-    try:
-        mod_manager.uninstall(scope, root, mod_id, force=req.force)
-    except mod_manager.ModManagerError as e:
-        return JSONResponse(status_code=409, content={"ok": False, "error": "baked_no_backup", "message": str(e)})
-    _publish({"type": "library", "event": "changed", "profile": scope})
-    return {"ok": True}
-
-
+# NOTE: these must be declared before the "/library/{mod_id}/..." routes.
+# FastAPI matches in declaration order, so with the parameterised route
+# first, a request to /library/bulk/uninstall binds mod_id="bulk" and
+# fails with "Mod bulk not found" instead of reaching this handler.
 @library_router.post("/library/bulk/uninstall")
 def bulk_uninstall(req: BulkModRequest,
                    game: str = Query("KOTOR1"),
@@ -290,6 +267,33 @@ def bulk_toggle(req: BulkModRequest, action: str = Query("disable"),
 
     _publish({"type": "library", "event": "changed", "profile": scope})
     return {"ok": True, "action": action, "changed": changed, "failed": failed}
+
+
+@library_router.post("/library/{mod_id}/enable")
+def enable_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    return _toggle(mod_id, game, profile, "enable")
+
+
+@library_router.post("/library/{mod_id}/disable")
+def disable_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    return _toggle(mod_id, game, profile, "disable")
+
+
+@library_router.post("/library/{mod_id}/uninstall")
+def uninstall_mod(mod_id: str, req: UninstallRequest,
+                  game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    scope, root, _gt = _resolve(game, profile)
+    if not root or not root.exists():
+        return JSONResponse(status_code=400, content={"ok": False, "error": "game_path_required"})
+    try:
+        mod_manager.uninstall(scope, root, mod_id, force=req.force)
+    except mod_manager.ModManagerError as e:
+        return JSONResponse(status_code=409, content={"ok": False, "error": "baked_no_backup", "message": str(e)})
+    _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True}
 
 
 @library_router.post("/library/reorder")
