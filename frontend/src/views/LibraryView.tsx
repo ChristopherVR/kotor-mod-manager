@@ -54,6 +54,8 @@ export function LibraryView({
   const [errored, setErrored] = useState(false);
   const [openMod, setOpenMod] = useState<LibraryMod | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; mod: LibraryMod } | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [confirmBulk, setConfirmBulk] = useState(false);
 
   const load = useCallback(async () => {
     if (!activeProfile) { setMods([]); setLoading(false); return; }
@@ -71,6 +73,12 @@ export function LibraryView({
   }, [activeProfile]);
 
   useEffect(() => { load(); }, [load, refreshTick]);
+
+  // Filters change what "shown" means, so an in-flight confirmation would no
+  // longer describe what the button is about to remove. Reset it.
+  useEffect(() => { setConfirmBulk(false); },
+    [query, enabledOnly, dupesOnly, method, category, activeProfile]);
+
 
   // Distinct methods/categories present, for the filter dropdowns.
   const methods = useMemo(
@@ -99,6 +107,38 @@ export function LibraryView({
       .filter((m) => (q ? m.name.toLowerCase().includes(q) : true))
       .sort((a, b) => a.load_order - b.load_order);
   }, [mods, query, enabledOnly, method, category, dupesOnly, dupeKeys]);
+
+  const runBulkToggle = useCallback(async (action: "enable" | "disable") => {
+    if (!activeProfile || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const r = await api.bulkToggle(activeProfile, filtered.map(m => m.id), action);
+      addLog(`${action === "enable" ? "Enabled" : "Disabled"} ${r.changed.length} mod(s).`,
+             "success");
+      r.failed.forEach(f => addLog(`${f.mod}: ${f.reason}`, "warning"));
+      await load();
+    } catch (e: any) {
+      addLog(`Bulk ${action} failed: ${e?.message ?? "error"}`, "error");
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [activeProfile, bulkBusy, filtered, addLog, load]);
+
+  const runBulkUninstall = useCallback(async () => {
+    if (!activeProfile || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const r = await api.bulkUninstall(activeProfile, filtered.map(m => m.id));
+      addLog(`Uninstalled ${r.removed.length} of ${r.requested} mod(s).`, "success");
+      r.failed.forEach(f => addLog(`Could not remove ${f.mod}: ${f.reason}`, "warning"));
+      await load();
+    } catch (e: any) {
+      addLog(`Bulk uninstall failed: ${e?.message ?? "error"}`, "error");
+    } finally {
+      setBulkBusy(false);
+      setConfirmBulk(false);
+    }
+  }, [activeProfile, bulkBusy, filtered, addLog, load]);
 
   const total = mods.length;
   const enabledCount = mods.filter((m) => m.enabled).length;
@@ -236,6 +276,49 @@ export function LibraryView({
           )}
         </div>
       </header>
+
+      {/* Bulk actions apply to whatever the filters currently show. Removing a
+          178-mod build one dialog at a time is not realistic, and filtering
+          first is a clearer way to choose than ticking 178 checkboxes. */}
+      {!loading && filtered.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b bg-card/20 px-5 py-2">
+          <span className="text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">{filtered.length}</span>{" "}
+            mod{filtered.length === 1 ? "" : "s"} shown
+            {filtered.length < total && ` of ${total}`}
+          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="ghost" disabled={bulkBusy}
+              onClick={() => runBulkToggle("enable")}>
+              Enable shown
+            </Button>
+            <Button size="sm" variant="ghost" disabled={bulkBusy}
+              onClick={() => runBulkToggle("disable")}>
+              Disable shown
+            </Button>
+            {confirmBulk ? (
+              <>
+                <span className="text-xs text-[hsl(var(--destructive))]">
+                  Remove {filtered.length} mod{filtered.length === 1 ? "" : "s"}?
+                </span>
+                <Button size="sm" variant="destructive" disabled={bulkBusy}
+                  onClick={runBulkUninstall}>
+                  Yes, uninstall
+                </Button>
+                <Button size="sm" variant="ghost" disabled={bulkBusy}
+                  onClick={() => setConfirmBulk(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" variant="outline" disabled={bulkBusy}
+                onClick={() => setConfirmBulk(true)}>
+                Uninstall shown
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading ? (

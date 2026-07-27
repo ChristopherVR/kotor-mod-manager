@@ -674,6 +674,17 @@ def compute_conflicts(game: str) -> list[dict]:
 
     # ---- Declared incompatibilities (from the mods' own readmes) ----
     enabled_mods = [m for m in manifest.mods if m.enabled]
+
+    def _files_of(logical: str) -> set[str]:
+        """Every file the given logical mod installs, across all its records."""
+        out: set[str] = set()
+        for m in enabled_mods:
+            if _logical_id(m) != logical:
+                continue
+            out |= {d.rel_path for d in (m.deployed_files or [])}
+            out |= {b.rel_path for b in (m.baked_files or [])}
+        return out
+
     seen_pairs: set[tuple[str, str]] = set()
     for a in enabled_mods:
         if not a.incompatibilities:
@@ -693,12 +704,19 @@ def compute_conflicts(game: str) -> list[dict]:
             ab_same_build = bool(
                 a.build_key and b.build_key and a.build_key == b.build_key
             )
+            # Which files the two actually both touch. A declared
+            # incompatibility with no shared files is usually a readme talking
+            # about behaviour rather than a real file clash, and showing the
+            # overlap (or its absence) is what lets a player judge it.
+            shared = sorted(_files_of(_logical_id(a)) & _files_of(_logical_id(b)))
             conflicts.append({
                 "id": f"declared:{pair[0]}:{pair[1]}",
                 "resource": f"{a.name}  ↔  {b.name}",
                 "type": "declared",
                 "severity": "error",
                 "same_build": ab_same_build,
+                "shared_files": shared[:50],
+                "shared_file_count": len(shared),
                 "participants": [
                     {"mod_id": a.id, "mod_name": a.name, "enabled": a.enabled, "build_key": a.build_key},
                     {"mod_id": b.id, "mod_name": b.name, "enabled": b.enabled, "build_key": b.build_key},

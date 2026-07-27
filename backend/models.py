@@ -46,6 +46,12 @@ class UninstallRequest(BaseModel):
     force: bool = False
 
 
+class BulkModRequest(BaseModel):
+    """Apply one action to many library mods at once."""
+    mod_ids: list[str] = []
+    force: bool = False          # uninstall baked mods that have no backup
+
+
 class ImportFolderRequest(BaseModel):
     game: str
     path: str            # a folder containing mod archives (zip/7z/rar)

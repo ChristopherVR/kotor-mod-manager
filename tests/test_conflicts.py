@@ -149,6 +149,44 @@ def test_declared_conflicts_are_never_auto_resolved(manifest):
     assert out["skipped"] and "manual" in out["skipped"][0]["reason"]
 
 
+def test_declared_conflicts_report_the_files_both_mods_write(manifest):
+    """Without the overlap there is no way to judge a declared incompatibility:
+    the readme says 'incompatible' but not what actually collides."""
+    manifest.mods = [
+        _mod("Blaster Visual Effects", "a",
+             ["Override/fx_a.tga", "Override/shared.tga"],
+             incompat=["Realistic Visual Effects"]),
+        _mod("Realistic Visual Effects", "b",
+             ["Override/fx_b.tga", "Override/shared.tga"]),
+    ]
+    declared = [c for c in compute_conflicts("KOTOR1") if c["type"] == "declared"][0]
+    assert declared["shared_files"] == ["Override/shared.tga"]
+    assert declared["shared_file_count"] == 1
+
+
+def test_a_declared_conflict_with_no_file_overlap_reports_zero(manifest):
+    """A behavioural warning rather than a file clash - worth distinguishing so
+    the player is not sent hunting for a collision that is not on disk."""
+    manifest.mods = [
+        _mod("A", "a", ["Override/only_a.tga"], incompat=["Totally Other Mod"]),
+        _mod("Totally Other Mod", "b", ["Override/only_b.tga"]),
+    ]
+    declared = [c for c in compute_conflicts("KOTOR1") if c["type"] == "declared"][0]
+    assert declared["shared_files"] == []
+    assert declared["shared_file_count"] == 0
+
+
+def test_shared_file_list_is_capped_but_the_count_is_not(manifest):
+    files = [f"Override/f{i}.tga" for i in range(80)]
+    manifest.mods = [
+        _mod("A", "a", files, incompat=["Totally Other Mod"]),
+        _mod("Totally Other Mod", "b", files),
+    ]
+    declared = [c for c in compute_conflicts("KOTOR1") if c["type"] == "declared"][0]
+    assert len(declared["shared_files"]) == 50
+    assert declared["shared_file_count"] == 80
+
+
 def test_an_unknown_action_is_rejected(manifest):
     with pytest.raises(ValueError):
         resolve_conflicts("KOTOR1", ["x"], "delete_everything")

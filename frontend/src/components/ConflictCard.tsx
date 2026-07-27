@@ -38,6 +38,7 @@ export function ConflictCard({ group, profile, addLog, onResolved }: ConflictCar
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [showAllFiles, setShowAllFiles] = useState(false);
 
   const { participants, items, severity, winner_mod_id } = group;
   const isDeclared = items[0]?.type === "declared";
@@ -48,6 +49,9 @@ export function ConflictCard({ group, profile, addLog, onResolved }: ConflictCar
     : [];
 
   const files = items.filter(c => c.type !== "declared").map(c => c.resource);
+  // Declared incompatibilities carry the overlap the backend computed.
+  const sharedFiles = items[0]?.shared_files ?? [];
+  const sharedFileCount = items[0]?.shared_file_count ?? sharedFiles.length;
   const description = items[0]?.description ?? "";
   const recommendation = items[0]?.recommendation ?? "";
   const modNames = participants.map(p => p.mod_name);
@@ -184,6 +188,43 @@ export function ConflictCard({ group, profile, addLog, onResolved }: ConflictCar
 
       {description && (
         <p className="mt-2.5 text-sm leading-relaxed text-foreground">{description}</p>
+      )}
+
+      {/* Which files the two mods actually both write. A declared
+          incompatibility with no overlap is usually the readme describing a
+          behavioural clash rather than a file one, and saying so outright
+          saves the player hunting for a problem that is not on disk. */}
+      {sharedFiles.length > 0 ? (
+        <div className="mt-2.5 rounded-md border bg-muted/30 p-2.5">
+          <p className="text-xs font-medium text-foreground">
+            {sharedFileCount} file{sharedFileCount === 1 ? "" : "s"} written by both
+          </p>
+          <ul className="mt-1.5 space-y-0.5">
+            {(showAllFiles ? sharedFiles : sharedFiles.slice(0, 6)).map(f => (
+              <li key={f} className="truncate font-mono text-[11px] text-muted-foreground">
+                {f}
+              </li>
+            ))}
+          </ul>
+          {sharedFiles.length > 6 && (
+            <button
+              type="button"
+              onClick={() => setShowAllFiles(v => !v)}
+              className="mt-1.5 text-[11px] text-muted-foreground underline hover:text-foreground"
+            >
+              {showAllFiles
+                ? "Show fewer"
+                : `Show all ${sharedFiles.length}${
+                    sharedFileCount > sharedFiles.length ? ` of ${sharedFileCount}` : ""
+                  }`}
+            </button>
+          )}
+        </div>
+      ) : (
+        <p className="mt-2.5 text-xs text-muted-foreground">
+          These two mods do not write any of the same files, so the warning is
+          about how they behave together rather than a file clash.
+        </p>
       )}
 
       {recommendation && (

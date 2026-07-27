@@ -15,6 +15,7 @@ from fastapi.responses import JSONResponse
 
 import config as cfg
 from backend.models import (
+    BulkModRequest,
     ResolveConflictsRequest,
     ImportFolderRequest,
     ImportRequest,
@@ -187,6 +188,76 @@ def uninstall_mod(mod_id: str, req: UninstallRequest,
         return JSONResponse(status_code=409, content={"ok": False, "error": "baked_no_backup", "message": str(e)})
     _publish({"type": "library", "event": "changed", "profile": scope})
     return {"ok": True}
+
+
+@library_router.post("/library/bulk/uninstall")
+def bulk_uninstall(req: BulkModRequest,
+                   game: str = Query("KOTOR1"),
+                   profile: str = Query("")) -> dict:
+    """
+    Uninstall many mods in one go.
+
+    Removing a 178-mod build one dialog at a time is not realistic, so this
+    takes a list. Each mod is attempted independently: one that cannot be
+    removed (a patcher mod with no backup, unless force is set) is reported in
+    `failed` and the rest still come out.
+    """
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    scope, root, _gt = _resolve(game, profile)
+    if not root or not root.exists():
+        return JSONResponse(status_code=400,
+                            content={"ok": False, "error": "game_path_required"})
+
+    manifest = mod_manager.load_manifest(scope)
+    names = {m.id: m.name for m in manifest.mods}
+    removed, failed = [], []
+    # Reverse load order: later mods overwrote earlier ones, so undoing them
+    # last-first restores the files the earlier mods had displaced.
+    order = {m.id: m.load_order for m in manifest.mods}
+    for mod_id in sorted(set(req.mod_ids or []),
+                         key=lambda i: order.get(i, 0), reverse=True):
+        try:
+            mod_manager.uninstall(scope, root, mod_id, force=req.force)
+            removed.append(names.get(mod_id, mod_id))
+        except mod_manager.ModManagerError as e:
+            failed.append({"mod": names.get(mod_id, mod_id), "reason": str(e)[:160]})
+        except Exception as e:
+            failed.append({"mod": names.get(mod_id, mod_id), "reason": str(e)[:160]})
+
+    _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, "removed": removed, "failed": failed,
+            "requested": len(set(req.mod_ids or []))}
+
+
+@library_router.post("/library/bulk/toggle")
+def bulk_toggle(req: BulkModRequest, action: str = Query("disable"),
+                game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """Enable or disable many mods at once."""
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    if action not in ("enable", "disable"):
+        raise HTTPException(status_code=400, detail="action must be enable or disable")
+    scope, root, _gt = _resolve(game, profile)
+    if not root or not root.exists():
+        return JSONResponse(status_code=400,
+                            content={"ok": False, "error": "game_path_required"})
+
+    manifest = mod_manager.load_manifest(scope)
+    names = {m.id: m.name for m in manifest.mods}
+    fn = mod_manager.enable if action == "enable" else mod_manager.disable
+    changed, failed = [], []
+    for mod_id in set(req.mod_ids or []):
+        try:
+            fn(scope, root, mod_id)
+            changed.append(names.get(mod_id, mod_id))
+        except mod_manager.ModManagerError as e:
+            failed.append({"mod": names.get(mod_id, mod_id), "reason": str(e)[:160]})
+
+    _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, "action": action, "changed": changed, "failed": failed}
 
 
 @library_router.post("/library/reorder")

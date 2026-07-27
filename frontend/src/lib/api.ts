@@ -122,6 +122,9 @@ export interface Conflict {
   same_build?: boolean;
   description: string;
   recommendation: string;
+  // Files both mods actually write (declared incompatibilities only).
+  shared_files?: string[];
+  shared_file_count?: number;
 }
 
 // WebSocket event shapes
@@ -254,6 +257,25 @@ export const api = {
   conflicts: (profile: string) =>
     req<{ conflicts: Conflict[] }>(
       `/api/conflicts?profile=${encodeURIComponent(profile)}`),
+  resolveConflicts: (
+    profile: string,
+    body: { action: "dismiss" | "undismiss" | "disable_losers";
+            conflict_ids?: string[]; all_of_severity?: string },
+  ) =>
+    req<{ ok: boolean; requested: number; dismissed: number;
+          disabled: string[]; skipped: { id: string; reason: string }[] }>(
+      `/api/conflicts/resolve?profile=${encodeURIComponent(profile)}`,
+      { method: "POST", body: JSON.stringify(body) }),
+  bulkUninstall: (profile: string, mod_ids: string[], force = false) =>
+    req<{ ok: boolean; removed: string[];
+          failed: { mod: string; reason: string }[]; requested: number }>(
+      `/api/library/bulk/uninstall?profile=${encodeURIComponent(profile)}`,
+      { method: "POST", body: JSON.stringify({ mod_ids, force }) }),
+  bulkToggle: (profile: string, mod_ids: string[], action: "enable" | "disable") =>
+    req<{ ok: boolean; action: string; changed: string[];
+          failed: { mod: string; reason: string }[] }>(
+      `/api/library/bulk/toggle?profile=${encodeURIComponent(profile)}&action=${action}`,
+      { method: "POST", body: JSON.stringify({ mod_ids }) }),
   importFolder: (body: { game: string; path: string; profile?: string }) =>
     req<{ ok: boolean; count: number }>("/api/library/import-folder", {
       method: "POST",

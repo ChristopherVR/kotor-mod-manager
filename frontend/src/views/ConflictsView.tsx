@@ -88,11 +88,51 @@ export function ConflictsView({
     () => allGroups.filter(g => g.items[0]?.type === "declared"),
     [allGroups],
   );
-  // Exclude info-severity groups (same build / no action needed) - they require no user attention.
+  // File-level groups needing attention. Curated-build overlaps come back as
+  // "info" because the build's install order already decided them; they are
+  // hidden by default but counted, so the list is quiet without being a lie
+  // about what was found.
   const fileGroups = useMemo(
     () => allGroups.filter(g => g.items[0]?.type !== "declared" && g.severity !== "info"),
     [allGroups],
   );
+  const infoGroups = useMemo(
+    () => allGroups.filter(g => g.items[0]?.type !== "declared" && g.severity === "info"),
+    [allGroups],
+  );
+  const [showInfo, setShowInfo] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const bulk = useCallback(async (
+    action: "dismiss" | "undismiss" | "disable_losers",
+    ids?: string[],
+  ) => {
+    if (!activeProfile) return;
+    setBusy(true);
+    try {
+      const r = await api.resolveConflicts(activeProfile, {
+        action,
+        ...(ids ? { conflict_ids: ids } : { all_of_severity: "info" }),
+      });
+      if (action === "disable_losers") {
+        addLog(`Disabled ${r.disabled.length} shadowed mod(s).`, "success");
+        r.skipped.forEach(s => addLog(`Skipped: ${s.reason}`, "muted"));
+      } else {
+        addLog(
+          action === "dismiss"
+            ? `Hid ${r.requested} conflict(s) you have reviewed.`
+            : `Restored previously hidden conflicts.`,
+          "success",
+        );
+      }
+      await load();
+      onResolved();
+    } catch {
+      addLog("Could not apply that to the selected conflicts.", "error");
+    } finally {
+      setBusy(false);
+    }
+  }, [activeProfile, addLog, load, onResolved]);
 
   // Sync the tab badge count with the number of actionable conflict groups.
   const prevCount = useRef<number | null>(null);
@@ -109,18 +149,22 @@ export function ConflictsView({
     api.setActiveProfile(id).catch(() => {});
   };
 
-  const visibleCount = declaredGroups.length + fileGroups.length;
+  // Actionable count drives the sidebar badge and the subtitle; the rendered
+  // count also includes the informational overlaps so their summary bar still
+  // appears when nothing needs attention.
+  const actionableCount = declaredGroups.length + fileGroups.length;
+  const visibleCount = actionableCount + infoGroups.length;
 
   // Subtitle that distinguishes real incompatibilities from load-order notes.
   const subtitle = useMemo(() => {
-    if (visibleCount === 0) return t("conflicts.noneShort");
+    if (actionableCount === 0) return t("conflicts.noneShort");
     const parts: string[] = [];
     if (declaredGroups.length === 1) parts.push(t("conflicts.summaryDeclared", { count: 1 }));
     else if (declaredGroups.length > 1) parts.push(t("conflicts.summaryDeclaredPlural", { count: declaredGroups.length }));
     if (fileGroups.length === 1) parts.push(t("conflicts.summaryNotes", { count: 1 }));
     else if (fileGroups.length > 1) parts.push(t("conflicts.summaryNotesPlural", { count: fileGroups.length }));
     return parts.join(", ");
-  }, [t, visibleCount, declaredGroups.length, fileGroups.length]);
+  }, [t, actionableCount, declaredGroups.length, fileGroups.length]);
 
   return (
     <div className="flex h-full flex-col">
@@ -176,6 +220,57 @@ export function ConflictsView({
                     onResolved={handleResolved}
                   />
                 ))}
+              </section>
+            )}
+
+            {/* Curated-build overlaps: counted, hidden by default, clearable. */}
+            {infoGroups.length > 0 && (
+              <section className="rounded-md border bg-card/40 px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">
+                      {infoGroups.length}
+                    </span>{" "}
+                    file overlap{infoGroups.length === 1 ? "" : "s"} between mods in
+                    your builds. The install order already decides these, so no
+                    action is needed.
+                  </p>
+                  <div className="ml-auto flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowInfo(v => !v)}
+                      className="rounded border px-2 py-1 text-xs hover:bg-accent"
+                    >
+                      {showInfo ? "Hide details" : "Show details"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => bulk("dismiss")}
+                      className="rounded border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
+                    >
+                      Mark all reviewed
+                    </button>
+                  </div>
+                </div>
+                {showInfo && (
+                  <div className="mt-2 space-y-1">
+                    {infoGroups.slice(0, 100).map(g => (
+                      <ConflictCard
+                        key={g.gkey}
+                        group={g}
+                        profile={activeProfile}
+                        addLog={addLog}
+                        onResolved={handleResolved}
+                      />
+                    ))}
+                    {infoGroups.length > 100 && (
+                      <p className="px-1 pt-1 text-xs text-muted-foreground">
+                        Showing the first 100 of {infoGroups.length}.
+                      </p>
+                    )}
+                  </div>
+                )}
               </section>
             )}
 
