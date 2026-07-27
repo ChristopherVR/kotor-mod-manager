@@ -386,7 +386,91 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None,
                 source_host="deadlystream",
             ))
 
+    # ---- Mods hosted somewhere other than DeadlyStream --------------------
+    # Roughly a quarter of the K1 Spoiler-Free build lives on Nexus, MEGA,
+    # GitHub and the authors' own sites, including every area texture pack.
+    # Only DeadlyStream anchors are matched above, so those entries used to
+    # vanish from the list entirely - the guide asks for 191 mods and the app
+    # showed 149, with no indication anything was missing.
+    mods.extend(_scrape_other_hosts(main, game, build_key,
+                                    {m.guide_index for m in mods}))
+
+    # Page order across every host, then renumber so install_order stays a
+    # dense 1..N sequence the UI can rely on.
+    mods.sort(key=lambda m: m.guide_index)
+    for i, m in enumerate(mods, 1):
+        m.install_order = i
     return mods
+
+
+def _scrape_other_hosts(main, game: str, build_key: str,
+                        claimed: set) -> list[BuildMod]:
+    """
+    Build entries for the "Name:" blocks that hold no DeadlyStream link.
+
+    `claimed` is the set of guide positions already emitted, so a block that
+    produced a DeadlyStream mod (or several, where one entry bundles a mod and
+    its patch) is not duplicated here.
+    """
+    out: list[BuildMod] = []
+    idx = 0
+    h2 = h3 = h4 = ""
+    for el in main.descendants:
+        if isinstance(el, NavigableString):
+            continue
+        tag = getattr(el, "name", None)
+        if tag == "h2":
+            h2, h3, h4 = el.get_text(" ", strip=True), "", ""
+            continue
+        if tag == "h3":
+            h3, h4 = el.get_text(" ", strip=True), ""
+            continue
+        if tag == "h4":
+            h4 = el.get_text(" ", strip=True)
+            continue
+        if tag != "p" or not _is_name_p(el):
+            continue
+
+        idx += 1
+        if idx in claimed:
+            continue
+
+        raw = el.get_text(" ", strip=True)
+        name = raw.split(":", 1)[1].strip() if ":" in raw else raw
+        links = [a["href"] for a in el.find_all("a", href=True)]
+        # Prefer a link we can actually download from, so an entry offering both
+        # a Nexus page and a MEGA mirror is reported by the one that works.
+        url = next((u for u in links if host_of(u) in AUTO_HOSTS),
+                   links[0] if links else "")
+
+        block = _gather_block(el)
+        hint_source = " ".join([block["instructions"], block["warnings"],
+                                block["note"]])
+        out.append(BuildMod(
+            install_order=idx,
+            # Distinct from DeadlyStream ids, and the key build_overrides.py
+            # already uses for these entries.
+            file_id=f"guide:{idx}",
+            slug=re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:60],
+            name=name[:120],
+            url=url,
+            game=game,
+            section=h2,
+            category=h4 or h3 or "",
+            note=block["note"][:800],
+            option_hint=_extract_option_hint(hint_source),
+            install_method_hint=_extract_install_method_hint(
+                block["install_method"] or hint_source),
+            build_key=build_key,
+            instructions=block["instructions"][:2500],
+            warnings=block["warnings"][:1500],
+            install_method=block["install_method"][:200],
+            description=block["description"][:600],
+            author=block["author"][:120],
+            guide_index=idx,
+            source_host=host_of(url),
+        ))
+    return out
 
 
 def scrape_all_builds(session: Optional[requests.Session] = None) -> dict[str, list[BuildMod]]:
