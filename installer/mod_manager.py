@@ -26,7 +26,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import config as cfg
 
@@ -808,6 +808,130 @@ def compute_conflicts(game: str) -> list[dict]:
     sev_rank = {"error": 0, "warning": 1, "info": 2}
     conflicts.sort(key=lambda c: (sev_rank.get(c["severity"], 3), c["resource"]))
     return conflicts
+
+
+# ---------------------------------------------------------------------------
+# Vanilla baseline: the only reliable way back from a patcher-heavy build
+# ---------------------------------------------------------------------------
+
+# Files a patcher rewrites in place, which therefore cannot be restored by
+# removing anything - only by putting the original back.
+_BASELINE_FILES = ("dialog.tlk", "chitin.key", "swkotor.exe", "swkotor2.exe")
+
+
+def _baseline_dir(game: str) -> Path:
+    return cfg.CONFIG_DIR / "baseline" / game
+
+
+def has_baseline(game: str) -> bool:
+    return (_baseline_dir(game) / "manifest.json").exists()
+
+
+def capture_baseline(game: str, game_root: Path, force: bool = False) -> dict:
+    """
+    Record what the game looks like before any mods, so it can be restored later.
+
+    Patcher mods edit dialog.tlk and the .2da tables in place. There is no undo
+    for that per mod, which is why uninstalling a build of them removes nothing.
+    Keeping a copy of the handful of rewritten files, plus a listing of the
+    stock Override and Modules contents, is enough to put the install back.
+
+    Refuses to overwrite an existing baseline unless force is set - capturing a
+    second time over a modded install would bake the mods into the "clean"
+    reference and make it worthless.
+    """
+    import json
+
+    root = _baseline_dir(game)
+    if root.exists() and not force:
+        return {"ok": False, "error": "baseline_exists",
+                "captured_at": json.loads((root / "manifest.json").read_text(
+                    encoding="utf-8")).get("captured_at")}
+
+    root.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for name in _BASELINE_FILES:
+        src = game_root / name
+        if src.is_file():
+            shutil.copy2(src, root / name)
+            saved.append(name)
+
+    def _listing(sub: str) -> list[str]:
+        d = game_root / sub
+        return sorted(f.name for f in d.iterdir() if f.is_file()) if d.is_dir() else []
+
+    data = {
+        "captured_at": time.time(),
+        "game_root": str(game_root),
+        "files": saved,
+        "override": _listing("Override"),
+        "modules": _listing("Modules") or _listing("modules"),
+    }
+    (root / "manifest.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return {"ok": True, "files": saved,
+            "override": len(data["override"]), "modules": len(data["modules"])}
+
+
+def reset_to_vanilla(game: str, game_root: Path,
+                     on_log: "Optional[Callable[[str], None]]" = None) -> dict:
+    """
+    Put the game back to its captured baseline and empty the mod library.
+
+    This is what the build guides mean by "reinstall the game", done without a
+    redownload: anything added to Override or Modules since the baseline is
+    removed, and the files patchers rewrote are restored from their copies.
+    """
+    import json
+
+    root = _baseline_dir(game)
+    manifest_path = root / "manifest.json"
+    if not manifest_path.exists():
+        raise ModManagerError(
+            "No clean snapshot was taken for this game, so there is nothing to "
+            "restore to. Snapshots are captured before the first install.")
+
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    def log(msg: str) -> None:
+        if on_log:
+            on_log(msg)
+
+    result = {"override_removed": 0, "modules_removed": 0, "restored": []}
+
+    for sub, key in (("Override", "override"), ("Modules", "modules")):
+        d = game_root / sub
+        if not d.is_dir():
+            d = game_root / sub.lower()
+        if not d.is_dir():
+            continue
+        keep = set(data.get(key, []))
+        for f in sorted(d.iterdir()):
+            if f.is_file() and f.name not in keep:
+                try:
+                    f.unlink()
+                    result["override_removed" if key == "override"
+                           else "modules_removed"] += 1
+                except OSError as e:
+                    log(f"Could not remove {sub}/{f.name}: {e}")
+
+    for name in data.get("files", []):
+        src = root / name
+        if src.is_file():
+            try:
+                shutil.copy2(src, game_root / name)
+                result["restored"].append(name)
+            except OSError as e:
+                log(f"Could not restore {name}: {e}")
+
+    manifest = GameManifest(game=game)
+    save_manifest(manifest)
+    for sub in ("disabled", "backups"):
+        shutil.rmtree(cfg.CONFIG_DIR / sub / game, ignore_errors=True)
+
+    log(f"Removed {result['override_removed']} file(s) from Override and "
+        f"{result['modules_removed']} from Modules; restored "
+        f"{', '.join(result['restored']) or 'nothing'}.")
+    return result
 
 
 BULK_ACTIONS = ("dismiss", "undismiss", "disable_losers")

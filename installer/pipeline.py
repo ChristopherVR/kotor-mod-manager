@@ -215,6 +215,7 @@ class Pipeline:
             self._on_install_progress(mod.build_mod.file_id, pct, label)
 
     def _run(self) -> None:
+        self._capture_baseline_once()
         self._apply_layer_order()
         pending = [pm for pm in self._mods if pm.status not in (ModStatus.DONE, ModStatus.SKIPPED)]
         self._resolve_skip_constraints()
@@ -1144,6 +1145,31 @@ class Pipeline:
                         break
                 if pm.status == ModStatus.SKIPPED:
                     break
+
+    def _capture_baseline_once(self) -> None:
+        """
+        Snapshot the clean game before the first mod goes in.
+
+        Patcher mods rewrite dialog.tlk and the .2da tables in place, so once a
+        build is installed there is no way to work out what the game looked like
+        beforehand. Without this there is no undo for a whole build - which is
+        exactly the hole that left a half-removed install with no way back.
+        """
+        if not self._game_key:
+            return
+        try:
+            from installer import mod_manager
+            if mod_manager.has_baseline(self._game_key):
+                return
+            result = mod_manager.capture_baseline(self._game_key, self._game_path)
+            if result.get("ok"):
+                self._log(
+                    f"  Saved a snapshot of your clean game ({result['override']} "
+                    f"Override file(s), {result['modules']} module(s)) so this "
+                    f"build can be undone later.", "muted")
+        except Exception as e:
+            # Never block an install over the snapshot.
+            self._log(f"  (could not snapshot the clean game: {e})", "muted")
 
     def _apply_layer_order(self) -> None:
         """

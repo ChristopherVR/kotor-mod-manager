@@ -167,6 +167,66 @@ def _toggle(mod_id: str, game: str, profile: str, action: str):
 # FastAPI matches in declaration order, so with the parameterised route
 # first, a request to /library/bulk/uninstall binds mod_id="bulk" and
 # fails with "Mod bulk not found" instead of reaching this handler.
+@library_router.get("/library/baseline")
+def baseline_status(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """Whether a clean snapshot exists to reset back to."""
+    scope, root, _gt = _resolve(game, profile)
+    return {"has_baseline": mod_manager.has_baseline(scope),
+            "game_path": str(root) if root else ""}
+
+
+@library_router.post("/library/baseline/capture")
+def baseline_capture(game: str = Query("KOTOR1"), profile: str = Query(""),
+                     force: bool = Query(False)) -> dict:
+    """
+    Record the game's clean state so it can be restored later.
+
+    Only meaningful on an unmodded install: capturing over a modded one would
+    save the mods as the "clean" reference, so an existing snapshot is never
+    replaced unless explicitly forced.
+    """
+    scope, root, _gt = _resolve(game, profile)
+    if not root or not root.exists():
+        return JSONResponse(status_code=400,
+                            content={"ok": False, "error": "game_path_required"})
+    return mod_manager.capture_baseline(scope, root, force=force)
+
+
+@library_router.post("/library/baseline/reset")
+def baseline_reset(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """
+    Put the game back to its clean snapshot and empty the library.
+
+    This is the only reliable undo for a build full of patcher mods, which
+    rewrite shared game files in place and so cannot be removed one at a time.
+    """
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    scope, root, _gt = _resolve(game, profile)
+    if not root or not root.exists():
+        return JSONResponse(status_code=400,
+                            content={"ok": False, "error": "game_path_required"})
+
+    _publish({"type": "log", "message": "Resetting the game to its clean state…",
+              "tag": "info"})
+    try:
+        result = mod_manager.reset_to_vanilla(
+            scope, root,
+            on_log=lambda m: _publish({"type": "log", "message": m, "tag": "muted"}))
+    except mod_manager.ModManagerError as e:
+        _publish({"type": "log", "message": str(e), "tag": "error"})
+        return JSONResponse(status_code=409,
+                            content={"ok": False, "error": "no_baseline",
+                                     "message": str(e)})
+    _publish({"type": "log",
+              "message": f"Game reset. Removed {result['override_removed']} "
+                         f"Override file(s) and {result['modules_removed']} module(s).",
+              "tag": "success"})
+    _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, **result}
+
+
 @library_router.post("/library/bulk/uninstall")
 def bulk_uninstall(req: BulkModRequest,
                    game: str = Query("KOTOR1"),
@@ -202,6 +262,11 @@ def bulk_uninstall(req: BulkModRequest,
               "message": f"Uninstalling {total} mod(s)…", "tag": "info"})
     for i, mod_id in enumerate(targets, 1):
         name = names.get(mod_id, mod_id)
+        # Two channels on purpose: the log line is the permanent record on the
+        # Activity tab, the progress event drives the live counter on whatever
+        # screen the player is actually looking at.
+        _publish({"type": "library", "event": "bulk_progress", "action": "uninstall",
+                  "current": i, "total": total, "mod": name})
         _publish({"type": "log",
                   "message": f"[{i}/{total}] Removing {name}…", "tag": "muted"})
         try:
@@ -217,6 +282,8 @@ def bulk_uninstall(req: BulkModRequest,
             _publish({"type": "log",
                       "message": f"Could not remove {name}: {str(e)[:120]}",
                       "tag": "warning"})
+    _publish({"type": "library", "event": "bulk_progress", "action": "uninstall",
+              "current": total, "total": total, "mod": "", "done": True})
     _publish({"type": "log",
               "message": f"Removed {len(removed)} of {total} mod(s).",
               "tag": "success" if removed else "warning"})
@@ -254,12 +321,16 @@ def bulk_toggle(req: BulkModRequest, action: str = Query("disable"),
         try:
             fn(scope, root, mod_id)
             changed.append(name)
+            _publish({"type": "library", "event": "bulk_progress", "action": action,
+                      "current": i, "total": total, "mod": name})
             if total > 20 and i % 10 == 0:
                 _publish({"type": "log",
                           "message": f"[{i}/{total}] {action}d so far…",
                           "tag": "muted"})
         except mod_manager.ModManagerError as e:
             failed.append({"mod": name, "reason": str(e)[:160]})
+    _publish({"type": "library", "event": "bulk_progress", "action": action,
+              "current": total, "total": total, "mod": "", "done": True})
     _publish({"type": "log",
               "message": f"{action.capitalize()}d {len(changed)} of {total} mod(s)."
                          + (f" {len(failed)} could not be changed." if failed else ""),

@@ -150,6 +150,8 @@ export type WsEvent =
   | { type: "update_progress"; pct: number; downloaded: number; total: number }
   | { type: "library"; event: "import_folder_done"; count: number; [k: string]: unknown }
   | { type: "library"; event: "changed"; [k: string]: unknown }
+  | { type: "library"; event: "bulk_progress"; action: string; current: number;
+      total: number; mod: string; done?: boolean }
   | { type: "pipeline"; event: "started" | "finished"; [k: string]: unknown };
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -282,6 +284,14 @@ export const api = {
           failed: { mod: string; reason: string }[]; requested: number }>(
       `/api/library/bulk/uninstall?profile=${encodeURIComponent(profile)}`,
       { method: "POST", body: JSON.stringify({ mod_ids, force }) }),
+  baselineStatus: (profile: string) =>
+    req<{ has_baseline: boolean; game_path: string }>(
+      `/api/library/baseline?profile=${encodeURIComponent(profile)}`),
+  baselineReset: (profile: string) =>
+    req<{ ok: boolean; override_removed: number; modules_removed: number;
+          restored: string[] }>(
+      `/api/library/baseline/reset?profile=${encodeURIComponent(profile)}`,
+      { method: "POST" }),
   bulkToggle: (profile: string, mod_ids: string[], action: "enable" | "disable") =>
     req<{ ok: boolean; action: string; changed: string[];
           failed: { mod: string; reason: string }[] }>(

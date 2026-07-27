@@ -19,6 +19,8 @@ interface LibraryViewProps {
   profiles: Profile[];
   activeProfile: string;
   setActiveProfile: (id: string) => void;
+  /** Live per-mod progress while a bulk action runs. */
+  bulkProgress?: { action: string; current: number; total: number; mod: string } | null;
 }
 
 // Friendly labels for raw install-method enum names.
@@ -41,7 +43,7 @@ const dupeKey = (m: LibraryMod) => m.name.trim().toLowerCase();
 
 export function LibraryView({
   onGoToBuilds, onGoToConflicts, addLog, refreshTick,
-  profiles, activeProfile, setActiveProfile,
+  profiles, activeProfile, setActiveProfile, bulkProgress,
 }: LibraryViewProps) {
   const t = useT();
   const [mods, setMods] = useState<LibraryMod[]>([]);
@@ -59,6 +61,8 @@ export function LibraryView({
   // Progress for the running bulk action. The Activity log lives on another
   // tab, so without this the window just freezes with no sign of life.
   const [bulkStatus, setBulkStatus] = useState<string | null>(null);
+  const [hasBaseline, setHasBaseline] = useState(false);
+  const [confirmReset, setConfirmReset] = useState(false);
 
   const load = useCallback(async () => {
     if (!activeProfile) { setMods([]); setLoading(false); return; }
@@ -76,6 +80,34 @@ export function LibraryView({
   }, [activeProfile]);
 
   useEffect(() => { load(); }, [load, refreshTick]);
+
+  useEffect(() => {
+    if (!activeProfile) return;
+    api.baselineStatus(activeProfile)
+      .then(r => setHasBaseline(r.has_baseline))
+      .catch(() => setHasBaseline(false));
+  }, [activeProfile, refreshTick]);
+
+  const runReset = useCallback(async () => {
+    if (!activeProfile || bulkBusy) return;
+    setBulkBusy(true);
+    setBulkStatus("Putting the game back to its clean state…");
+    try {
+      const r = await api.baselineReset(activeProfile);
+      addLog(
+        `Game reset. Removed ${r.override_removed} Override file(s) and `
+        + `${r.modules_removed} module(s); restored ${r.restored.join(", ") || "nothing"}.`,
+        "success");
+      await load();
+    } catch (e: any) {
+      addLog(`Could not reset the game: ${e?.data?.message ?? e?.message ?? "error"}`,
+             "error");
+    } finally {
+      setBulkBusy(false);
+      setConfirmReset(false);
+      setBulkStatus(null);
+    }
+  }, [activeProfile, bulkBusy, addLog, load]);
 
   // Filters change what "shown" means, so an in-flight confirmation would no
   // longer describe what the button is about to remove. Reset it.
@@ -111,6 +143,12 @@ export function LibraryView({
       .sort((a, b) => a.load_order - b.load_order);
   }, [mods, query, enabledOnly, method, category, dupesOnly, dupeKeys]);
 
+  // Patcher mods rewrite shared game files, so there is no per-mod undo for
+  // them. Splitting the counts up front means the bar can offer only actions
+  // that can succeed, instead of starting a removal that fails 154 times.
+  const removable = useMemo(() => filtered.filter(m => m.toggleable), [filtered]);
+  const patcherOnly = useMemo(() => filtered.filter(m => !m.toggleable), [filtered]);
+
   const runBulkToggle = useCallback(async (action: "enable" | "disable") => {
     if (!activeProfile || bulkBusy) return;
     setBulkBusy(true);
@@ -129,13 +167,22 @@ export function LibraryView({
     }
   }, [activeProfile, bulkBusy, filtered, addLog, load]);
 
-  const runBulkUninstall = useCallback(async () => {
+  const runBulkUninstall = useCallback(async (force: boolean) => {
     if (!activeProfile || bulkBusy) return;
+    // Without force only the cleanly-removable ones are even attempted.
+    const targets = force ? filtered : removable;
+    if (targets.length === 0) return;
     setBulkBusy(true);
     try {
-      setBulkStatus(`Removing ${filtered.length} mod(s)… this can take a while.`);
-      const r = await api.bulkUninstall(activeProfile, filtered.map(m => m.id));
-      addLog(`Uninstalled ${r.removed.length} of ${r.requested} mod(s).`, "success");
+      setBulkStatus(`Removing ${targets.length} mod(s)… this can take a while.`);
+      const r = await api.bulkUninstall(activeProfile, targets.map(m => m.id), force);
+      addLog(
+        force
+          ? `Removed ${r.removed.length} of ${r.requested} mod(s) from the library. `
+            + `Files patchers wrote are still in the game.`
+          : `Uninstalled ${r.removed.length} of ${r.requested} mod(s).`,
+        r.removed.length ? "success" : "warning",
+      );
       r.failed.forEach(f => addLog(`Could not remove ${f.mod}: ${f.reason}`, "warning"));
       await load();
     } catch (e: any) {
@@ -145,7 +192,7 @@ export function LibraryView({
       setConfirmBulk(false);
       setBulkStatus(null);
     }
-  }, [activeProfile, bulkBusy, filtered, addLog, load]);
+  }, [activeProfile, bulkBusy, filtered, removable, addLog, load]);
 
   const total = mods.length;
   const enabledCount = mods.filter((m) => m.enabled).length;
@@ -293,11 +340,30 @@ export function LibraryView({
             <span className="font-medium text-foreground">{filtered.length}</span>{" "}
             mod{filtered.length === 1 ? "" : "s"} shown
             {filtered.length < total && ` of ${total}`}
+            {patcherOnly.length > 0 && (
+              <>
+                {" · "}
+                <span className="text-muted-foreground">
+                  {patcherOnly.length} installed by a patcher
+                </span>
+              </>
+            )}
           </span>
-          {bulkStatus && (
-            <span className="flex items-center gap-1.5 text-xs text-[hsl(var(--info))]">
-              <span className="size-1.5 animate-pulse rounded-full bg-[hsl(var(--info))]" />
-              {bulkStatus}
+          {(bulkProgress || bulkStatus) && (
+            <span className="flex min-w-0 items-center gap-1.5 text-xs text-[hsl(var(--info))]">
+              <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-[hsl(var(--info))]" />
+              {bulkProgress ? (
+                <>
+                  <span className="shrink-0 tabular-nums">
+                    {bulkProgress.current}/{bulkProgress.total}
+                  </span>
+                  <span className="truncate" title={bulkProgress.mod}>
+                    {bulkProgress.mod}
+                  </span>
+                </>
+              ) : (
+                bulkStatus
+              )}
             </span>
           )}
           <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -309,14 +375,47 @@ export function LibraryView({
               onClick={() => runBulkToggle("disable")}>
               Disable shown
             </Button>
+            {hasBaseline && total > 0 && (
+              confirmReset ? (
+                <>
+                  <span className="text-xs text-[hsl(var(--destructive))]">
+                    Remove every mod and restore the clean game?
+                  </span>
+                  <Button size="sm" variant="destructive" disabled={bulkBusy}
+                    onClick={runReset}>
+                    Yes, reset the game
+                  </Button>
+                  <Button size="sm" variant="ghost" disabled={bulkBusy}
+                    onClick={() => setConfirmReset(false)}>
+                    Cancel
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={bulkBusy}
+                  onClick={() => setConfirmReset(true)}
+                  title="Restores the snapshot taken before your first install. This is the only way to undo mods installed by a patcher."
+                >
+                  Reset game to clean
+                </Button>
+              )
+            )}
             {confirmBulk ? (
               <>
                 <span className="text-xs text-[hsl(var(--destructive))]">
-                  Remove {filtered.length} mod{filtered.length === 1 ? "" : "s"}?
+                  {removable.length > 0
+                    ? `Remove ${removable.length} mod${removable.length === 1 ? "" : "s"}?`
+                    : `Forget ${patcherOnly.length} patcher mod${patcherOnly.length === 1 ? "" : "s"}? Game files stay changed.`}
                 </span>
-                <Button size="sm" variant="destructive" disabled={bulkBusy}
-                  onClick={runBulkUninstall}>
-                  Yes, uninstall
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={bulkBusy}
+                  onClick={() => runBulkUninstall(removable.length === 0)}
+                >
+                  {removable.length > 0 ? "Yes, uninstall" : "Yes, forget them"}
                 </Button>
                 <Button size="sm" variant="ghost" disabled={bulkBusy}
                   onClick={() => setConfirmBulk(false)}>
@@ -324,9 +423,20 @@ export function LibraryView({
                 </Button>
               </>
             ) : (
-              <Button size="sm" variant="outline" disabled={bulkBusy}
-                onClick={() => setConfirmBulk(true)}>
-                Uninstall shown
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={bulkBusy || filtered.length === 0}
+                onClick={() => setConfirmBulk(true)}
+                title={
+                  removable.length > 0
+                    ? `Removes ${removable.length} mod(s) and their files`
+                    : "These were installed by a patcher and cannot be removed individually"
+                }
+              >
+                {removable.length > 0
+                  ? `Uninstall ${removable.length} shown`
+                  : "Forget patcher mods"}
               </Button>
             )}
           </div>
