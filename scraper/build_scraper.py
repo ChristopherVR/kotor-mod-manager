@@ -13,6 +13,54 @@ from bs4 import BeautifulSoup, NavigableString
 
 DS_RE = re.compile(r"deadlystream\.com/files/file/(\d+)-([^\s\"'<>#/?]+)", re.I)
 
+# Hosts the app can download from unattended. Verified against the KOTOR 1
+# Spoiler-Free build rather than assumed:
+#   deadlystream - signed in with the player's own account
+#   mega         - public links carry their own decryption key, no account
+#   github       - release assets are plain file URLs
+#   googledrive  - works once the large-file confirm token is followed
+#   direct       - a plain file URL on an author's own site
+# Nexus is deliberately absent: its API refuses downloads to free accounts
+# unless the request carries a token minted by clicking "Mod manager download"
+# on the site, so it always needs a hand. GameFront is untested.
+AUTO_HOSTS = frozenset({"deadlystream", "mega", "github", "googledrive", "direct"})
+
+_HOST_PATTERNS = (
+    ("deadlystream", "deadlystream.com"),
+    ("nexus", "nexusmods.com"),
+    ("mega", "mega.nz"),
+    ("mega", "mega.co.nz"),
+    ("gamefront", "gamefront.com"),
+    ("googledrive", "drive.google.com"),
+    ("github", "github.com"),
+)
+
+# Human-facing names, so the UI does not have to know about our keys.
+HOST_LABELS = {
+    "deadlystream": "DeadlyStream",
+    "nexus": "Nexus Mods",
+    "mega": "MEGA",
+    "gamefront": "GameFront",
+    "googledrive": "Google Drive",
+    "github": "GitHub",
+    "direct": "Direct download",
+    "unknown": "Unknown",
+}
+
+
+def host_of(url: str) -> str:
+    """Classify a download URL by where it is hosted."""
+    low = (url or "").lower()
+    if not low:
+        return "unknown"
+    for key, needle in _HOST_PATTERNS:
+        if needle in low:
+            return key
+    # A bare file URL from an author's own site is still fetchable directly.
+    if re.search(r"\.(zip|7z|rar|exe)(\?|$)", low):
+        return "direct"
+    return "unknown"
+
 BUILD_URLS = {
     "k1_full":        "https://kotor.neocities.org/modding/mod_builds/k1/full",
     "k1_spoilerfree": "https://kotor.neocities.org/modding/mod_builds/k1/spoiler-free",
@@ -56,6 +104,15 @@ class BuildMod:
     # download, so the two diverge; the curated rules in build_overrides.py are
     # keyed on this page position for non-DeadlyStream mods.
     guide_index: int = 0
+    # Where the mod is hosted. This decides whether the app can fetch it on its
+    # own, so it is worth showing rather than leaving the player to find out
+    # when a download silently does not happen.
+    source_host: str = "deadlystream"
+
+    @property
+    def auto_downloadable(self) -> bool:
+        """Whether the app can fetch this without the player doing anything."""
+        return self.source_host in AUTO_HOSTS
 
     @property
     def ds_url(self) -> str:
@@ -326,6 +383,7 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None,
                 description=block["description"][:600],
                 author=block["author"][:120],
                 guide_index=guide_index,
+                source_host="deadlystream",
             ))
 
     return mods
