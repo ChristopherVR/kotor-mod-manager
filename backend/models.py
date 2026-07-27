@@ -59,6 +59,13 @@ class ReorderRequest(BaseModel):
     ordered_ids: list[str]
 
 
+class ResolveConflictsRequest(BaseModel):
+    """Bulk conflict action. Either name the conflicts, or sweep a severity."""
+    action: str                                   # dismiss | undismiss | disable_losers
+    conflict_ids: list[str] = []
+    all_of_severity: Optional[str] = None         # e.g. "info"
+
+
 class ProfileCreate(BaseModel):
     name: str
     game: str            # "KOTOR1" | "KOTOR2"

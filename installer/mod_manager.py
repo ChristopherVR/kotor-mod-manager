@@ -119,6 +119,10 @@ class GameManifest:
     game: str = "KOTOR1"
     mods: list[InstalledMod] = field(default_factory=list)
     next_load_order: int = 0
+    # Conflict ids the player has reviewed and chosen to hide. A finished build
+    # legitimately reports hundreds of intentional file overlaps, so without
+    # this the list stays permanently noisy and real problems get lost in it.
+    dismissed_conflicts: list[str] = field(default_factory=list)
 
     def find(self, mod_id: str) -> Optional[InstalledMod]:
         return next((m for m in self.mods if m.id == mod_id), None)
@@ -175,6 +179,7 @@ def load_manifest(game: str) -> GameManifest:
         game=raw.get("game", game),
         mods=mods,
         next_load_order=raw.get("next_load_order", len(mods)),
+        dismissed_conflicts=raw.get("dismissed_conflicts", []) or [],
     )
 
 
@@ -186,6 +191,7 @@ def save_manifest(m: GameManifest) -> None:
         "schema_version": m.schema_version,
         "game": m.game,
         "next_load_order": m.next_load_order,
+        "dismissed_conflicts": list(m.dismissed_conflicts or []),
         "mods": [asdict(mod) for mod in m.mods],
     }
     tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -485,7 +491,8 @@ def reorder(game: str, ordered_ids: list[str]) -> GameManifest:
 # ---------------------------------------------------------------------------
 
 def _conflict_explanation(
-    ctype: str, kinds: set, winner: str, losers: list[str], same_build: bool = False
+    ctype: str, kinds: set, winner: str, losers: list[str], same_build: bool = False,
+    build_managed: bool = False,
 ) -> tuple[str, str]:
     """Return (description, recommendation) explaining a file conflict in plain terms."""
     others = ", ".join(f'"{n}"' for n in losers) or "another mod"
@@ -501,6 +508,14 @@ def _conflict_explanation(
             f"The build was designed this way - \"{winner}\" takes priority by install "
             f"order, which is intentional.",
             "No action needed. File sharing between mods in the same build is expected.",
+        )
+    if build_managed:
+        return (
+            f"Both mods came from curated builds, which are designed to layer over "
+            f"each other. \"{winner}\" provides the version the install order picked, "
+            f"and {others} supplies the same file earlier in the order.",
+            "No action needed. Later mods replacing an earlier mod's textures is "
+            "how these builds are meant to work.",
         )
     base = {
         "2da": (
@@ -541,9 +556,19 @@ def _logical_id(mod: "InstalledMod") -> str:
     Multiple manifest entries that share a source_ref (e.g. the two records
     written for a MULTIPLE-type mod whose main plan and patch plan each call
     record_install) must NOT conflict with each other - they are the same
-    logical mod installed in stages.  Use source_type+source_ref as the stable
-    identity when available, falling back to the entry's own id.
+    logical mod installed in stages.
+
+    The name is the primary identity rather than source_ref, because the SAME
+    mod can legitimately carry different refs: installed once as part of one
+    build and again as part of another, or obtained from DeadlyStream in one
+    run and from a mirror in the next. Keying on source_ref alone made those
+    records look like two different mods, so a mod ended up conflicting with
+    itself - hence reports like 'Blaster Visual Effects is incompatible with
+    Blaster Visual Effects'.
     """
+    norm = _normalize(mod.name or "")
+    if norm:
+        return f"name:{norm}"
     if mod.source_ref:
         return f"{mod.source_type}:{mod.source_ref}"
     return mod.id
@@ -591,7 +616,14 @@ def compute_conflicts(game: str) -> list[dict]:
             len(build_keys_present) == 1
             and all(m.build_key for _, m, _ in parts_sorted)
         )
-        if kinds == {"baked"} or same_build:
+        # Every participant came from a curated build, so the overlap is the
+        # build's own design: the guide chose these mods together and its
+        # install order decides which one wins. That is true whether they came
+        # from the same guide or two guides applied to one game, so it is
+        # reported for information rather than as something to fix. Only an
+        # overlap involving a hand-imported mod is a genuine surprise.
+        all_curated = all(m.build_key for _, m, _ in parts_sorted)
+        if kinds == {"baked"} or same_build or all_curated:
             severity = "info"
         else:
             severity = "warning"
@@ -609,12 +641,24 @@ def compute_conflicts(game: str) -> list[dict]:
                 "mod_name": m.name,
                 "enabled": m.enabled,
                 "build_key": m.build_key,
+                "logical_id": lid,
             })
         ctype = _resource_type(key)
+        # Losers are the OTHER logical mods. Filtering on the raw record id let
+        # the winner's own name back into the list (it has several records), and
+        # repeated names made messages read
+        # '"KOTOR Community Patch" wins and the version from "KOTOR Community
+        # Patch", "KOTOR Community Patch", ... is shadowed'.
+        winner_lid = _logical_id(winner)
+        loser_names: list[str] = []
+        for p in participants:
+            if p["logical_id"] == winner_lid:
+                continue
+            if p["mod_name"] not in loser_names:
+                loser_names.append(p["mod_name"])
         desc, rec = _conflict_explanation(
-            ctype, kinds, winner.name,
-            [p["mod_name"] for p in participants if p["mod_id"] != winner.id],
-            same_build=same_build,
+            ctype, kinds, winner.name, loser_names, same_build=same_build,
+            build_managed=all_curated,
         )
         conflicts.append({
             "id": key,
@@ -635,11 +679,13 @@ def compute_conflicts(game: str) -> list[dict]:
         if not a.incompatibilities:
             continue
         for b in enabled_mods:
-            if a.id == b.id:
+            # Same logical mod (two records of one install, or the same mod
+            # picked up by two builds) can never be incompatible with itself.
+            if _logical_id(a) == _logical_id(b):
                 continue
             if not _name_matches(b.name, a.incompatibilities):
                 continue
-            pair = tuple(sorted((a.id, b.id)))
+            pair = tuple(sorted((_logical_id(a), _logical_id(b))))
             if pair in seen_pairs:
                 continue
             seen_pairs.add(pair)
@@ -676,9 +722,79 @@ def compute_conflicts(game: str) -> list[dict]:
                 ),
             })
 
+    dismissed = set(manifest.dismissed_conflicts or [])
+    if dismissed:
+        for c in conflicts:
+            c["dismissed"] = c["id"] in dismissed
+        conflicts = [c for c in conflicts if not c["dismissed"]]
+
     sev_rank = {"error": 0, "warning": 1, "info": 2}
     conflicts.sort(key=lambda c: (sev_rank.get(c["severity"], 3), c["resource"]))
     return conflicts
+
+
+BULK_ACTIONS = ("dismiss", "undismiss", "disable_losers")
+
+
+def resolve_conflicts(game: str, conflict_ids: list[str], action: str,
+                      game_path: "Path | None" = None) -> dict:
+    """
+    Apply one action to many conflicts at once.
+
+    A finished build reports hundreds of file overlaps that are working as
+    intended, so clearing them one at a time is not realistic. Actions:
+
+      dismiss         - hide these conflicts from the list. Nothing on disk
+                        changes; it only records that they have been reviewed.
+      undismiss       - bring them back.
+      disable_losers  - for file overlaps, turn off every mod whose version is
+                        being shadowed, leaving the winner active. Declared
+                        incompatibilities are skipped, because which side to
+                        keep is a judgement call the player has to make.
+
+    Returns {action, requested, dismissed?, disabled:[names], skipped:[...]}.
+    """
+    if action not in BULK_ACTIONS:
+        raise ValueError(f"Unknown bulk action: {action}")
+
+    manifest = load_manifest(game)
+    wanted = set(conflict_ids or [])
+    result: dict = {"action": action, "requested": len(wanted),
+                    "disabled": [], "skipped": [], "dismissed": 0}
+
+    if action in ("dismiss", "undismiss"):
+        current = set(getattr(manifest, "dismissed_conflicts", []) or [])
+        current = (current | wanted) if action == "dismiss" else (current - wanted)
+        manifest.dismissed_conflicts = sorted(current)
+        save_manifest(manifest)
+        result["dismissed"] = len(manifest.dismissed_conflicts)
+        return result
+
+    # disable_losers
+    conflicts = {c["id"]: c for c in compute_conflicts(game)}
+    to_disable: dict[str, str] = {}   # mod_id -> name
+    for cid in wanted:
+        c = conflicts.get(cid)
+        if not c:
+            result["skipped"].append({"id": cid, "reason": "not found"})
+            continue
+        if c["type"] == "declared":
+            result["skipped"].append(
+                {"id": cid, "reason": "declared incompatibility needs a manual choice"})
+            continue
+        winner_lid = next((p["logical_id"] for p in c["participants"]
+                           if p["mod_id"] == c.get("winner_mod_id")), None)
+        for p in c["participants"]:
+            if p["logical_id"] != winner_lid and p["enabled"]:
+                to_disable[p["mod_id"]] = p["mod_name"]
+
+    for mod_id, name in to_disable.items():
+        try:
+            disable(game, game_path, mod_id)
+            result["disabled"].append(name)
+        except Exception as e:
+            result["skipped"].append({"id": mod_id, "reason": str(e)[:120]})
+    return result
 
 
 def _normalize(s: str) -> str:

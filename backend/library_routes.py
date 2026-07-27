@@ -10,11 +10,12 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 import config as cfg
 from backend.models import (
+    ResolveConflictsRequest,
     ImportFolderRequest,
     ImportRequest,
     ReorderRequest,
@@ -207,6 +208,40 @@ def reorder_mods(req: ReorderRequest, profile: str = Query("")) -> dict:
 def get_conflicts(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     scope, _root, _gt = _resolve(game, profile)
     return {"conflicts": mod_manager.compute_conflicts(scope)}
+
+
+@library_router.post("/conflicts/resolve")
+def resolve_conflicts(req: ResolveConflictsRequest,
+                      game: str = Query("KOTOR1"),
+                      profile: str = Query("")) -> dict:
+    """
+    Apply one action to many conflicts at once.
+
+    A completed build reports hundreds of intentional file overlaps, so the list
+    is only usable if it can be cleared in bulk. Pass ids explicitly, or set
+    all_of_severity to sweep everything at one level (typically "info").
+    """
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    scope, root, _gt = _resolve(game, profile)
+
+    ids = list(req.conflict_ids or [])
+    if req.all_of_severity:
+        ids += [c["id"] for c in mod_manager.compute_conflicts(scope)
+                if c["severity"] == req.all_of_severity]
+    if not ids:
+        return {"ok": True, "action": req.action, "requested": 0,
+                "disabled": [], "skipped": [], "dismissed": 0}
+
+    try:
+        result = mod_manager.resolve_conflicts(
+            scope, sorted(set(ids)), req.action, game_path=root)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, **result}
 
 
 # ---------------------------------------------------------------------------
