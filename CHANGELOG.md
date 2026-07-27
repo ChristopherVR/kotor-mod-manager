@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.16.1] - 2026-07-27
+
+### Bug Fixes
+
+- Show every mod in a build, not just the ones from DeadlyStream
 ## [0.16.0] - 2026-07-27
 
 ### Features
