@@ -88,7 +88,9 @@ def test_the_winner_is_not_also_listed_as_shadowed(manifest):
         _mod("Character Textures & Model Fixes", "c1", ["Override/a.2da"],
              source_ref="2659", build_key="k1_spoilerfree", load_order=2),
     ]
-    c = compute_conflicts("KOTOR1")[0]
+    # These are curated-build overlaps, which are informational and therefore
+    # excluded by default; ask for them explicitly.
+    c = compute_conflicts("KOTOR1", include_info=True)[0]
     desc = c["description"]
     assert desc.count("KOTOR Community Patch") == 1
     assert desc.count("Character Textures & Model Fixes") == 1
@@ -104,7 +106,10 @@ def test_overlap_between_curated_mods_is_informational(manifest):
         _mod("Character Textures", "b", ["Override/c.tga"],
              build_key="k1_spoilerfree", load_order=1),
     ]
-    assert compute_conflicts("KOTOR1")[0]["severity"] == "info"
+    assert compute_conflicts("KOTOR1", include_info=True)[0]["severity"] == "info"
+    # ... and it must not appear in the default list, which is what the
+    # Conflicts screen shows.
+    assert compute_conflicts("KOTOR1") == []
 
 
 def test_overlap_with_a_hand_imported_mod_is_still_a_warning(manifest):
@@ -126,14 +131,14 @@ def test_dismiss_hides_conflicts_and_undismiss_restores_them(manifest):
         _mod("A", "a", ["Override/f.tga"]),
         _mod("B", "b", ["Override/f.tga"], load_order=1),
     ]
-    ids = [c["id"] for c in compute_conflicts("KOTOR1")]
+    ids = [c["id"] for c in compute_conflicts("KOTOR1", include_info=True)]
     assert ids
 
     resolve_conflicts("KOTOR1", ids, "dismiss")
-    assert compute_conflicts("KOTOR1") == []
+    assert compute_conflicts("KOTOR1", include_info=True) == []
 
     resolve_conflicts("KOTOR1", ids, "undismiss")
-    assert len(compute_conflicts("KOTOR1")) == len(ids)
+    assert len(compute_conflicts("KOTOR1", include_info=True)) == len(ids)
 
 
 def test_declared_conflicts_are_never_auto_resolved(manifest):

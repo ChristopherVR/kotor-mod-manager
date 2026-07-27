@@ -38,6 +38,10 @@ export interface BuildMod {
   description?: string;
   author?: string;
   directive_summary?: string;
+  /** Where the mod is hosted, and whether the app can fetch it unattended. */
+  source_host?: string;
+  source_label?: string;
+  auto_downloadable?: boolean;
   installed?: boolean;
 }
 
@@ -284,6 +288,16 @@ export const api = {
           failed: { mod: string; reason: string }[]; requested: number }>(
       `/api/library/bulk/uninstall?profile=${encodeURIComponent(profile)}`,
       { method: "POST", body: JSON.stringify({ mod_ids, force }) }),
+  cacheStats: (profile: string) =>
+    req<{ path: string; total_bytes: number; count: number; in_use_bytes: number;
+          entries: { name: string; bytes: number; in_use: boolean; files: number }[] }>(
+      `/api/cache?profile=${encodeURIComponent(profile)}`),
+  clearCache: (profile: string, opts: { keep_installed?: boolean; names?: string[] }) =>
+    req<{ ok: boolean; removed: string[]; freed_bytes: number;
+          failed: { name: string; reason: string }[] }>(
+      `/api/cache/clear?profile=${encodeURIComponent(profile)}`,
+      { method: "POST", body: JSON.stringify({
+          keep_installed: opts.keep_installed ?? true, names: opts.names ?? [] }) }),
   baselineStatus: (profile: string) =>
     req<{ has_baseline: boolean; game_path: string }>(
       `/api/library/baseline?profile=${encodeURIComponent(profile)}`),

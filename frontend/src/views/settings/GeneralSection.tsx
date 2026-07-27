@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, HardDrive } from "lucide-react";
 import { api, type Settings } from "@/lib/api";
 import { pickDirectory } from "@/lib/tauri";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,38 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [soundOn, setSoundOn] = useState(isUiSoundEnabled());
+  // Downloaded archives are kept so reinstalling a build does not fetch tens of
+  // gigabytes again. That is worth having, and worth being able to reclaim.
+  const [cache, setCache] = useState<{
+    total_bytes: number; count: number; in_use_bytes: number; path: string;
+    entries: { name: string; bytes: number; in_use: boolean }[];
+  } | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [confirmClear, setConfirmClear] = useState<"unused" | "all" | null>(null);
+
+  const loadCache = () => {
+    api.cacheStats("KOTOR1").then(setCache).catch(() => setCache(null));
+  };
+  useEffect(loadCache, []);
+
+  const gb = (n: number) => `${(n / 1024 ** 3).toFixed(2)} GB`;
+
+  const doClear = async (keepInstalled: boolean) => {
+    setClearing(true);
+    try {
+      const r = await api.clearCache("KOTOR1", { keep_installed: keepInstalled });
+      addLog(
+        `Removed ${r.removed.length} cached download(s), freeing ${gb(r.freed_bytes)}.`,
+        r.removed.length ? "success" : "muted");
+      r.failed.forEach(f => addLog(`Could not remove ${f.name}: ${f.reason}`, "warning"));
+      loadCache();
+    } catch (e: any) {
+      addLog(`Could not clear the cache: ${e?.message ?? "error"}`, "error");
+    } finally {
+      setClearing(false);
+      setConfirmClear(null);
+    }
+  };
 
   const toggleSound = (on: boolean) => {
     setSoundOn(on);
@@ -112,6 +144,89 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
             </Button>
             {saved && <span className="text-xs text-[hsl(var(--success))]">{t("common.saved")}</span>}
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HardDrive className="size-4" />
+            Downloaded mods
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-muted-foreground">
+            Mods you download are kept so installing a build again does not have
+            to fetch them a second time. A full KOTOR 1 build runs to tens of
+            gigabytes, so you may want that space back once you are happy with
+            your install.
+          </p>
+
+          {cache === null ? (
+            <p className="text-xs text-muted-foreground">Checking…</p>
+          ) : cache.count === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing is cached yet.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                <span className="text-2xl font-semibold tabular-nums">
+                  {gb(cache.total_bytes)}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {cache.count} mod{cache.count === 1 ? "" : "s"} cached
+                  {cache.in_use_bytes > 0 &&
+                    ` · ${gb(cache.in_use_bytes)} belongs to mods you have installed`}
+                </span>
+              </div>
+
+              <ul className="space-y-1">
+                {cache.entries.slice(0, 5).map(e => (
+                  <li key={e.name} className="flex items-center gap-2 text-xs">
+                    <span className="w-20 shrink-0 text-right tabular-nums text-muted-foreground">
+                      {gb(e.bytes)}
+                    </span>
+                    <span className="truncate" title={e.name}>{e.name}</span>
+                    {e.in_use && (
+                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                        installed
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {confirmClear ? (
+                  <>
+                    <span className="text-xs text-[hsl(var(--destructive))]">
+                      {confirmClear === "all"
+                        ? `Delete all ${gb(cache.total_bytes)}? Installing again will re-download.`
+                        : `Delete cached downloads for mods you have not installed?`}
+                    </span>
+                    <Button size="sm" variant="destructive" disabled={clearing}
+                      onClick={() => doClear(confirmClear === "unused")}>
+                      Yes, delete
+                    </Button>
+                    <Button size="sm" variant="ghost" disabled={clearing}
+                      onClick={() => setConfirmClear(null)}>
+                      Cancel
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="sm" variant="outline" disabled={clearing}
+                      onClick={() => setConfirmClear("unused")}>
+                      Clear unused
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={clearing}
+                      onClick={() => setConfirmClear("all")}>
+                      Clear everything
+                    </Button>
+                  </>
+                )}
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </>

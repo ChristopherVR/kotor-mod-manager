@@ -261,6 +261,33 @@ class Pipeline:
         finally:
             self._running = False
             self._current = None
+            self._log_overlap_summary()
+
+    def _log_overlap_summary(self) -> None:
+        """
+        Report file overlaps once, in the activity log, rather than as conflicts.
+
+        A curated build produces hundreds of them by design - the guide picked
+        these mods together and the install order decides which wins - so
+        listing them as conflicts buries the few that matter. Recording the
+        count here keeps the information without the false alarm.
+        """
+        if not self._game_key:
+            return
+        try:
+            from installer import mod_manager
+            s = mod_manager.conflict_summary(self._game_key)
+            if s["info"]:
+                self._log(
+                    f"{s['info']} file(s) are provided by more than one mod. The "
+                    f"build's install order decides which one wins, so no action "
+                    f"is needed.", "muted")
+            if s["error"] or s["warning"]:
+                self._log(
+                    f"{s['error'] + s['warning']} conflict(s) need a look - see "
+                    f"the Conflicts tab.", "warning")
+        except Exception:
+            pass
 
     def _download_mod(self, pm: PipelineMod) -> None:
         """Download all files for a mod. Called concurrently; never raises."""

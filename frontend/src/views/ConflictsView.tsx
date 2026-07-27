@@ -96,43 +96,7 @@ export function ConflictsView({
     () => allGroups.filter(g => g.items[0]?.type !== "declared" && g.severity !== "info"),
     [allGroups],
   );
-  const infoGroups = useMemo(
-    () => allGroups.filter(g => g.items[0]?.type !== "declared" && g.severity === "info"),
-    [allGroups],
-  );
-  const [showInfo, setShowInfo] = useState(false);
-  const [busy, setBusy] = useState(false);
 
-  const bulk = useCallback(async (
-    action: "dismiss" | "undismiss" | "disable_losers",
-    ids?: string[],
-  ) => {
-    if (!activeProfile) return;
-    setBusy(true);
-    try {
-      const r = await api.resolveConflicts(activeProfile, {
-        action,
-        ...(ids ? { conflict_ids: ids } : { all_of_severity: "info" }),
-      });
-      if (action === "disable_losers") {
-        addLog(`Disabled ${r.disabled.length} shadowed mod(s).`, "success");
-        r.skipped.forEach(s => addLog(`Skipped: ${s.reason}`, "muted"));
-      } else {
-        addLog(
-          action === "dismiss"
-            ? `Hid ${r.requested} conflict(s) you have reviewed.`
-            : `Restored previously hidden conflicts.`,
-          "success",
-        );
-      }
-      await load();
-      onResolved();
-    } catch {
-      addLog("Could not apply that to the selected conflicts.", "error");
-    } finally {
-      setBusy(false);
-    }
-  }, [activeProfile, addLog, load, onResolved]);
 
   // Sync the tab badge count with the number of actionable conflict groups.
   const prevCount = useRef<number | null>(null);
@@ -149,11 +113,10 @@ export function ConflictsView({
     api.setActiveProfile(id).catch(() => {});
   };
 
-  // Actionable count drives the sidebar badge and the subtitle; the rendered
-  // count also includes the informational overlaps so their summary bar still
-  // appears when nothing needs attention.
+  // Overlaps a curated build settles by install order are not conflicts, so the
+  // backend no longer returns them at all. Everything left here needs a look.
   const actionableCount = declaredGroups.length + fileGroups.length;
-  const visibleCount = actionableCount + infoGroups.length;
+  const visibleCount = actionableCount;
 
   // Subtitle that distinguishes real incompatibilities from load-order notes.
   const subtitle = useMemo(() => {
@@ -220,57 +183,6 @@ export function ConflictsView({
                     onResolved={handleResolved}
                   />
                 ))}
-              </section>
-            )}
-
-            {/* Curated-build overlaps: counted, hidden by default, clearable. */}
-            {infoGroups.length > 0 && (
-              <section className="rounded-md border bg-card/40 px-3 py-2.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-medium text-foreground">
-                      {infoGroups.length}
-                    </span>{" "}
-                    file overlap{infoGroups.length === 1 ? "" : "s"} between mods in
-                    your builds. The install order already decides these, so no
-                    action is needed.
-                  </p>
-                  <div className="ml-auto flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowInfo(v => !v)}
-                      className="rounded border px-2 py-1 text-xs hover:bg-accent"
-                    >
-                      {showInfo ? "Hide details" : "Show details"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => bulk("dismiss")}
-                      className="rounded border px-2 py-1 text-xs hover:bg-accent disabled:opacity-50"
-                    >
-                      Mark all reviewed
-                    </button>
-                  </div>
-                </div>
-                {showInfo && (
-                  <div className="mt-2 space-y-1">
-                    {infoGroups.slice(0, 100).map(g => (
-                      <ConflictCard
-                        key={g.gkey}
-                        group={g}
-                        profile={activeProfile}
-                        addLog={addLog}
-                        onResolved={handleResolved}
-                      />
-                    ))}
-                    {infoGroups.length > 100 && (
-                      <p className="px-1 pt-1 text-xs text-muted-foreground">
-                        Showing the first 100 of {infoGroups.length}.
-                      </p>
-                    )}
-                  </div>
-                )}
               </section>
             )}
 

@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 import config as cfg
 from backend.models import (
     BulkModRequest,
+    ClearCacheRequest,
     ResolveConflictsRequest,
     ImportFolderRequest,
     ImportRequest,
@@ -167,6 +168,46 @@ def _toggle(mod_id: str, game: str, profile: str, action: str):
 # FastAPI matches in declaration order, so with the parameterised route
 # first, a request to /library/bulk/uninstall binds mod_id="bulk" and
 # fails with "Mod bulk not found" instead of reaching this handler.
+@library_router.get("/cache")
+def get_cache(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """What the downloaded-mod cache currently holds."""
+    scope, _root, _gt = _resolve(game, profile)
+    refs = {str(m.source_ref) for m in mod_manager.load_manifest(scope).mods
+            if m.source_ref}
+    return mod_manager.cache_stats(_download_dir(), in_use_refs=refs)
+
+
+@library_router.post("/cache/clear")
+def clear_cache(req: ClearCacheRequest, game: str = Query("KOTOR1"),
+                profile: str = Query("")) -> dict:
+    """
+    Delete cached downloads.
+
+    keep_installed spares the archives belonging to mods that are still
+    installed, so a later repair or reinstall does not have to fetch them again.
+    """
+    busy = _guard_not_running()
+    if busy:
+        return busy
+    scope, _root, _gt = _resolve(game, profile)
+    keep = set()
+    if req.keep_installed:
+        keep = {str(m.source_ref) for m in mod_manager.load_manifest(scope).mods
+                if m.source_ref}
+
+    _publish({"type": "log", "message": "Clearing cached downloads…",
+              "tag": "info"})
+    result = mod_manager.clear_cache(
+        _download_dir(), keep_refs=keep, names=req.names or None,
+        on_log=lambda m: _publish({"type": "log", "message": m, "tag": "muted"}))
+    mb = result["freed_bytes"] / (1024 * 1024)
+    _publish({"type": "log",
+              "message": f"Removed {len(result['removed'])} cached download(s), "
+                         f"freeing {mb:.0f} MB.",
+              "tag": "success" if result["removed"] else "muted"})
+    return {"ok": True, **result}
+
+
 @library_router.get("/library/baseline")
 def baseline_status(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     """Whether a clean snapshot exists to reset back to."""

@@ -614,11 +614,18 @@ def _logical_id(mod: "InstalledMod") -> str:
     return mod.id
 
 
-def compute_conflicts(game: str) -> list[dict]:
+def compute_conflicts(game: str, include_info: bool = False) -> list[dict]:
     """
     Compute file-level conflicts across ENABLED mods. Returns UI-shaped dicts:
     {id, resource, type, severity, participants:[{mod_id,mod_name,enabled}],
      winner_mod_id}.
+
+    include_info: whether to return the overlaps a curated build settles by
+    install order. Those are not conflicts - the guide chose these mods
+    together and the later one is meant to win - and on a finished build there
+    are hundreds of them, which buries the handful that do need attention. They
+    are excluded by default and available for anyone who wants the full
+    picture.
     """
     manifest = load_manifest(game)
     # rel_lower -> list of (load_order, mod, kind)
@@ -805,9 +812,115 @@ def compute_conflicts(game: str) -> list[dict]:
             c["dismissed"] = c["id"] in dismissed
         conflicts = [c for c in conflicts if not c["dismissed"]]
 
+    if not include_info:
+        conflicts = [c for c in conflicts if c["severity"] != "info"]
+
     sev_rank = {"error": 0, "warning": 1, "info": 2}
     conflicts.sort(key=lambda c: (sev_rank.get(c["severity"], 3), c["resource"]))
     return conflicts
+
+
+def conflict_summary(game: str) -> dict:
+    """Counts by severity, including the informational overlaps. Used to report
+    an install's outcome in the activity log without listing every overlap."""
+    from collections import Counter
+    counts = Counter(c["severity"] for c in compute_conflicts(game, include_info=True))
+    return {"error": counts.get("error", 0), "warning": counts.get("warning", 0),
+            "info": counts.get("info", 0)}
+
+
+# ---------------------------------------------------------------------------
+# Download cache
+# ---------------------------------------------------------------------------
+
+_CACHE_MANIFEST = ".downloads.json"
+
+
+def _dir_size(path: Path) -> int:
+    total = 0
+    try:
+        for f in path.rglob("*"):
+            if f.is_file():
+                try:
+                    total += f.stat().st_size
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return total
+
+
+def cache_stats(download_dir: Path, in_use_refs: "Optional[set]" = None) -> dict:
+    """
+    Summarise the downloaded-mod cache.
+
+    Reinstalling a build re-uses these archives instead of downloading gigabytes
+    again, so the cache is worth keeping - but a K1 build runs to tens of GB and
+    a cutscene pack alone is 15 GB, so it also has to be possible to see what is
+    there and reclaim the space.
+
+    in_use_refs: source_refs of currently-installed mods. Folders matching those
+    are reported separately so clearing can spare anything still installed.
+    """
+    entries: list[dict] = []
+    if not download_dir.is_dir():
+        return {"path": str(download_dir), "total_bytes": 0, "entries": [],
+                "count": 0, "in_use_bytes": 0}
+
+    in_use_refs = in_use_refs or set()
+    total = in_use_bytes = 0
+    for d in sorted(download_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        size = _dir_size(d)
+        # Folders are named "<source_ref>_<slug>" by the pipeline.
+        ref = d.name.split("_", 1)[0]
+        used = ref in in_use_refs or f"guide:{ref.replace('guide', '')}" in in_use_refs
+        total += size
+        if used:
+            in_use_bytes += size
+        entries.append({"name": d.name, "bytes": size, "in_use": used,
+                        "files": sum(1 for f in d.iterdir()
+                                     if f.is_file() and f.name != _CACHE_MANIFEST)})
+    entries.sort(key=lambda e: e["bytes"], reverse=True)
+    return {"path": str(download_dir), "total_bytes": total, "entries": entries,
+            "count": len(entries), "in_use_bytes": in_use_bytes}
+
+
+def clear_cache(download_dir: Path, keep_refs: "Optional[set]" = None,
+                names: "Optional[list[str]]" = None,
+                on_log: "Optional[Callable[[str], None]]" = None) -> dict:
+    """
+    Delete cached downloads.
+
+    names: only these folders. Otherwise everything except keep_refs, which is
+    how "clear everything I am not currently using" is expressed - re-downloading
+    an installed mod's archive is wasted bandwidth if the mod is staying put.
+    """
+    removed, freed, failed = [], 0, []
+    if not download_dir.is_dir():
+        return {"removed": [], "freed_bytes": 0, "failed": []}
+
+    keep_refs = keep_refs or set()
+    wanted = set(names or [])
+    for d in sorted(download_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        if wanted:
+            if d.name not in wanted:
+                continue
+        elif d.name.split("_", 1)[0] in keep_refs:
+            continue
+        size = _dir_size(d)
+        try:
+            shutil.rmtree(d)
+            removed.append(d.name)
+            freed += size
+            if on_log:
+                on_log(f"Removed cached download: {d.name}")
+        except OSError as e:
+            failed.append({"name": d.name, "reason": str(e)[:160]})
+    return {"removed": removed, "freed_bytes": freed, "failed": failed}
 
 
 # ---------------------------------------------------------------------------
