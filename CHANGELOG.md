@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.16.0] - 2026-07-27
+
+### Features
+
+- Follow the mod build guide's fine print automatically
+- Download Nexus mods without leaving the app
+- Clear conflicts and remove mods in bulk, and show what actually clashes
+- Reset your game back to clean, and stop offering removals that cannot work
+- Manage your downloaded mods, see where each comes from, and quieten the conflicts list
+- Open your downloads folder from Settings
+- Remember mod lists between visits, and flag mods you must fetch yourself
+- Work out where each mod is downloaded from
+
+### Bug Fixes
+
+- Install mods buried inside long or nested folders
+- Clear duplicate textures that can crash the game
+- Stop a mod's patch installing before the mod itself
+- Stop the conflicts list crying wolf, and let you clear it in bulk
+- Stop flagging a mod's own add-on as incompatible with it
+- Show what each mod changes instead of an unexplained conflict warning
+- Make bulk uninstall actually run, and show it working
+
+### Miscellaneous
+
+- Build guide accuracy, conflict clarity, and mod management
 ## [0.15.8] - 2026-07-02
 
 ### Bug Fixes
