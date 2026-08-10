@@ -1,12 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import path from "path";
+import { fileURLToPath } from "node:url";
 
 // Tauri expects a fixed dev port and no clearing of the screen so Rust logs show.
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   clearScreen: false,
   server: {
