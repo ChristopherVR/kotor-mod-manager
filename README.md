@@ -163,9 +163,14 @@ open-source reimplementation that reads the *identical* `tslpatchdata` /
 `changes.ini` / `namespaces.ini` format. One HoloPatcher engine installs **any**
 TSLPatcher mod with no GUI.
 
-HoloPatcher is bundled inside the released exe automatically. The build fetches it
-via `tools/setup_holopatcher.py` and embeds it. You can override the bundled copy
-with the `KOTOR_HOLOPATCHER_EXE` environment variable or a
+HoloPatcher is bundled inside the released exe automatically. The build compiles it
+via `tools/setup_holopatcher.py`, from a pinned PyKotor commit, and embeds it.
+Pinning keeps the shipped patcher reproducible: the script refuses to build if the
+source it checks out is not the pinned commit, so bumping it is a deliberate edit
+(`PYKOTOR_REF` / `PYKOTOR_COMMIT`). Building requires `git` on PATH. If you already
+have a PyKotor checkout, point at it with `--source <dir>`; to use a patcher you
+built elsewhere, pass the `.exe` or `.zip` as an argument. You can override the
+bundled copy with the `KOTOR_HOLOPATCHER_EXE` environment variable or a
 `tools/HoloPatcher/HoloPatcher.exe` next to the app.
 
 ### Run from source
@@ -175,7 +180,7 @@ Prerequisites: Python 3.12, Node 20+, Rust (stable).
 ```bash
 # 1. Python backend
 pip install -r requirements.txt
-python tools/setup_holopatcher.py          # fetch the headless shim once
+python tools/setup_holopatcher.py          # build the headless shim once
 python -m backend.server --port 8756       # runs the API (leave running)
 
 # 2. Frontend (in another terminal)
