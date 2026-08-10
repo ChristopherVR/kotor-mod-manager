@@ -56,6 +56,20 @@ def test_walk_files_returns_usable_relative_paths(tmp_path):
         assert abs_path.name == rel.name
 
 
+def _os_handles_long_paths(path) -> bool:
+    """
+    Whether Windows itself copes with a path past MAX_PATH without the \\\\?\\
+    prefix. It is an opt-in machine setting (LongPathsEnabled), off for most
+    players but on for CI runners, so the blind spot below only exists on some
+    machines.
+    """
+    try:
+        with open(path, "rb"):
+            return True
+    except OSError:
+        return False
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="MAX_PATH is Windows-only")
 def test_plain_rglob_would_have_missed_it(tmp_path):
     """
@@ -69,11 +83,17 @@ def test_plain_rglob_would_have_missed_it(tmp_path):
     folder = "A Rather Long Mod Folder Name For KOTOR Robes"
     depth = (280 - len(str(tmp_path))) // (len(folder) + 1) + 1
     leaf = _deep_mod(tmp_path, depth=max(depth, 2), folder=folder)
-    assert len(str(leaf / "PMBI55.tga")) > 260, "fixture failed to cross MAX_PATH"
+    target = leaf / "PMBI55.tga"
+    assert len(str(target)) > 260, "fixture failed to cross MAX_PATH"
 
-    plain = {p.name for p in tmp_path.rglob("*") if p.is_file()}
     walked = {rel.name for _a, rel in walk_files(tmp_path)}
     assert "PMBI55.tga" in walked
+
+    if _os_handles_long_paths(target):
+        pytest.skip("long path support is on for this machine, so there is no "
+                    "blind spot for the naive traversal to fall into")
+
+    plain = {p.name for p in tmp_path.rglob("*") if p.is_file()}
     assert "PMBI55.tga" not in plain
 
 
