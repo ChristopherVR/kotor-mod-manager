@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.16.2] - 2026-08-10
+
+### Bug Fixes
+
+- Stop a damaged settings file from breaking the app for good
+
+### Miscellaneous
+
+- Bump actions/setup-node from 6 to 7
+- Bump actions/setup-python from 6 to 7
+- Bump taiki-e/install-action from 2 to 2.85.5
+- Bump the cargo-minor-and-patch group across 1 directory with 4 updates
+- Bump the npm-minor-and-patch group across 1 directory with 11 updates
+- Update pillow requirement from >=12.2.0 to >=12.3.0
+- Update fastapi requirement from >=0.138.1 to >=0.141.1
+- Update uvicorn requirement from >=0.49.0 to >=0.52.1
+- Update cryptography requirement from >=49.0.0 to >=50.0.0
+- Update rarfile requirement from >=4.2 to >=4.5
+- Clear a security warning and a build warning after the dependency updates
 ## [0.16.1] - 2026-07-27
 
 ### Bug Fixes
