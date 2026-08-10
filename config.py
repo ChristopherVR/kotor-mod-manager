@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import uuid
@@ -50,8 +51,10 @@ DEADLYSTREAM_DOWNLOAD = "https://deadlystream.com/files/file/{file_id}/?do=downl
 
 
 def _reset_to_defaults() -> dict:
-    """Start over from the built-in defaults and persist them."""
-    fresh = DEFAULTS.copy()
+    """Start over from the built-in defaults and persist them. Deep copied so
+    that editing the returned settings cannot reach back into DEFAULTS and
+    change what "fresh settings" mean for the rest of the run."""
+    fresh = copy.deepcopy(DEFAULTS)
     save(fresh)
     return fresh
 
@@ -81,7 +84,10 @@ def load() -> dict:
     if not isinstance(data, dict):
         _quarantine_bad_config()
         return _reset_to_defaults()
-    merged = {**DEFAULTS, **data}
+    # Deep copied for the same reason: a settings file saved by an older
+    # version is missing newer keys, which would otherwise be filled in with
+    # the shared DEFAULTS lists and edited in place.
+    merged = {**copy.deepcopy(DEFAULTS), **data}
     if _migrate_profiles(merged):
         save(merged)
     return merged

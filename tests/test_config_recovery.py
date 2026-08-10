@@ -82,6 +82,31 @@ def test_settings_still_save_after_corruption(tmp_path, monkeypatch):
     assert cfg.get_custom_build(build["key"]) is not None
 
 
+def test_recovering_does_not_contaminate_the_built_in_defaults(tmp_path, monkeypatch):
+    """Settings handed back after a reset must be the user's own copy, or the
+    next profile they add leaks into what every later reset starts from."""
+    cfg = _fresh_config(tmp_path, monkeypatch)
+    _write_raw(cfg, b"")
+
+    cfg.add_profile("Mine", "KOTOR1", r"C:\Games\KOTOR")
+
+    assert config.DEFAULTS["game_profiles"] == []
+    assert config.DEFAULTS["custom_builds"] == []
+    assert config.DEFAULTS["kotor1_path"] == ""
+
+
+def test_settings_saved_by_an_older_version_do_not_contaminate_defaults(tmp_path, monkeypatch):
+    """A config from before custom builds existed has no custom_builds key, so
+    the merge with the defaults must not hand back the shared list."""
+    cfg = _fresh_config(tmp_path, monkeypatch)
+    _write_raw(cfg, b'{"language": "en", "game_profiles": [], "active_profile": ""}')
+
+    cfg.add_custom_build("My Build", "KOTOR2", "https://example.com/g")
+
+    assert config.DEFAULTS["custom_builds"] == []
+    assert len(cfg.get_custom_builds()) == 1
+
+
 def test_good_config_is_left_alone(tmp_path, monkeypatch):
     cfg = _fresh_config(tmp_path, monkeypatch)
     cfg.save({**config.DEFAULTS, "language": "fr", "game_profiles": [
