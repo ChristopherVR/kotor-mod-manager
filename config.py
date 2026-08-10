@@ -49,13 +49,38 @@ DEADLYSTREAM_LOGIN = "https://deadlystream.com/login/"
 DEADLYSTREAM_DOWNLOAD = "https://deadlystream.com/files/file/{file_id}/?do=download&csrfKey={csrf_key}"
 
 
+def _reset_to_defaults() -> dict:
+    """Start over from the built-in defaults and persist them."""
+    fresh = DEFAULTS.copy()
+    save(fresh)
+    return fresh
+
+
+def _quarantine_bad_config() -> None:
+    """Move an unreadable config aside so the user still has it if they want
+    to pick settings out of it by hand. Never blocks the app from starting."""
+    try:
+        os.replace(CONFIG_FILE, CONFIG_FILE.with_suffix(".json.corrupt"))
+    except OSError:
+        pass
+
+
 def load() -> dict:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     if not CONFIG_FILE.exists():
-        save(DEFAULTS.copy())
-        return DEFAULTS.copy()
-    with open(CONFIG_FILE, encoding="utf-8") as f:
-        data = json.load(f)
+        return _reset_to_defaults()
+    try:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        # Empty or damaged settings file (a half-written save, a crash mid-write,
+        # antivirus interrupting first run). Keep the old file for reference and
+        # carry on with defaults rather than breaking every later launch.
+        _quarantine_bad_config()
+        return _reset_to_defaults()
+    if not isinstance(data, dict):
+        _quarantine_bad_config()
+        return _reset_to_defaults()
     merged = {**DEFAULTS, **data}
     if _migrate_profiles(merged):
         save(merged)
@@ -63,9 +88,24 @@ def load() -> dict:
 
 
 def save(cfg: dict) -> None:
+    """Write settings atomically: a temp file in the same folder is filled in
+    completely, then swapped over config.json. A crash mid-save leaves the
+    previous settings intact instead of a 0-byte file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+    tmp = CONFIG_FILE.with_suffix(".json.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, CONFIG_FILE)
+    except BaseException:
+        # Don't leave a half-written scratch file lying around.
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def download_dir() -> Path:
