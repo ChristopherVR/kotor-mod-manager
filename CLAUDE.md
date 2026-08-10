@@ -21,3 +21,7 @@ developers. Keep that audience in mind for anything user-facing.
   - Good: `feat: show the real Nexus page for each mod`
   - Good: `fix: stop the installer asking the same question twice`
   - Avoid: `feat: wire NexusValidation into AccountSection useEffect`
+- Never add a `Claude-Session:` trailer, a `Co-Authored-By:` line naming an
+  assistant, or any other link back to an assistant session. These leak into the
+  generated changelog and mean nothing to players. This applies to commit
+  messages, PR descriptions, and issue comments.
