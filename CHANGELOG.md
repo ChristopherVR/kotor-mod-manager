@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.3] - 2026-08-10
+
+### Bug Fixes
+
+- Keep a settings reset from picking up leftovers
+
+### Testing
+
+- Fix the long path check failing on machines that allow long paths
 ## [0.16.2] - 2026-08-10
 
 ### Bug Fixes
