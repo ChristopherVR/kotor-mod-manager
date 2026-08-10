@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.16.4] - 2026-08-10
+
+### Bug Fixes
+
+- Build the mod patcher from source so releases stop failing
 ## [0.16.3] - 2026-08-10
 
 ### Bug Fixes
