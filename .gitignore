@@ -22,8 +22,12 @@ mod_samples/
 *.7z
 *.rar
 
-# Bundled third-party engine (user drops this in; not committed)
+# Bundled third-party engine (built by tools/setup_holopatcher.py; not committed)
 tools/HoloPatcher/
+tools/.pykotor-src/
+tools/.holopatcher-build/
+# PyKotor source checkout made by the build workflow
+.pykotor-src/
 
 # IDE / OS
 .vscode/

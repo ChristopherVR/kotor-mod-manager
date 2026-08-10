@@ -54,14 +54,33 @@ jobs:
           pip install pytest
           python -m pytest tests -q --ignore=tests/test_build_headless.py --ignore=tests/test_install_all_build.py
 
-      - name: Fetch HoloPatcher shim
-        run: python tools/setup_holopatcher.py
+      # HoloPatcher is compiled from a pinned PyKotor commit rather than
+      # downloaded: upstream deleted its GitHub Releases, and pinning the source
+      # keeps the patcher we ship reproducible.
+      - name: Resolve pinned HoloPatcher source version
+        id: holopatcher
+        shell: bash
+        run: echo "ref=$(python tools/setup_holopatcher.py --print-ref)" >> "$GITHUB_OUTPUT"
+
+      - name: Check out HoloPatcher source (pinned)
+        uses: actions/checkout@v7
+        with:
+          repository: NickHugi/PyKotor
+          ref: ${{ steps.holopatcher.outputs.ref }}
+          path: .pykotor-src
+
+      - name: Build HoloPatcher shim
+        run: python tools/setup_holopatcher.py --source .pykotor-src
 
       - name: Verify HoloPatcher present
         shell: pwsh
         run: |
           if (-not (Test-Path "tools/HoloPatcher/HoloPatcher.exe")) {
             Write-Error "HoloPatcher.exe missing - sidecar would not be self-contained."; exit 1
+          }
+          & "tools/HoloPatcher/HoloPatcher.exe" --help | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "HoloPatcher.exe did not run headlessly (exit $LASTEXITCODE)."; exit 1
           }
 
       - name: Build backend sidecar (PyInstaller)
