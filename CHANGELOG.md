@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.16.5] - 2026-08-10
+
+### Documentation
+
+- Explain that the mod patcher is now built, not downloaded
+- Keep assistant session links out of commit messages
 ## [0.16.4] - 2026-08-10
 
 ### Bug Fixes
