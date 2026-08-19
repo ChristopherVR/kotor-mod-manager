@@ -1,10 +1,18 @@
 # Changelog
 
+## [0.16.6] - 2026-08-19
+
+### Miscellaneous
+
+- Bump the npm-minor-and-patch group in /frontend with 3 updates
+- Update uvicorn requirement from >=0.52.1 to >=0.52.3
+- Bump taiki-e/install-action from 2.85.5 to 2.85.13
 ## [0.16.5] - 2026-08-10
 
 ### Documentation
 
 - Explain that the mod patcher is now built, not downloaded
+- Keep assistant session links out of commit messages
 - Keep assistant session links out of commit messages
 ## [0.16.4] - 2026-08-10
 
