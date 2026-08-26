@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.10] - 2026-08-26
+
+### Miscellaneous
+
+- Update lxml requirement from >=6.1.1 to >=6.1.2 (#62)
+- Update uvicorn requirement from >=0.52.3 to >=0.52.4 (#60)
+- Bump the npm-minor-and-patch group in /frontend with 3 updates (#63)
 ## [0.16.9] - 2026-08-26
 
 ### Miscellaneous
