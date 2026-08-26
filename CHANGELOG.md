@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.16.8] - 2026-08-26
+
+### Miscellaneous
+
+- Fix pull request build checks failing to start
 ## [0.16.7] - 2026-08-26
 
 ### Bug Fixes
