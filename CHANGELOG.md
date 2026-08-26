@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.16.11] - 2026-08-26
+
+### Miscellaneous
+
+- Bump typescript from 6.0.3 to 7.0.2 in /frontend (#57)
 ## [0.16.10] - 2026-08-26
 
 ### Miscellaneous
