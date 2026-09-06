@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.16.13] - 2026-09-06
+
+### Miscellaneous
+
+- Bump the npm-minor-and-patch group in /frontend with 3 updates (#65)
+- Update cryptography requirement from >=50.0.0 to >=50.0.1 (#66)
 ## [0.16.12] - 2026-09-06
 
 ### Miscellaneous
