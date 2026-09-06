@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.16.12] - 2026-09-06
+
+### Miscellaneous
+
+- Bump taiki-e/install-action from 2.86.5 to 2.87.0 (#64)
 ## [0.16.11] - 2026-08-26
 
 ### Miscellaneous
