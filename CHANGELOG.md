@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.14] - 2026-09-09
+
+### Miscellaneous
+
+- Bump taiki-e/install-action from 2.87.0 to 2.87.5 (#70)
+- Bump tauri-plugin-dialog (#67)
+- Update lxml requirement from >=6.1.2 to >=6.1.3 (#68)
+- Bump the npm-minor-and-patch group in /frontend with 5 updates (#69)
 ## [0.16.13] - 2026-09-06
 
 ### Miscellaneous
@@ -40,6 +48,10 @@
 - Get pull request build checks actually running
 ## [0.16.6] - 2026-08-19
 
+### Documentation
+
+- Keep assistant session links out of commit messages
+
 ### Miscellaneous
 
 - Bump the npm-minor-and-patch group in /frontend with 3 updates
@@ -50,7 +62,6 @@
 ### Documentation
 
 - Explain that the mod patcher is now built, not downloaded
-- Keep assistant session links out of commit messages
 - Keep assistant session links out of commit messages
 ## [0.16.4] - 2026-08-10
 
@@ -201,6 +212,10 @@
 - Remove encoding error in mod manager that blocked app startup
 ## [0.14.1] - 2026-06-26
 
+### Features
+
+- Automate all known mods so none require manual installation steps
+
 ### Testing
 
 - Add coverage for download filtering and folder exclusion parsing
@@ -209,7 +224,6 @@
 ### Features
 
 - Auto-apply compat patches and multi-run patcher options during install
-- Automate all known mods so none require manual installation steps
 ## [0.13.0] - 2026-06-26
 
 ### Features
@@ -229,17 +243,19 @@
 
 ### Bug Fixes
 
+- App build error after adding library change detection
 - Build error caused by TypeScript narrowing in library event handler
 - Show friendly install method names in the mod library
 ## [0.10.0] - 2026-06-26
 
 ### Features
 
+- Show which mods are already installed when you load a mod list
 - Download up to 3 mods at the same time to save waiting
 
 ### Bug Fixes
 
-- App build error after adding library change detection
+- Keep the conflicts badge in sync and make conflicts easier to understand
 ## [0.9.0] - 2026-06-25
 
 ### Features
@@ -253,20 +269,21 @@
 - Show why a mod failed to install
 - Add your own mod builds, not just the built-in ones
 - Configure the mod build source site in Account settings
-- Show which mods are already installed when you load a mod list
 
 ### Bug Fixes
 
 - Stop installs failing when antivirus briefly locks a file
 - Keep the conflicts list from vanishing after you resolve one
 - Make "Open download folder" actually open a folder
-- Keep the conflicts badge in sync and make conflicts easier to understand
+
+### Miscellaneous
+
+- Merge dependency updates (23 Dependabot PRs)
 ## [0.8.1] - 2026-06-22
 
 ### Miscellaneous
 
 - Update the app's libraries and tools to their latest versions
-- Merge dependency updates (23 Dependabot PRs)
 ## [0.8.0] - 2026-06-22
 
 ### Features
@@ -293,6 +310,10 @@
 - Tidy the Releases page each week, keeping the 5 newest downloads
 ## [0.7.1] - 2026-06-21
 
+### Features
+
+- **ui:** Library filters/thumbnails/context menus, log export, surface patcher errors
+
 ### Bug Fixes
 
 - **security:** Avoid building a command string from a path in reveal_path
@@ -302,7 +323,6 @@
 
 - Simpler install screen and a peek button for your Nexus key
 - Optional KOTOR menu click sound (off by default)
-- **ui:** Library filters/thumbnails/context menus, log export, surface patcher errors
 ## [0.6.1] - 2026-06-21
 
 ### Build & CI
