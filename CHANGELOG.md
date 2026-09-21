@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.16.17] - 2026-09-21
+
+### Miscellaneous
+
+- Add GPL-3.0 license
 ## [0.16.16] - 2026-09-21
 
 ### Miscellaneous
