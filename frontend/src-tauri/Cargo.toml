@@ -3,6 +3,7 @@ name = "kotor-mod-installer"
 version = "0.16.16"
 description = "KOTOR Mod Installer"
 authors = ["Christopher van Rooyen"]
+license = "GPL-3.0-only"
 edition = "2021"
 rust-version = "1.77"
 
