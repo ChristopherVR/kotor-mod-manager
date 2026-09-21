@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.16] - 2026-09-21
+
+### Miscellaneous
+
+- Update uvicorn requirement from >=0.52.4 to >=0.53.0
+- Bump taiki-e/install-action from 2.87.11 to 2.87.15
+- Bump the npm-minor-and-patch group in /frontend with 2 updates
 ## [0.16.15] - 2026-09-14
 
 ### Miscellaneous
