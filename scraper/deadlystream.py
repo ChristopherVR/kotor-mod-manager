@@ -55,15 +55,37 @@ def _parse_content_disposition(cd: str) -> str:
     return ""
 
 
-def download_name_matches(record_name: str, keep_names: list[str]) -> bool:
+_ARCHIVE_SUFFIXES = (".zip", ".7z", ".rar")
+
+
+def _norm_stem(name: str) -> str:
+    """A file name without its extension, lower-cased with punctuation removed."""
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    return re.sub(r"[^a-z0-9]", "", stem.lower())
+
+
+def exact_keep_matches(names: list[str], keep_names: list[str]) -> list[str]:
+    """The names that ARE one of the "download only X" files, as opposed to
+    merely containing its name (an add-on 'X_Yavin4.7z' is not 'X.7z')."""
+    stems = {_norm_stem(k) for k in keep_names if _norm_stem(k)}
+    return [n for n in names if _norm_stem(n) in stems]
+
+
+def download_name_matches(record_name: str, keep_names: list[str],
+                          strict: bool = False) -> bool:
     """
     Whether a download record matches one of the build guide's "download only X"
     filenames. Comparison ignores case, punctuation, and the file extension so
     'hd_twilek_female.rar' matches a record shown as 'HD Twilek Female' etc.
     Empty keep_names means "keep everything".
+
+    strict: only an exact match counts. Without it, a name that merely contains
+    the wanted one also matches, which pulls in a whole family of add-ons.
     """
     if not keep_names:
         return True
+    if strict:
+        return bool(exact_keep_matches([record_name], keep_names))
 
     def norm(s: str) -> str:
         return re.sub(r"[^a-z0-9]", "", s.lower())
@@ -138,8 +160,7 @@ def select_keep_matches(names: list[str], keep_names: list[str]) -> list[str]:
     def stem(s: str) -> str:
         return norm(s.rsplit(".", 1)[0] if "." in s else s)
 
-    keep_stems = {stem(k) for k in keep_names if stem(k)}
-    exact = [n for n in names if stem(n) in keep_stems]
+    exact = exact_keep_matches(names, keep_names)
     if exact:
         return exact
     return [n for n in names if download_name_matches(n, keep_names)]
@@ -619,7 +640,7 @@ class DeadlyStreamClient:
             records = select_resolution_records(records, screen_resolution)
         referer = self._file_page_url(file_id, slug)
 
-        def _fetch(recs, names, excl, lang=""):
+        def _fetch(recs, names, excl, lang="", strict=False):
             out: list[Path] = []
             taken: set = set()
             for rec in recs:
@@ -636,6 +657,7 @@ class DeadlyStreamClient:
                     ignore_names=excl,
                     taken_names=taken,
                     language=lang,
+                    strict_keep=strict,
                 )
                 if path is not None:
                     out.append(path)
@@ -647,7 +669,11 @@ class DeadlyStreamClient:
         # to downloading everything rather than nothing.
         if len(records) > 1:
             if keep_names:
-                paths = _fetch(records, keep_names, ignore_names, language)
+                # Look for the exact file first, so add-ons and variants whose
+                # names merely start the same way are not downloaded at all.
+                paths = _fetch(records, keep_names, ignore_names, language, strict=True)
+                if not paths:
+                    paths = _fetch(records, keep_names, ignore_names, language)
                 if paths:
                     # The per-record substring match can keep a whole variant
                     # family (X, X_1k, X_BOSSR...); narrow to exact matches
@@ -689,6 +715,7 @@ class DeadlyStreamClient:
         pause_event: Optional[threading.Event] = None,
         taken_names: Optional[set] = None,
         language: str = "",
+        strict_keep: bool = False,
     ) -> "Path | None":
         headers = {"Referer": referer} if referer else {}
 
@@ -723,7 +750,7 @@ class DeadlyStreamClient:
 
         # "Download only X" filtering: the per-file name is only reliable here in
         # the response headers, so skip the body of files we were told to ignore.
-        if keep_names and not download_name_matches(filename, keep_names):
+        if keep_names and not download_name_matches(filename, keep_names, strict=strict_keep):
             resp.close()
             return None
         if ignore_names and download_name_excluded(filename, ignore_names):

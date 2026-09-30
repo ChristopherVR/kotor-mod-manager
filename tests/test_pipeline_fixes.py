@@ -780,3 +780,46 @@ def test_other_errors_are_not_retried(tmp_path, monkeypatch):
     p._download_mod(p.mods[0])
     assert len(calls) == 1
     assert p.mods[0].status.name == "ERROR"
+
+
+def test_downloads_keep_starting_while_a_long_install_runs(tmp_path):
+    """The thread that installs mods can be busy for minutes (a patcher, a large
+    extraction). New downloads must not wait for it to come back."""
+    import threading
+    import time
+    mods = []
+    for i in range(12):
+        m = _mod()
+        m.file_id = f"f{i}"
+        mods.append(m)
+    p = _pipeline(tmp_path, mods)
+    downloaded = []
+    installing = threading.Event()
+    release = threading.Event()
+
+    def fake_download(pm):
+        time.sleep(0.05)
+        downloaded.append(pm.build_mod.file_id)
+
+    def slow_install(pm):
+        installing.set()
+        release.wait(10)                      # a patcher that runs for a long time
+
+    p._download_mod = fake_download
+    p._extract_and_install = slow_install
+    p._capture_baseline_once = lambda: None
+    p._apply_layer_order = lambda: None
+    p._resolve_skip_constraints = lambda: None
+    p._check_dependencies = lambda: None
+    p._log_overlap_summary = lambda: None
+    t = threading.Thread(target=p._run)
+    t.start()
+    assert installing.wait(5)
+    deadline = time.time() + 8
+    while len(downloaded) < 12 and time.time() < deadline:
+        time.sleep(0.05)
+    still_installing = not release.is_set()
+    release.set()
+    t.join(15)
+    assert still_installing and len(downloaded) == 12   # all fetched during one install
+    assert not t.is_alive()

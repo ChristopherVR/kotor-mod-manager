@@ -60,6 +60,42 @@ SRC_ROOTS = (
 TOOL_SRC = "Tools/HoloPatcher/src"
 ENTRY_POINT = "__main__.py"
 
+# Fixes applied to the pinned source before it is built, each (file, old, new).
+# They change nothing on Windows. The upstream code is left alone otherwise, so the
+# patcher we ship stays reproducible: a patch whose "old" text is missing stops
+# the build rather than being skipped.
+SOURCE_PATCHES = (
+    # A mod that ships an info.rte makes HoloPatcher import rte_editor, which calls a
+    # Windows-only API when imported. On Linux that raised "module 'ctypes' has no
+    # attribute 'windll'" and opened an error box that waits for a click.
+    ("Libraries/Utility/src/utility/tkinter/rte_editor.py",
+     "import ctypes\nimport json\n",
+     "import ctypes\nimport json\nimport os\n"),
+    ("Libraries/Utility/src/utility/tkinter/rte_editor.py",
+     "ctypes.windll.shcore.SetProcessDpiAwareness(True)  # noqa: FBT003\n",
+     "if os.name == \"nt\":\n    ctypes.windll.shcore.SetProcessDpiAwareness(True)  # noqa: FBT003\n"),
+    # Scripts write -1 as 0xFFFFFFFF (decompiled vanilla scripts do). The built-in
+    # compiler, which HoloPatcher uses off Windows, kept it as 4294967295 and then
+    # failed writing it as a signed 4-byte number: "'i' format requires
+    # -2147483648 <= number <= 2147483647". NWScript ints are 32-bit signed.
+    ("Libraries/PyKotor/src/pykotor/resource/formats/ncs/compiler/lexer.py",
+     "        t.value = IntExpression(int(t.value, 16))\n",
+     "        value = int(t.value, 16)\n"
+     "        if value > 0x7FFFFFFF:  # 32-bit signed: 0xFFFFFFFF is -1\n"
+     "            value -= 1 << 32\n"
+     "        t.value = IntExpression(value)\n"),
+) + tuple(
+    # An int combined with a float is a float: "FloatToInt(50 * fModifier)" is valid
+    # NWScript. The compiler's table recorded the result of int+float, int-float,
+    # int*float and int/float as an int (the float-first forms were right), so it
+    # refused to pass the result to any float function: "Tried to pass an argument
+    # of the incorrect type to 'FloatToInt'".
+    ("Libraries/PyKotor/src/pykotor/resource/formats/ncs/compiler/lexer.py",
+     f"BinaryOperatorMapping(NCSInstructionType.{op}IF, DataType.INT, DataType.INT, DataType.FLOAT)",
+     f"BinaryOperatorMapping(NCSInstructionType.{op}IF, DataType.FLOAT, DataType.INT, DataType.FLOAT)")
+    for op in ("ADD", "SUB", "MUL", "DIV")
+)
+
 # PyKotor's only runtime dependency for the patcher path is ply (the nss
 # compiler lexer); the rest of what HoloPatcher imports is stdlib + tkinter.
 BUILD_REQUIREMENTS = ("pyinstaller>=6", "ply>=3.11,<4")
@@ -109,6 +145,26 @@ def _verify_pinned_commit(src: Path) -> bool:
 # Building
 # ---------------------------------------------------------------------------
 
+def _apply_source_patches(src: Path) -> bool:
+    """Apply SOURCE_PATCHES to the checkout. Safe to repeat on the same tree."""
+    for rel, old, new in SOURCE_PATCHES:
+        path = src / rel
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError as e:
+            print(f"Cannot patch {rel}: {e}")
+            return False
+        if new in text:
+            continue                      # already applied
+        if old not in text:
+            print(f"Cannot patch {rel}: the text to change is not there. "
+                  f"If the pinned PyKotor changed, review SOURCE_PATCHES.")
+            return False
+        path.write_text(text.replace(old, new, 1), encoding="utf-8")
+        print(f"Patched {rel}")
+    return True
+
+
 def _install_build_requirements() -> None:
     print("Installing build requirements...")
     _run([sys.executable, "-m", "pip", "install", "--quiet", *BUILD_REQUIREMENTS])
@@ -118,6 +174,9 @@ def _build_from_source(src: Path) -> bool:
     missing = [r for r in SRC_ROOTS if not (src / r).is_dir()]
     if missing:
         print(f"Not a usable PyKotor checkout ({src}); missing: {', '.join(missing)}")
+        return False
+
+    if not _apply_source_patches(src):
         return False
 
     _install_build_requirements()

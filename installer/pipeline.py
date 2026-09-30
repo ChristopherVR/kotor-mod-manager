@@ -16,7 +16,7 @@ import shutil
 import threading
 import time
 from urllib.parse import unquote
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -264,7 +264,9 @@ class Pipeline:
                 futures: dict = {}   # Future -> PipelineMod, until its install turn
                 queue = list(pending)
                 active: dict = {}    # site -> downloads running right now
-                lock = threading.Lock()
+                # Guards queue, futures and active. Re-entrant: a download that
+                # finishes instantly runs its done-callback inside submit().
+                lock = threading.RLock()
 
                 def finished(host: str) -> None:
                     with lock:
@@ -274,33 +276,48 @@ class Pipeline:
                     """Start the earliest queued mods whose site has a free slot,
                     so one site's backlog (a Nexus click, a MEGA quota) never
                     holds up downloads from the others."""
-                    i = 0
-                    while i < len(queue) and not self._stop_event.is_set():
-                        host = _download_host(queue[i])
+                    with lock:
+                        i = 0
+                        while i < len(queue) and not self._stop_event.is_set():
+                            host = _download_host(queue[i])
+                            if active.get(host, 0) >= _HOST_LIMITS.get(host, _DEFAULT_HOST_LIMIT):
+                                i += 1
+                                continue
+                            active[host] = active.get(host, 0) + 1
+                            pm = queue.pop(i)
+                            fut = pool.submit(self._download_mod, pm)
+                            fut.add_done_callback(lambda _f, h=host: finished(h))
+                            futures[fut] = pm
+
+                def dispatch() -> None:
+                    """Keep downloads starting for as long as there are any to
+                    start. This runs on its own thread, because the thread that
+                    installs mods can be busy for minutes at a time (a patcher, a
+                    large extraction), and downloads must not wait for it."""
+                    while not self._stop_event.is_set():
+                        fill_pool()
                         with lock:
-                            free = active.get(host, 0) < _HOST_LIMITS.get(host, _DEFAULT_HOST_LIMIT)
-                            if free:
-                                active[host] = active.get(host, 0) + 1
-                        if not free:
-                            i += 1
-                            continue
-                        pm = queue.pop(i)
-                        fut = pool.submit(self._download_mod, pm)
-                        fut.add_done_callback(lambda _f, h=host: finished(h))
-                        futures[fut] = pm
+                            if not queue:
+                                return
+                        self._stop_event.wait(0.5)
+
+                threading.Thread(target=dispatch, name="mod-dispatch", daemon=True).start()
 
                 for pm in pending:
                     # Installs stay in build order: wait for this mod's own
-                    # download, starting others whenever a site frees up.
+                    # download while the dispatcher keeps the others going.
                     # _download_mod never raises; errors are stored on
                     # pm.status / pm.error instead.
                     f = None
                     while not self._stop_event.is_set():
-                        fill_pool()
-                        f = next((k for k, v in futures.items() if v is pm), None)
-                        if f is not None and f.done():
+                        with lock:
+                            f = next((k for k, v in futures.items() if v is pm), None)
+                        if f is None:
+                            self._stop_event.wait(0.25)     # not started yet
+                            continue
+                        wait([f], timeout=0.5)
+                        if f.done():
                             break
-                        wait(list(futures), timeout=0.5, return_when=FIRST_COMPLETED)
                     if self._stop_event.is_set():
                         break
 
@@ -310,7 +327,8 @@ class Pipeline:
                         self._log(f"  Unexpected pipeline error: {e}", "error")
                         pm.status = ModStatus.ERROR
                         pm.error = str(e)
-                    del futures[f]
+                    with lock:
+                        del futures[f]
 
                     if pm.status == ModStatus.ERROR:
                         continue
@@ -361,6 +379,15 @@ class Pipeline:
             return []
         self._migrate_encoded_cache_names(dest_dir)
         cached = self._cached_archives(dest_dir)
+        # An interrupted download leaves some of a mod's files and no record of a
+        # finished one. If the guide names the exact file it wants and that file is
+        # not among them, these are leftovers, not the mod: download it properly.
+        keep = pm.build_mod.directives.download_only
+        if (cached and keep and not (dest_dir / self._CACHE_MANIFEST).exists()
+                and all(Path(k).suffix.lower() in _DROP_ARCHIVES for k in keep)):
+            from scraper.deadlystream import exact_keep_matches
+            if not exact_keep_matches([c.name for c in cached], keep):
+                return []
         # Honour the guide's download filters on cache reuse too - an old cache
         # may hold every variant of a submission (e.g. HQ Skyboxes' per-mod
         # editions) when the guide wants just one.

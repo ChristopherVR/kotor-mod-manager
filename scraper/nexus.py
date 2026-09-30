@@ -218,7 +218,12 @@ def pick_files(files: list[dict], keep_names: Optional[list[str]] = None,
         return max(fs, key=lambda f: f.get("uploaded_timestamp") or 0)
 
     if keep_names:
-        named = [f for f in usable if download_name_matches(f.get("file_name", ""), keep_names)]
+        # The exact file first; a name that merely starts the same is a last resort.
+        named = [f for f in usable
+                 if download_name_matches(f.get("file_name", ""), keep_names, strict=True)]
+        if not named:
+            named = [f for f in usable
+                     if download_name_matches(f.get("file_name", ""), keep_names)]
         if named:
             return named
     mains = [f for f in usable if (f.get("category_name") or "").upper() == "MAIN"]
