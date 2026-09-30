@@ -65,6 +65,8 @@ export const en: Dict = {
   "builds.deleteBuildDone": "Removed build \"{label}\".",
   "builds.deleteBuildFailed": "Couldn't remove build: {error}",
   "builds.pickGameFolder": "Select your {game} installation folder…",
+  "dialog.selectDownloadFolder": "Select your download folder…",
+  "dialog.selectImportFolder": "Select a folder of mod archives…",
   "builds.invalidGameFolder": "That folder isn't a {game} install (no game files found in {path}). Pick the folder that contains chitin.key and swkotor.exe.",
   "builds.overall": "Overall",
   "builds.loadList": "Load Mod List",
@@ -139,6 +141,7 @@ export const en: Dict = {
   "modDetail.openScreenshot": "Open screenshot",
   "modDetail.viewOnDeadlyStream": "View on DeadlyStream",
   "modDetail.viewOnNexus": "View on Nexus Mods",
+  "modDetail.viewOnSite": "View on {site}",
   "modDetail.modifiedFiles": "Modified files",
   "modDetail.installedFiles": "Installed files",
   "modDetail.loadingFiles": "Loading files…",
@@ -216,6 +219,9 @@ export const en: Dict = {
 
   // Settings → Game installs
   "settings.installs.title": "Game installs",
+  "settings.installs.detected": "Found on this computer",
+  "settings.installs.useDetected": "Use this install",
+  "settings.installs.alreadyAdded": "Already added",
   "settings.installs.add": "Add install",
   "settings.installs.empty": "No game installs configured yet.",
   "settings.installs.namePlaceholder": "e.g. KOTOR 1 (Steam)",
@@ -236,7 +242,7 @@ export const en: Dict = {
 
   // Settings → Nexus
   "settings.nexus.title": "Nexus Mods",
-  "settings.nexus.hint": "Add your personal Nexus API key to link mods to their real Nexus page.",
+  "settings.nexus.hint": "Add your personal Nexus API key so the app can download Nexus mods for you. Free accounts need one click on Nexus per mod; Premium is fully automatic.",
   "settings.nexus.getKey": "Get your API key",
   "settings.nexus.showKey": "Show API key",
   "settings.nexus.hideKey": "Hide API key",
@@ -295,7 +301,9 @@ export const en: Dict = {
   "login.title": "DeadlyStream Login",
   "login.username": "Username",
   "login.password": "Password",
-  "login.saveCredentials": "Save credentials (Windows Credential Manager)",
+  "login.saveCredentials": "Save credentials ({store})",
+  "login.store.windows": "Windows Credential Manager",
+  "login.store.other": "your system keyring",
   "login.submit": "Login",
   "login.submitting": "Signing in…",
   "login.failed": "Login failed",

@@ -17,15 +17,28 @@ export async function applyUpdate(newPath: string): Promise<boolean> {
   }
 }
 
-export async function pickDirectory(): Promise<string | null> {
+/** Claim (or give back) nxm:// links. Only claimed while a free Nexus account's
+ * download waits for its click, so other Nexus mod managers keep their links. */
+export async function setNxmHandler(enabled: boolean): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("set_nxm_handler", { enabled });
+  } catch {
+    // Best effort: the download falls back to timing out with a clear message.
+  }
+}
+
+/** Folder picker. `title` names what the player is choosing (the OS default is just "Select Folder"). */
+export async function pickDirectory(title?: string): Promise<string | null> {
   if (!isTauri()) {
     // Browser fallback: prompt for a path.
-    const p = window.prompt("Enter folder path:");
+    const p = window.prompt(title ?? "Enter folder path:");
     return p && p.trim() ? p.trim() : null;
   }
   try {
     const { open } = await import("@tauri-apps/plugin-dialog");
-    const result = await open({ directory: true, multiple: false });
+    const result = await open({ directory: true, multiple: false, title });
     return typeof result === "string" ? result : null;
   } catch {
     return null;

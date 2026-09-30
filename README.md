@@ -5,8 +5,8 @@ Download, install, and manage the recommended community mod builds from a single
 app. Pick a build, click once, and it downloads every mod, unpacks it, works out
 how each one installs, and installs them in the right order for you.
 
-> One self-contained `.exe` for Windows. No Python, Node, or separate installer
-> needed. It even checks for and installs its own updates.
+> One self-contained file for Windows (`.exe`) or Linux (see [Linux](#linux-steam-proton)).
+> No Python, Node, or separate installer needed. It even checks for and installs its own updates.
 
 <p align="center">
   <a href="docs/images/01-builds.png">
@@ -45,7 +45,9 @@ and run it. That is the whole app, one file. Nothing else to install.
 
 Open **Settings → Game Installs** and tell it where KOTOR 1 and/or KOTOR 2 are
 installed, then sign in to your DeadlyStream account under **Account** (mods are
-downloaded from your own account).
+downloaded from your own account). If your build includes mods from Nexus Mods,
+also paste your Nexus API key under **Settings → Nexus** (see
+[Mods hosted on Nexus Mods](#mods-hosted-on-nexus-mods)).
 
 <a href="docs/images/05-game-installs.png"><img src="docs/images/05-game-installs.png" alt="Settings screen showing where to add your KOTOR 1 and KOTOR 2 game folders" width="100%"></a>
 
@@ -58,6 +60,39 @@ automatically, with no clicking through each one.
 
 <a href="docs/images/01-builds.png"><img src="docs/images/01-builds.png" alt="The Mod Builds screen with 173 mods loaded and selected, ready to download and install" width="100%"></a>
 
+### Mods hosted on Nexus Mods
+
+Some mods in the builds live on Nexus Mods rather than DeadlyStream. The app
+downloads those too, using your personal API key (get one at
+[nexusmods.com/users/myaccount?tab=api](https://www.nexusmods.com/users/myaccount?tab=api),
+under "Personal API Key", and paste it into **Settings → Nexus**).
+
+- **Premium account:** fully automatic, nothing to click.
+- **Free account:** Nexus only hands out a download link when you press its
+  button, so each Nexus mod needs one click from you. The app collects all of
+  them at the start so you are not tied to the screen afterwards:
+  1. When you press Install, the app opens the first Nexus mod's page in your
+     browser. The mod shows **Waiting for your click on Nexus**.
+  2. Click **Mod manager download** (then **Slow download** if asked), and allow
+     your browser to open the link with KOTOR Mod Installer if it asks.
+  3. The next Nexus mod's page opens straight away. Click through them all, then
+     leave it. The downloads and installs run by themselves.
+
+  Downloads from DeadlyStream and other sites run at the same time. If you do
+  not click within 15 minutes, the app stops asking and each remaining Nexus mod
+  asks again when its turn comes. A link that goes stale before its download
+  starts is simply asked for again.
+
+The app claims Nexus `nxm://` links only while it is waiting for one of those
+clicks, then hands them back to whichever mod manager had them before. Links for
+other Nexus games are ignored.
+
+MEGA, Google Drive, GitHub and direct-link mods download automatically. A site the
+app cannot download from (GameFront, for one; marked with a badge) needs a hand:
+download the file yourself and drop it straight into your download folder. The app
+waits for it (up to 15 minutes), files it under the right mod (by its name if
+several are waiting) and carries on.
+
 ### 4. Manage your library
 
 The **Library** lists every installed mod with a thumbnail. Search and filter,
@@ -65,6 +100,28 @@ flip a switch to turn a mod on or off, spot duplicates, and import any mod archi
 you like, not just the curated ones.
 
 ![Searching and filtering the mod library by name](docs/images/library-search.gif)
+
+---
+
+## Linux (Steam Proton)
+
+KOTOR 1 has no native Linux version, so you play it through Steam's Proton.
+This app runs natively and edits the game folder Steam already installed.
+
+1. Download `KOTOR-Mod-Installer-linux-x86_64` from the
+   [latest release](../../releases/latest), run `chmod +x` on it, and open it.
+   You need WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian/Ubuntu,
+   `webkit2gtk4.1` on Fedora, `webkit2gtk-4.1` on Arch).
+2. In **Settings → Game Installs**, click **Use this install** on the Steam
+   copy it finds (other drives and libraries included). If it isn't listed,
+   browse to the folder, usually
+   `~/.local/share/Steam/steamapps/common/swkotor`.
+3. Install `unar` (or `unrar`) to unpack `.rar` mods; Debian and Ubuntu's 7-Zip
+   cannot read them. Saving your DeadlyStream password needs a running keyring
+   (GNOME Keyring or KWallet).
+
+Linux file names are case-sensitive, so the app reuses the names already in your
+game folder (an existing `override` is never duplicated as `Override`).
 
 ---
 
@@ -116,6 +173,10 @@ merging is just information. Everything lives under `~/.kotor_mod_installer/`
 Yes. Mods are downloaded from your own authenticated account. The app bundles no
 mod content of its own.
 
+**Do I need a Nexus account?**
+Only for mods that are hosted on Nexus. A free account works (one click per mod,
+see above) and Premium is fully automatic. You do not need one for the rest.
+
 **Does it bundle anything I would otherwise have to install?**
 Yes. The Python backend and the HoloPatcher engine are embedded inside the single
 `.exe`. You do not download or drop in anything extra.
@@ -152,8 +213,33 @@ app ships as one self-contained file.
   the Rust shell that embeds + spawns the backend and kills it on exit.
 - `backend/server.py` - FastAPI wrapper exposing the pipeline + mod manager;
   streams live status/log/progress over a WebSocket.
-- `installer/`, `scraper/`, `config.py` - Python backend logic.
+- `installer/`, `scraper/`, `config.py` - Python backend logic. `scraper/hosts.py`
+  downloads from MEGA, Google Drive, GitHub and direct links; `scraper/nexus.py`
+  handles Nexus and the `nxm://` handoff.
 - `scripts/` - one-off dev/analysis scripts (not part of the app).
+
+### Nexus downloads and `nxm://`
+
+A free Nexus account cannot fetch a file from the API alone: Nexus needs a
+short-lived key minted when the player presses "Mod manager download", delivered
+as an `nxm://` link. The pipeline collects these ahead of the downloads: a click
+queue (`_run_click_queue` in `installer/pipeline.py`) opens each Nexus mod's page
+in build order as the previous click lands, and keeps the links until that mod's
+download starts. A download whose link went stale asks again. Premium accounts
+skip the queue. While the queue waits, the pipeline tells the UI to claim the scheme (`set_nxm_handler` in `src-tauri/src/main.rs`). The browser's
+link starts a second launch of the app; `tauri-plugin-single-instance` forwards it
+to the running one, which posts it to `/api/nexus/nxm`, and `NxmBroker`
+(`scraper/nexus.py`) hands it to the waiting download. Links are matched on game
+as well as mod and file id, and other games' links are refused.
+
+Because `nxm://` is shared by every Nexus game and mod manager, the app holds it
+only while waiting and restores the previous handler afterwards: on Linux via
+`xdg-mime` (the previous handler is remembered in the temp folder), on Windows by
+exporting and re-importing the `HKCU\Software\Classes\nxm` registry key with
+`reg.exe`. A claim left over from a crash is undone on the next launch.
+
+Downloads run side by side across sites with a limit per site (`_HOST_LIMITS` in
+`installer/pipeline.py`); installs still run in build order.
 
 ### The HoloPatcher shim ("dynamic patcher")
 
@@ -209,6 +295,16 @@ cp dist/kotor-backend.exe frontend/src-tauri/binaries/kotor-backend.exe
 cd frontend && npm install && npx tauri build
 # -> frontend/src-tauri/target/release/kotor-mod-installer.exe   (one self-contained file)
 ```
+
+### Build the Linux binary locally
+
+```bash
+scripts/build-linux.sh
+# -> dist/KOTOR-Mod-Installer-linux-x86_64   (one self-contained file)
+```
+
+Needs Python 3.12 (with venv and tk), Rust, Node and the WebKitGTK 4.1 dev
+packages. The script checks for them first and says what is missing.
 
 ### Versioning & releases
 

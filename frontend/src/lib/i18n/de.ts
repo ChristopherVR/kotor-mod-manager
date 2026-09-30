@@ -47,6 +47,8 @@ export const de: Dict = {
   "builds.manualMarkedDone": "\"{name}\" als installiert markiert.",
   "builds.viewError": "Fehler ansehen",
   "builds.pickGameFolder": "Wähle deinen {game}-Installationsordner…",
+  "dialog.selectDownloadFolder": "Wähle deinen Download-Ordner…",
+  "dialog.selectImportFolder": "Wähle einen Ordner mit Mod-Archiven…",
   "builds.invalidGameFolder": "Dieser Ordner ist keine {game}-Installation (keine Spieldateien in {path} gefunden). Wähle den Ordner mit chitin.key und swkotor.exe.",
   "builds.overall": "Gesamt",
   "builds.loadList": "Mod-Liste laden",
@@ -102,6 +104,7 @@ export const de: Dict = {
   "modDetail.openScreenshot": "Screenshot öffnen",
   "modDetail.viewOnDeadlyStream": "Auf DeadlyStream ansehen",
   "modDetail.viewOnNexus": "Auf Nexus Mods ansehen",
+  "modDetail.viewOnSite": "Auf {site} ansehen",
   "modDetail.modifiedFiles": "Geänderte Dateien",
   "modDetail.installedFiles": "Installierte Dateien",
   "modDetail.loadingFiles": "Dateien werden geladen…",
@@ -165,6 +168,9 @@ export const de: Dict = {
 
   // Settings → Game installs
   "settings.installs.title": "Spielinstallationen",
+  "settings.installs.detected": "Auf diesem Computer gefunden",
+  "settings.installs.useDetected": "Diese Installation verwenden",
+  "settings.installs.alreadyAdded": "Bereits hinzugefügt",
   "settings.installs.add": "Installation hinzufügen",
   "settings.installs.empty": "Noch keine Spielinstallationen konfiguriert.",
   "settings.installs.namePlaceholder": "z. B. KOTOR 1 (Steam)",
@@ -185,7 +191,7 @@ export const de: Dict = {
 
   // Settings → Nexus
   "settings.nexus.title": "Nexus Mods",
-  "settings.nexus.hint": "Füge deinen persönlichen Nexus-API-Schlüssel hinzu, um Mods mit ihrer echten Nexus-Seite zu verknüpfen.",
+  "settings.nexus.hint": "Füge deinen persönlichen Nexus-API-Schlüssel hinzu, damit die App Nexus-Mods für dich herunterlädt. Kostenlose Konten brauchen pro Mod einen Klick auf Nexus; Premium läuft vollautomatisch.",
   "settings.nexus.getKey": "API-Schlüssel holen",
   "settings.nexus.showKey": "API-Schlüssel anzeigen",
   "settings.nexus.hideKey": "API-Schlüssel verbergen",
@@ -231,7 +237,9 @@ export const de: Dict = {
   "login.title": "DeadlyStream-Anmeldung",
   "login.username": "Benutzername",
   "login.password": "Passwort",
-  "login.saveCredentials": "Anmeldedaten speichern (Windows-Anmeldeinformationsverwaltung)",
+  "login.saveCredentials": "Anmeldedaten speichern ({store})",
+  "login.store.windows": "Windows-Anmeldeinformationsverwaltung",
+  "login.store.other": "der Schlüsselbund des Systems",
   "login.submit": "Anmelden",
   "login.submitting": "Anmeldung läuft…",
   "login.failed": "Anmeldung fehlgeschlagen",

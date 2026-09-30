@@ -105,6 +105,7 @@ export interface LibraryMod {
   id: string; name: string; game: GameKey; enabled: boolean; toggleable: boolean;
   state: string; install_method: string; deploy_kind: string; load_order: number;
   source_type: string; source_ref: string; source_slug: string; build_key: string | null;
+  source_host?: string; source_url?: string;
   category: string;
   file_count: number; baked_count: number; install_ts: number;
   has_conflict: boolean; conflict_count: number;
@@ -147,6 +148,7 @@ export type WsEvent =
   | { type: "hello"; version: string }
   | { type: "auth"; logged_in: boolean; username: string }
   | { type: "log"; message: string; tag: string }
+  | { type: "nxm_wait"; active: boolean }
   | { type: "status"; file_id: string; status: ModStatus; status_label: string; detail: string }
   | { type: "progress"; file_id: string; pct: number; kb: number; total_kb: number }
   | { type: "install_progress"; file_id: string; pct: number; label: string }
@@ -174,7 +176,10 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => req<{ ok: boolean; version: string }>("/api/health"),
+  health: () => req<{ ok: boolean; version: string; platform?: "windows" | "linux" | "macos" }>("/api/health"),
+  detectGames: () =>
+    req<{ installs: { game: GameKey; path: string; source: string; already_added: boolean }[] }>(
+      "/api/games/detect"),
   status: () => req<AppStatus>("/api/status"),
   builds: () => req<{ builds: BuildInfo[] }>("/api/builds"),
   addBuild: (label: string, game: string, url: string) =>

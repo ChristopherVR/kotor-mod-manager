@@ -467,3 +467,316 @@ def test_empty_download_is_error(tmp_path):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+# ---------------------------------------------------------------------------
+# Mods hosted off DeadlyStream are not sent to DeadlyStream
+# ---------------------------------------------------------------------------
+
+def test_unsupported_host_asks_for_the_file_then_errors_clearly(tmp_path, monkeypatch):
+    import installer.pipeline as pl
+    monkeypatch.setattr(pl, "_DROP_WAIT_SECONDS", 0.4)
+    monkeypatch.setattr(pl, "_DROP_POLL_SECONDS", 0.05)
+    mod = _mod()
+    mod.source_host = "unknown"
+    mod.url = "https://example.com/some-page"
+    p = _pipeline(tmp_path, [mod])
+    called = []
+    p._client.download_all_files = lambda **kw: called.append(kw)
+    p._download_mod(p.mods[0])
+    assert not called
+    assert p.mods[0].status.name == "ERROR"
+    assert "example.com" in p.mods[0].error and str(tmp_path / "dl") in p.mods[0].error
+
+
+def _nexus_mod():
+    mod = _mod()
+    mod.source_host = "nexus"
+    mod.url = "https://www.nexusmods.com/kotor/mods/1234"
+    return mod
+
+
+def test_nexus_mod_downloads_through_nexus_not_deadlystream(tmp_path, monkeypatch):
+    from scraper import nexus
+    p = _pipeline(tmp_path, [_nexus_mod()])
+    monkeypatch.setattr(nexus, "load_api_key", lambda fallback="": "KEY")
+    monkeypatch.setattr(nexus, "list_files", lambda g, m, k: [
+        {"file_id": 7, "file_name": "old.zip", "category_name": "OLD_VERSION",
+         "uploaded_timestamp": 9},
+        {"file_id": 8, "file_name": "main.zip", "category_name": "MAIN",
+         "is_primary": True, "uploaded_timestamp": 5}])
+    got = []
+
+    def fake_download(game, mod_id, file_id, dest, key, **kw):
+        got.append((game, mod_id, file_id, key))
+        f = dest / "main.zip"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"PK")
+        return f
+
+    monkeypatch.setattr(nexus, "download_file", fake_download)
+    p._client.download_all_files = lambda **kw: (_ for _ in ()).throw(AssertionError("DeadlyStream used"))
+    p._download_mod(p.mods[0])
+    assert got == [(p.mods[0].build_mod.game, 1234, 8, "KEY")]
+    assert [a.name for a in p.mods[0].archive_paths] == ["main.zip"]
+
+
+def test_nexus_mod_without_api_key_says_what_to_do(tmp_path, monkeypatch):
+    from scraper import nexus
+    import config as cfg
+    p = _pipeline(tmp_path, [_nexus_mod()])
+    monkeypatch.setattr(nexus, "load_api_key", lambda fallback="": "")
+    monkeypatch.setattr(cfg, "load", lambda: {})
+    p._download_mod(p.mods[0])
+    assert p.mods[0].status.name == "ERROR"
+    assert "API key" in p.mods[0].error
+
+
+def test_nexus_free_account_error_is_passed_on(tmp_path, monkeypatch):
+    from scraper import nexus
+    p = _pipeline(tmp_path, [_nexus_mod()])
+    monkeypatch.setattr(nexus, "load_api_key", lambda fallback="": "KEY")
+    monkeypatch.setattr(nexus, "list_files", lambda g, m, k: [
+        {"file_id": 8, "file_name": "main.zip", "category_name": "MAIN", "is_primary": True}])
+
+    def refuse(*a, **kw):
+        raise nexus.NexusAuthError("Free accounts cannot download this way.")
+
+    monkeypatch.setattr(nexus, "download_file", refuse)
+    p._download_mod(p.mods[0])
+    assert p.mods[0].status.name == "ERROR"
+    assert "Free accounts" in p.mods[0].error
+
+
+def test_nexus_pick_files_follows_build_guide_filters():
+    from scraper import nexus
+    files = [
+        {"file_id": 1, "file_name": "Mod Main 1.0.zip", "category_name": "MAIN", "uploaded_timestamp": 1},
+        {"file_id": 2, "file_name": "Mod Main 1.1.zip", "category_name": "MAIN", "uploaded_timestamp": 2},
+        {"file_id": 3, "file_name": "Extra HD.zip", "category_name": "OPTIONAL", "uploaded_timestamp": 3},
+        {"file_id": 4, "file_name": "gone.zip", "category_name": "ARCHIVED", "uploaded_timestamp": 4},
+    ]
+    assert [f["file_id"] for f in nexus.pick_files(files)] == [2]
+    assert [f["file_id"] for f in nexus.pick_files(files, keep_names=["Extra HD"])] == [3]
+
+
+# ---------------------------------------------------------------------------
+# Downloads: one limit per site, installs still in build order
+# ---------------------------------------------------------------------------
+
+def _run_scheduler(tmp_path, hosts, hold=0.15):
+    """Run the pipeline loop with fake downloads; return (max running per host,
+    max running overall, install order)."""
+    import threading
+    import time
+    mods = []
+    for i, host in enumerate(hosts):
+        m = _mod()
+        m.file_id = f"f{i}"
+        m.source_host = host
+        mods.append(m)
+    p = _pipeline(tmp_path, mods)
+    lock = threading.Lock()
+    running, peak, total_peak, installed = {}, {}, [0], []
+
+    def fake_download(pm):
+        host = pm.build_mod.source_host
+        with lock:
+            running[host] = running.get(host, 0) + 1
+            peak[host] = max(peak.get(host, 0), running[host])
+            total_peak[0] = max(total_peak[0], sum(running.values()))
+        time.sleep(hold)
+        with lock:
+            running[host] -= 1
+
+    p._download_mod = fake_download
+    p._extract_and_install = lambda pm: installed.append(pm.build_mod.file_id)
+    p._capture_baseline_once = lambda: None
+    p._apply_layer_order = lambda: None
+    p._resolve_skip_constraints = lambda: None
+    p._check_dependencies = lambda: None
+    p._log_overlap_summary = lambda: None
+    p._run()
+    return peak, total_peak[0], installed
+
+
+def test_each_site_has_its_own_download_limit(tmp_path):
+    hosts = ["nexus", "nexus", "nexus", "deadlystream", "deadlystream", "mega", "mega"]
+    peak, _total, _order = _run_scheduler(tmp_path, hosts)
+    assert peak["nexus"] == 1
+    assert peak["mega"] == 1
+    assert 1 < peak["deadlystream"] <= 3
+
+
+def test_other_sites_download_while_nexus_waits(tmp_path):
+    """Two Nexus mods first in line must not hold up the DeadlyStream ones."""
+    hosts = ["nexus", "nexus", "deadlystream", "deadlystream", "mega"]
+    _peak, total_peak, _order = _run_scheduler(tmp_path, hosts)
+    assert total_peak >= 3  # one per site at the same time
+
+
+def test_installs_stay_in_build_order_whatever_finishes_first(tmp_path):
+    hosts = ["nexus", "deadlystream", "mega", "nexus", "deadlystream", "github"]
+    _peak, _total, order = _run_scheduler(tmp_path, hosts)
+    assert order == [f"f{i}" for i in range(len(hosts))]
+
+
+def test_a_stopped_run_does_not_hang(tmp_path):
+    import threading
+    m = _mod()
+    m.source_host = "nexus"
+    p = _pipeline(tmp_path, [m])
+    started = threading.Event()
+
+    def blocked(pm):
+        started.set()
+        p._stop_event.wait(5)
+
+    p._download_mod = blocked
+    p._capture_baseline_once = lambda: None
+    p._apply_layer_order = lambda: None
+    p._resolve_skip_constraints = lambda: None
+    p._check_dependencies = lambda: None
+    p._log_overlap_summary = lambda: None
+    t = threading.Thread(target=p._run)
+    t.start()
+    assert started.wait(3)
+    p._stop_event.set()
+    t.join(5)
+    assert not t.is_alive()
+
+
+def test_finished_download_reads_ready_not_downloading(tmp_path, monkeypatch):
+    from scraper import nexus
+    seen = []
+    p = _pipeline(tmp_path, [_nexus_mod()],
+                  on_status=lambda fid, st, detail: seen.append((st.name, detail)))
+    monkeypatch.setattr(nexus, "load_api_key", lambda fallback="": "KEY")
+    monkeypatch.setattr(nexus, "list_files", lambda g, m, k: [
+        {"file_id": 8, "file_name": "main.zip", "category_name": "MAIN", "is_primary": True}])
+
+    def fake_download(game, mod_id, file_id, dest, key, **kw):
+        f = dest / "main.zip"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"PK")
+        return f
+
+    monkeypatch.setattr(nexus, "download_file", fake_download)
+    p._download_mod(p.mods[0])
+    assert p.mods[0].status.name == "READY"
+    assert seen[-1][0] == "READY"
+
+
+def test_waiting_for_the_nexus_click_is_shown_on_the_badge(tmp_path, monkeypatch):
+    from scraper import nexus
+    seen = []
+    p = _pipeline(tmp_path, [_nexus_mod()],
+                  on_status=lambda fid, st, detail: seen.append((st.name, detail)))
+    monkeypatch.setattr(nexus.NXM, "wait", lambda *a, **k: None)
+    p._await_nxm_click(p.mods[0], p.mods[0].build_mod, 1, 2)
+    assert seen[0] == ("DOWNLOADING", "Waiting for your click on Nexus")
+
+
+def test_a_slow_early_mod_does_not_hold_up_later_downloads(tmp_path):
+    """A Nexus mod first in line (waiting for a click) must not stop the
+    DeadlyStream mods behind it from downloading, however many there are."""
+    import threading
+    import time
+    hosts = ["nexus"] + ["deadlystream"] * 14
+    mods = []
+    for i, host in enumerate(hosts):
+        m = _mod()
+        m.file_id, m.source_host = f"f{i}", host
+        mods.append(m)
+    p = _pipeline(tmp_path, mods)
+    release = threading.Event()
+    done_ds = []
+
+    def fake_download(pm):
+        if pm.build_mod.source_host == "nexus":
+            release.wait(10)                 # stuck waiting for its click
+        else:
+            time.sleep(0.05)
+            done_ds.append(pm.build_mod.file_id)
+
+    p._download_mod = fake_download
+    p._extract_and_install = lambda pm: None
+    p._capture_baseline_once = lambda: None
+    p._apply_layer_order = lambda: None
+    p._resolve_skip_constraints = lambda: None
+    p._check_dependencies = lambda: None
+    p._log_overlap_summary = lambda: None
+    t = threading.Thread(target=p._run)
+    t.start()
+    deadline = time.time() + 8
+    while len(done_ds) < 14 and time.time() < deadline:
+        time.sleep(0.05)
+    finished_while_blocked = len(done_ds)
+    release.set()
+    t.join(10)
+    assert finished_while_blocked == 14      # all of them, with the Nexus mod still stuck
+    assert not t.is_alive()
+
+
+# ---------------------------------------------------------------------------
+# DeadlyStream refusals: the whole mod is retried before it counts as failed
+# ---------------------------------------------------------------------------
+
+def _refused(code=403):
+    import requests
+    r = requests.Response()
+    r.status_code = code
+    return requests.HTTPError(f"{code} Client Error: Forbidden", response=r)
+
+
+def test_a_mod_that_deadlystream_refuses_twice_is_retried_and_succeeds(tmp_path, monkeypatch):
+    import installer.pipeline as pl
+    monkeypatch.setattr(pl, "_MOD_RETRY_WAITS", (0.05, 0.05))
+    p = _pipeline(tmp_path, [_mod()])
+    calls = []
+
+    def flaky(**kw):
+        calls.append(1)
+        if len(calls) < 3:
+            raise _refused()
+        f = kw["dest_dir"] / "m.zip"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"PK")
+        return [f]
+
+    p._client.download_all_files = flaky
+    p._download_mod(p.mods[0])
+    assert len(calls) == 3
+    assert p.mods[0].status.name == "READY"
+
+
+def test_a_mod_that_keeps_being_refused_fails_after_the_retries(tmp_path, monkeypatch):
+    import installer.pipeline as pl
+    monkeypatch.setattr(pl, "_MOD_RETRY_WAITS", (0.05, 0.05))
+    p = _pipeline(tmp_path, [_mod()])
+    calls = []
+
+    def refused(**kw):
+        calls.append(1)
+        raise _refused()
+
+    p._client.download_all_files = refused
+    p._download_mod(p.mods[0])
+    assert len(calls) == 3
+    assert p.mods[0].status.name == "ERROR" and "403" in p.mods[0].error
+
+
+def test_other_errors_are_not_retried(tmp_path, monkeypatch):
+    import installer.pipeline as pl
+    monkeypatch.setattr(pl, "_MOD_RETRY_WAITS", (0.05, 0.05))
+    p = _pipeline(tmp_path, [_mod()])
+    calls = []
+
+    def missing(**kw):
+        calls.append(1)
+        raise _refused(404)
+
+    p._client.download_all_files = missing
+    p._download_mod(p.mods[0])
+    assert len(calls) == 1
+    assert p.mods[0].status.name == "ERROR"

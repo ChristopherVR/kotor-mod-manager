@@ -42,6 +42,8 @@ const thumbCache = new Map<string, string | null>();
 /** A mod has a fetchable thumbnail only if it came from an online source. */
 function thumbKey(mod: LibraryMod): string | null {
   if (mod.source_type === "import" || !mod.source_ref) return null;
+  // Thumbnails come from the DeadlyStream page; other hosts have none to fetch.
+  if (mod.source_host !== "deadlystream") return null;
   return `${mod.game}:${mod.source_ref}:${mod.source_slug}`;
 }
 

@@ -101,7 +101,7 @@ function Row({
           <Badge
             variant="warning"
             className="shrink-0"
-            title={`${mod.source_label} does not allow this app to download for you. You will need to fetch this one yourself.`}
+            title={`The app cannot download from ${mod.source_label} itself. Download it yourself and put the file in your mod folder; the app picks it up.`}
           >
             {mod.source_label}
           </Badge>

@@ -63,8 +63,8 @@ def test_the_host_is_recorded_for_each():
 
 
 def test_a_downloadable_mirror_wins_over_a_page_we_cannot_fetch():
-    """The last entry offers a Nexus page and a MEGA mirror. Nexus needs a hand,
-    MEGA does not, so the mirror is the useful link to record."""
+    """The last entry offers a Nexus page and a MEGA mirror. Nexus needs an API
+    key (and Premium or a click per mod), MEGA needs nothing, so prefer MEGA."""
     out = _scrape_other_hosts(_soup(), "KOTOR1", "k1_spoilerfree", claimed={1})
     korriban = out[-1]
     assert korriban.source_host == "mega"
@@ -80,9 +80,8 @@ def test_instructions_are_captured_for_these_too():
     assert taris.install_method == "Loose-File Mod"
 
 
-def test_auto_hosts_excludes_nexus_and_includes_the_verified_ones():
-    assert "nexus" not in AUTO_HOSTS
-    for h in ("deadlystream", "mega", "github", "googledrive", "direct"):
+def test_auto_hosts_are_the_ones_with_a_downloader():
+    for h in ("deadlystream", "nexus", "mega", "github", "googledrive", "direct"):
         assert h in AUTO_HOSTS
 
 

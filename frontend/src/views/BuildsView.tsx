@@ -126,7 +126,7 @@ export function BuildsView(props: BuildsViewProps) {
   };
 
   const pickImportFolder = async () => {
-    const dir = await pickDirectory();
+    const dir = await pickDirectory(t("dialog.selectImportFolder"));
     if (dir) importFolder(dir);
   };
 
@@ -196,7 +196,7 @@ export function BuildsView(props: BuildsViewProps) {
         } else {
           addLog(t("builds.pickGameFolder", { game: e.data.game }), "warning");
         }
-        const dir = await pickDirectory();
+        const dir = await pickDirectory(t("builds.pickGameFolder", { game: e.data.game }));
         if (!dir) return;
         try {
           await api.startInstall(selectedBuild, dir, fileIds);

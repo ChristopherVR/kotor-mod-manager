@@ -235,3 +235,111 @@ if __name__ == "__main__":
     test_record_listing_ignores_file_response()
     test_other_language_records_skipped()
     print("\nALL DEADLYSTREAM URL TESTS PASSED")
+
+
+def test_rejected_login_is_not_reported_as_signed_in():
+    """A wrong password re-shows the login form. Guests also get session
+    cookies, so the client must not take those as proof of a login."""
+    import pytest
+    from scraper.deadlystream import AuthError, DeadlyStreamClient
+
+    class Resp:
+        status_code = 200
+        def __init__(self, text): self.text = text
+        def raise_for_status(self): pass
+
+    form = '<form><input name="csrfKey" value="abc"><input name="_processLogin"></form>'
+    rejected = ('<div class="ipsMessage_error">The display name, email address or '
+                'password was incorrect.</div>' + form)
+    c = DeadlyStreamClient()
+    c._session.get = lambda *a, **k: Resp(form)
+    c._session.post = lambda *a, **k: Resp(rejected)
+    c._session.cookies.set("ips4_IPSSessionFront", "guest")
+    with pytest.raises(AuthError, match="incorrect"):
+        c.login("someone", "wrong")
+    assert c._logged_in is False
+
+
+class _Resp:
+    def __init__(self, status, headers=None):
+        self.status_code, self.headers = status, headers or {}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"{self.status_code}")
+
+    def close(self):
+        pass
+
+
+def _client(statuses, monkeypatch):
+    import scraper.deadlystream as ds
+    sleeps = []
+    monkeypatch.setattr(ds.time, "sleep", sleeps.append)
+    c = ds.DeadlyStreamClient()
+    seq = list(statuses)
+    c._session.get = lambda url, **kw: _Resp(seq.pop(0) if len(seq) > 1 else seq[0])
+    return c, sleeps
+
+
+def test_a_403_burst_refusal_is_retried_after_a_pause(monkeypatch):
+    c, sleeps = _client([403, 403, 200], monkeypatch)
+    assert c._get("https://deadlystream.com/x").status_code == 200
+    assert [s for s in sleeps if s >= 3 and float(s).is_integer()] == [5, 15]   # then got through
+
+
+def test_a_refusal_that_keeps_coming_is_returned_after_the_retries(monkeypatch):
+    c, sleeps = _client([403], monkeypatch)
+    assert c._get("https://deadlystream.com/x").status_code == 403
+    assert [s for s in sleeps if s >= 3 and float(s).is_integer()] == [5, 15, 30]
+
+
+def test_retry_after_from_the_site_is_honoured(monkeypatch):
+    import scraper.deadlystream as ds
+    sleeps = []
+    monkeypatch.setattr(ds.time, "sleep", sleeps.append)
+    c = ds.DeadlyStreamClient()
+    seq = [_Resp(429, {"Retry-After": "12"}), _Resp(200)]
+    c._session.get = lambda url, **kw: seq.pop(0)
+    assert c._get("https://deadlystream.com/x").status_code == 200
+    assert 12 in sleeps
+
+
+def test_requests_are_spaced_out_across_threads(monkeypatch):
+    import threading
+    import scraper.deadlystream as ds
+    monkeypatch.setattr(ds, "_MIN_REQUEST_GAP", 0.1)
+    c = ds.DeadlyStreamClient()
+    starts = []
+    c._session.get = lambda url, **kw: (starts.append(ds.time.monotonic()), _Resp(200))[1]
+    ts = [threading.Thread(target=c._get, args=("https://deadlystream.com/x",)) for _ in range(4)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    starts.sort()
+    assert all(b - a >= 0.08 for a, b in zip(starts, starts[1:]))
+
+
+def test_one_downloads_refusal_pauses_every_other_request(monkeypatch):
+    """While one download waits out a 403, the others must not keep sending
+    requests, or the refusal just goes on longer."""
+    import threading
+    import scraper.deadlystream as ds
+    monkeypatch.setattr(ds, "_RETRY_DELAYS", (0.4,))
+    monkeypatch.setattr(ds, "_MIN_REQUEST_GAP", 0.0)
+    c = ds.DeadlyStreamClient()
+    times = {}
+    seq = [_Resp(403), _Resp(200)]
+
+    def get(url, **kw):
+        times.setdefault(url, []).append(ds.time.monotonic())
+        return seq.pop(0) if url.endswith("/first") else _Resp(200)
+
+    c._session.get = get
+    t0 = ds.time.monotonic()
+    a = threading.Thread(target=c._get, args=("https://deadlystream.com/first",))
+    a.start()
+    ds.time.sleep(0.1)                      # the first request has been refused by now
+    b = threading.Thread(target=c._get, args=("https://deadlystream.com/second",))
+    b.start()
+    a.join(); b.join()
+    assert times["https://deadlystream.com/second"][0] - t0 >= 0.35

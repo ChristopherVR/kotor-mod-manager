@@ -26,8 +26,13 @@ BN_CLICKED      = 0
 GWL_ID          = -12
 WM_CLOSE        = 0x0010
 
-user32   = ctypes.windll.user32
-kernel32 = ctypes.windll.kernel32
+# Windows only. Elsewhere the module still imports; automate_win32 refuses to run.
+if sys.platform == "win32":
+    user32   = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wt.HWND, wt.LPARAM)
+else:
+    user32 = kernel32 = WNDENUMPROC = None
 
 ProgressCallback = Callable[[str], None]
 
@@ -46,9 +51,6 @@ class AutomationError(Exception):
 # ---------------------------------------------------------------------------
 # Win32 helpers
 # ---------------------------------------------------------------------------
-
-WNDENUMPROC = ctypes.WINFUNCTYPE(ctypes.c_bool, wt.HWND, wt.LPARAM)
-
 
 def _find_windows(title_substrings: list[str]) -> list[int]:
     """Return HWNDs of top-level windows whose title contains any substring."""

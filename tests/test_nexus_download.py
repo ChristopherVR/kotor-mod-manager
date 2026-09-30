@@ -146,3 +146,133 @@ def test_download_from_nxm_forwards_the_link_credentials(monkeypatch, tmp_path):
         "nxm://kotor/mods/1364/files/2213?key=kk&expires=77", tmp_path, "apikey")
     assert captured == {"mod_id": 1364, "file_id": 2213,
                         "nxm_key": "kk", "nxm_expires": "77"}
+
+
+def test_free_account_waits_for_the_nxm_click_then_downloads(tmp_path, monkeypatch):
+    import threading
+    from scraper import nexus
+
+    broker = nexus.NxmBroker()
+    got = {}
+
+    def waiter():
+        got["link"] = broker.wait("kotor", 5, 9, timeout=5)
+
+    t = threading.Thread(target=waiter)
+    t.start()
+    broker.deliver(nexus.parse_nxm("nxm://kotor/mods/5/files/9?key=K&expires=123"))
+    t.join(3)
+    assert got["link"].key == "K" and got["link"].expires == "123"
+
+
+def test_nxm_link_that_arrives_early_is_not_lost():
+    from scraper import nexus
+    broker = nexus.NxmBroker()
+    broker.deliver(nexus.parse_nxm("nxm://kotor/mods/5/files/9?key=K&expires=1"))
+    assert broker.wait("kotor", 5, 9, timeout=1).key == "K"
+
+
+def test_wait_gives_up_when_stopped():
+    import threading
+    from scraper import nexus
+    stop = threading.Event()
+    stop.set()
+    assert nexus.NxmBroker().wait("kotor", 1, 2, timeout=30, stop_event=stop) is None
+
+
+def test_403_is_marked_as_the_free_account_case(monkeypatch):
+    import io
+    import urllib.error
+    from scraper import nexus
+
+    def boom(url, key, timeout=10):
+        raise urllib.error.HTTPError(url, 403, "Forbidden", {}, io.BytesIO())
+
+    monkeypatch.setattr(nexus, "_get_json", boom)
+    try:
+        nexus.download_link("KOTOR1", 1, 2, "KEY")
+    except nexus.NexusAuthError as e:
+        assert e.free_account
+    else:
+        raise AssertionError("expected NexusAuthError")
+
+
+def test_links_for_other_nexus_games_are_refused():
+    from scraper import nexus
+    broker = nexus.NxmBroker()
+    assert not broker.deliver(nexus.parse_nxm("nxm://skyrimspecialedition/mods/5/files/9?key=K&expires=1"))
+    assert broker.deliver(nexus.parse_nxm("nxm://kotor2/mods/5/files/9?key=K&expires=1"))
+
+
+def test_another_games_link_with_the_same_ids_does_not_satisfy_a_wait():
+    from scraper import nexus
+    broker = nexus.NxmBroker()
+    broker.deliver(nexus.parse_nxm("nxm://kotor2/mods/5/files/9?key=K2&expires=1"))
+    assert broker.wait("kotor", 5, 9, timeout=1) is None
+    assert broker.wait("kotor2", 5, 9, timeout=1).key == "K2"
+
+
+def test_broker_reports_when_the_first_wait_starts_and_the_last_ends():
+    import threading
+    from scraper import nexus
+    events = []
+    broker = nexus.NxmBroker(on_active=events.append)
+    t = threading.Thread(target=lambda: broker.wait("kotor", 1, 1, timeout=5))
+    t.start()
+    for _ in range(50):
+        if events:
+            break
+        threading.Event().wait(0.05)
+    assert events == [True]
+    broker.deliver(nexus.parse_nxm("nxm://kotor/mods/1/files/1?key=K&expires=1"))
+    t.join(3)
+    assert events == [True, False]
+
+
+def test_on_waiting_runs_after_the_app_is_told_to_claim_links():
+    import threading
+    from scraper import nexus
+    order = []
+    broker = nexus.NxmBroker(on_active=lambda a: order.append(("active", a)))
+    t = threading.Thread(target=lambda: broker.wait(
+        "kotor", 1, 1, timeout=5, on_waiting=lambda: order.append("page opened")))
+    t.start()
+    for _ in range(50):
+        if "page opened" in order:
+            break
+        threading.Event().wait(0.05)
+    broker.deliver(nexus.parse_nxm("nxm://kotor/mods/1/files/1?key=K&expires=1"))
+    t.join(3)
+    assert order[:2] == [("active", True), "page opened"]
+
+
+def test_cdn_url_with_spaces_is_escaped_and_the_rest_left_alone():
+    from scraper import nexus
+    raw = ("https://cf-files.nexusmods.com/cdn/234/1368/Ultimate Dantooine High "
+           "Resolution - TPC Version-1368-1-2.rar?expires=1790806585&md5=ydEp6xYSoJRNNXr-YRoUpw&user_id=4078484")
+    out = nexus._escape_url(raw)
+    assert " " not in out
+    assert "Ultimate%20Dantooine%20High%20Resolution%20-%20TPC%20Version-1368-1-2.rar" in out
+    assert out.endswith("?expires=1790806585&md5=ydEp6xYSoJRNNXr-YRoUpw&user_id=4078484")
+    assert nexus._escape_url(out) == out  # already-escaped URLs are unchanged
+
+
+def test_download_file_requests_the_escaped_url(tmp_path, monkeypatch):
+    from scraper import nexus
+    monkeypatch.setattr(nexus, "file_info", lambda *a, **k: {"file_name": "m.rar"})
+    monkeypatch.setattr(nexus, "download_link", lambda *a, **k: "https://cdn/x/My Mod.rar?e=1")
+    seen = []
+
+    class R:
+        headers = {"Content-Length": "2"}
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def read(self, n, _d=[b"PK", b""]): return _d.pop(0) if _d else b""
+
+    def fake_open(req, timeout=0):
+        seen.append(req.full_url)
+        return R()
+
+    monkeypatch.setattr(nexus.urllib.request, "urlopen", fake_open)
+    nexus.download_file("KOTOR1", 1, 2, tmp_path, "KEY")
+    assert seen == ["https://cdn/x/My%20Mod.rar?e=1"]

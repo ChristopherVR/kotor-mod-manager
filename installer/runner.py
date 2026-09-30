@@ -63,6 +63,18 @@ def _scan_patcher_output(text: str) -> Optional[str]:
 # HoloPatcher - fully headless
 # ------------------------------------------------------------------
 
+def _ensure_info_rtf(tslpatchdata_dir: Path) -> None:
+    """HoloPatcher shows a modal "No info.rtf" error box for a mod that has no
+    info.rtf, then waits for a click nobody is there to give. Give it a blank one
+    (in the app's own extracted copy of the mod) so it carries on."""
+    try:
+        if any(p.name.lower() == "info.rtf" for p in tslpatchdata_dir.iterdir()):
+            return
+        (tslpatchdata_dir / "info.rtf").write_text("{\\rtf1\\ansi }", encoding="ascii")
+    except OSError:
+        pass
+
+
 def run_holopatcher(
     exe: Path,
     game_dir: Path,
@@ -77,8 +89,22 @@ def run_holopatcher(
     namespace_index: 0-based index into namespaces.ini options.
     stop_event: when set, terminates the subprocess and raises PatcherError.
     """
+    # A mod's own HoloPatcher.exe is a Windows program: it cannot run here. The
+    # app ships the same engine for this system, so use that instead.
+    if sys.platform != "win32" and exe.suffix.lower() == ".exe":
+        from installer.config_loader import find_system_holopatcher
+        own = find_system_holopatcher()
+        if own is None or own.suffix.lower() == ".exe":
+            raise PatcherError(
+                f"{exe.name} is a Windows program and cannot run here, and the "
+                f"app's own HoloPatcher was not found.")
+        _log(f"[HoloPatcher] using the app's own HoloPatcher instead of {exe.name}", cb)
+        exe = own
+
     if not exe.exists():
         raise PatcherError(f"HoloPatcher not found: {exe}")
+
+    _ensure_info_rtf(tslpatchdata_dir)
 
     cmd = [
         str(exe),

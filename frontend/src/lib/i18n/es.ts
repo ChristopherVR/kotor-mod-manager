@@ -47,6 +47,8 @@ export const es: Dict = {
   "builds.manualMarkedDone": "\"{name}\" marcado como instalado.",
   "builds.viewError": "Ver error",
   "builds.pickGameFolder": "Selecciona la carpeta de instalación de {game}…",
+  "dialog.selectDownloadFolder": "Selecciona tu carpeta de descargas…",
+  "dialog.selectImportFolder": "Selecciona una carpeta con archivos de mods…",
   "builds.invalidGameFolder": "Esa carpeta no es una instalación de {game} (no se encontraron archivos del juego en {path}). Elige la carpeta que contiene chitin.key y swkotor.exe.",
   "builds.overall": "Total",
   "builds.loadList": "Cargar lista de mods",
@@ -102,6 +104,7 @@ export const es: Dict = {
   "modDetail.openScreenshot": "Abrir captura",
   "modDetail.viewOnDeadlyStream": "Ver en DeadlyStream",
   "modDetail.viewOnNexus": "Ver en Nexus Mods",
+  "modDetail.viewOnSite": "Ver en {site}",
   "modDetail.modifiedFiles": "Archivos modificados",
   "modDetail.installedFiles": "Archivos instalados",
   "modDetail.loadingFiles": "Cargando archivos…",
@@ -165,6 +168,9 @@ export const es: Dict = {
 
   // Settings → Game installs
   "settings.installs.title": "Instalaciones de juego",
+  "settings.installs.detected": "Encontrado en este equipo",
+  "settings.installs.useDetected": "Usar esta instalación",
+  "settings.installs.alreadyAdded": "Ya añadido",
   "settings.installs.add": "Añadir instalación",
   "settings.installs.empty": "Aún no hay instalaciones de juego configuradas.",
   "settings.installs.namePlaceholder": "p. ej. KOTOR 1 (Steam)",
@@ -185,7 +191,7 @@ export const es: Dict = {
 
   // Settings → Nexus
   "settings.nexus.title": "Nexus Mods",
-  "settings.nexus.hint": "Añade tu clave de API personal de Nexus para enlazar los mods a su página real de Nexus.",
+  "settings.nexus.hint": "Añade tu clave de API personal de Nexus para que la app descargue los mods de Nexus por ti. Las cuentas gratuitas necesitan un clic en Nexus por mod; Premium es totalmente automático.",
   "settings.nexus.getKey": "Obtén tu clave de API",
   "settings.nexus.showKey": "Mostrar clave de API",
   "settings.nexus.hideKey": "Ocultar clave de API",
@@ -231,7 +237,9 @@ export const es: Dict = {
   "login.title": "Inicio de sesión en DeadlyStream",
   "login.username": "Usuario",
   "login.password": "Contraseña",
-  "login.saveCredentials": "Guardar credenciales (Administrador de credenciales de Windows)",
+  "login.saveCredentials": "Guardar credenciales ({store})",
+  "login.store.windows": "Administrador de credenciales de Windows",
+  "login.store.other": "el llavero del sistema",
   "login.submit": "Iniciar sesión",
   "login.submitting": "Iniciando sesión…",
   "login.failed": "Error al iniciar sesión",

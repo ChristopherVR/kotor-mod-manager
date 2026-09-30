@@ -41,6 +41,8 @@ _DEFAULT_CONFIG = {
     "holopatcher_search_paths": [
         "HoloPatcher.exe",
         "HoloPatcher/HoloPatcher.exe",
+        "HoloPatcher",
+        "HoloPatcher/HoloPatcher",
     ],
     "installer_types": {},
 }

@@ -141,3 +141,61 @@ jobs:
           files: ${{ steps.artifact.outputs.path }}
           body_path: CHANGELOG.md
           fail_on_unmatched_files: true
+
+  # ---- Linux: same app via scripts/build-linux.sh (for Steam Proton installs)
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri
+
+      - name: Run offline tests
+        run: |
+          python -m pip install -r requirements.txt pytest
+          python -m pytest tests -q --ignore=tests/test_build_headless.py --ignore=tests/test_install_all_build.py
+
+      - name: Build
+        run: scripts/build-linux.sh
+
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v7
+        with:
+          name: KOTOR-Mod-Installer-linux
+          path: dist/KOTOR-Mod-Installer-linux-x86_64
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: inputs.make_release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: dist/KOTOR-Mod-Installer-linux-x86_64
+          fail_on_unmatched_files: true

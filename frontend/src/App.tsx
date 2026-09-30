@@ -9,6 +9,7 @@ import { LoginDialog } from "@/components/LoginDialog";
 import { WhatsNew } from "@/components/WhatsNew";
 import { AppShell } from "@/layouts/AppShell";
 import { useT } from "@/lib/i18n";
+import { setNxmHandler } from "@/lib/tauri";
 import { BuildsView } from "@/views/BuildsView";
 import { LibraryView } from "@/views/LibraryView";
 import { ConflictsView } from "@/views/ConflictsView";
@@ -173,6 +174,9 @@ export default function App() {
       case "log":
         addLog(e.message, e.tag);
         break;
+      case "nxm_wait":
+        setNxmHandler(e.active);
+        break;
       case "status": {
         setActiveFileId(e.file_id);
         if (e.status === "WAITING_PATCHER") setPatcherMod(e.file_id);
@@ -194,7 +198,11 @@ export default function App() {
         const label = e.total_kb ? `${fmtKb(e.kb)} / ${fmtKb(e.total_kb)}` : `${fmtKb(e.kb)}`;
         setRuntime((prev) => ({
           ...prev,
-          [e.file_id]: { ...(prev[e.file_id] ?? DEFAULT_RUNTIME), progress: e.pct * 100, progressLabel: label },
+          [e.file_id]: {
+            ...(prev[e.file_id] ?? DEFAULT_RUNTIME), progress: e.pct * 100, progressLabel: label,
+            // Bytes are arriving, so any "waiting for you" note is out of date.
+            ...(prev[e.file_id]?.status === "DOWNLOADING" && e.kb > 0 ? { detail: "" } : {}),
+          },
         }));
         break;
       }
@@ -253,12 +261,14 @@ export default function App() {
 
   // Overall progress = finished / total. MANUAL counts as finished (the app has
   // done all it can; the player just has a few hand steps left) but is tracked
-  // separately so it never reads as a failure.
+  // separately so it never reads as a failure. Mods installed in an earlier run
+  // are not part of this run, so they have no status but are finished too.
   const { done, errors, manual, overall } = useMemo(() => {
     let d = 0, er = 0, mn = 0;
     for (const m of mods) {
       const st = runtime[m.file_id]?.status;
       if (st === "DONE" || st === "SKIPPED") d++;
+      else if (m.installed && (!st || st === "PENDING")) d++;
       else if (st === "MANUAL") { d++; mn++; }
       else if (st === "ERROR") { d++; er++; }
     }

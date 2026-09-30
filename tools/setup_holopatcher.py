@@ -31,7 +31,8 @@ import zipfile
 from pathlib import Path
 
 DEST_DIR = Path(__file__).parent / "HoloPatcher"
-DEST_EXE = DEST_DIR / "HoloPatcher.exe"
+# Linux builds have no extension.
+DEST_EXE = DEST_DIR / ("HoloPatcher.exe" if os.name == "nt" else "HoloPatcher")
 
 # Where the pinned source is cloned when no --source is given (gitignored).
 SOURCE_DIR = Path(__file__).parent / ".pykotor-src"

@@ -20,10 +20,11 @@ DS_RE = re.compile(r"deadlystream\.com/files/file/(\d+)-([^\s\"'<>#/?]+)", re.I)
 #   github       - release assets are plain file URLs
 #   googledrive  - works once the large-file confirm token is followed
 #   direct       - a plain file URL on an author's own site
-# Nexus is deliberately absent: its API refuses downloads to free accounts
-# unless the request carries a token minted by clicking "Mod manager download"
-# on the site, so it always needs a hand. GameFront is untested.
-AUTO_HOSTS = frozenset({"deadlystream", "mega", "github", "googledrive", "direct"})
+#   nexus        - Premium downloads unattended; a free account needs one click
+#                  on "Mod manager download" per mod, which the app then acts on
+# GameFront is not automatic: its pages and file server are behind a bot check, so
+# the player downloads the file and adds it to the mod folder.
+AUTO_HOSTS = frozenset({"deadlystream", "nexus", "mega", "github", "googledrive", "direct"})
 
 _HOST_PATTERNS = (
     ("deadlystream", "deadlystream.com"),
@@ -438,10 +439,11 @@ def _scrape_other_hosts(main, game: str, build_key: str,
         raw = el.get_text(" ", strip=True)
         name = raw.split(":", 1)[1].strip() if ":" in raw else raw
         links = [a["href"] for a in el.find_all("a", href=True)]
-        # Prefer a link we can actually download from, so an entry offering both
-        # a Nexus page and a MEGA mirror is reported by the one that works.
-        url = next((u for u in links if host_of(u) in AUTO_HOSTS),
-                   links[0] if links else "")
+        # Prefer a link that needs no account: a MEGA mirror beats a Nexus page,
+        # which needs an API key (and Premium, or a click per mod).
+        url = next((u for u in links if host_of(u) in AUTO_HOSTS - {"nexus"}),
+                   next((u for u in links if host_of(u) == "nexus"),
+                        links[0] if links else ""))
 
         block = _gather_block(el)
         hint_source = " ".join([block["instructions"], block["warnings"],

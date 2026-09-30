@@ -79,6 +79,10 @@ class ResolveConflictsRequest(BaseModel):
     all_of_severity: Optional[str] = None         # e.g. "info"
 
 
+class NxmRequest(BaseModel):
+    url: str
+
+
 class ProfileCreate(BaseModel):
     name: str
     game: str            # "KOTOR1" | "KOTOR2"
@@ -119,7 +123,10 @@ class OpenDownloadRequest(BaseModel):
 
 
 def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0,
-                          source_exists: bool = False) -> dict:
+                          source_exists: bool = False,
+                          source: "tuple[str, str] | None" = None) -> dict:
+    # source is (host, page url); older records do not carry it themselves.
+    host, url = source if source is not None else (m.source_host, m.source_url)
     return {
         "id": m.id,
         "name": m.name,
@@ -133,6 +140,8 @@ def installed_mod_to_dict(m: InstalledMod, conflict_count: int = 0,
         "source_type": m.source_type,
         "source_ref": m.source_ref,
         "source_slug": m.source_slug,
+        "source_host": host,
+        "source_url": url,
         "category": getattr(m, "category", "") or "",
         "build_key": m.build_key,
         "option_hint": m.option_hint,

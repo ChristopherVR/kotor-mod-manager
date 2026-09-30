@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import config as cfg
+from installer.pathcase import resolve_ci
 
 MANIFEST_SCHEMA_VERSION = 1
 _MANIFEST_LOCK = threading.RLock()
@@ -102,6 +103,10 @@ class InstalledMod:
     option_hint: str = ""
     source_slug: str = ""
     category: str = ""
+    # Where the mod was downloaded from, so the Library can link to its real
+    # page. Empty on mods installed by older versions.
+    source_host: str = ""
+    source_url: str = ""
     deployed_files: list[DeployedFile] = field(default_factory=list)
     baked_files: list[BakedFile] = field(default_factory=list)
     # Incompatibilities the mod declares about ITSELF (parsed from its readme).
@@ -303,7 +308,7 @@ def snapshot_targets(game_root: Path) -> dict[str, str]:
     """
     sig: dict[str, str] = {}
     for d in SNAPSHOT_DIRS:
-        base = game_root / d
+        base = resolve_ci(game_root, d)
         if not base.is_dir():
             continue
         for p in base.rglob("*"):
@@ -311,7 +316,7 @@ def snapshot_targets(game_root: Path) -> dict[str, str]:
                 st = p.stat()
                 sig[_rel_posix(p, game_root)] = f"{st.st_size}:{st.st_mtime_ns}"
     for f in SNAPSHOT_FILES:
-        p = game_root / f
+        p = resolve_ci(game_root, f)
         if p.is_file():
             st = p.stat()
             sig[_rel_posix(p, game_root)] = f"{st.st_size}:{st.st_mtime_ns}"
@@ -341,6 +346,8 @@ def record_install(
     game_type: str = "",
     source_slug: str = "",
     category: str = "",
+    source_host: str = "",
+    source_url: str = "",
 ) -> InstalledMod:
     """
     Record a completed install into the per-game manifest.
@@ -380,7 +387,7 @@ def record_install(
             for rel, sig in after.items():
                 if before.get(rel) == sig:
                     continue  # unchanged
-                p = game_root / rel
+                p = resolve_ci(game_root, rel)
                 if not p.is_file():
                     continue
                 baked.append(BakedFile(
@@ -403,7 +410,7 @@ def record_install(
             install_method=install_method, deploy_kind=deploy_kind,
             state=state, enabled=enabled, load_order=load_order,
             build_key=build_key, option_hint=option_hint, source_slug=source_slug,
-            category=category,
+            category=category, source_host=source_host, source_url=source_url,
             deployed_files=deployed, baked_files=baked,
             incompatibilities=parse_incompatibilities(readme_text),
         )
@@ -964,13 +971,13 @@ def capture_baseline(game: str, game_root: Path, force: bool = False) -> dict:
     root.mkdir(parents=True, exist_ok=True)
     saved = []
     for name in _BASELINE_FILES:
-        src = game_root / name
+        src = resolve_ci(game_root, name)
         if src.is_file():
             shutil.copy2(src, root / name)
             saved.append(name)
 
     def _listing(sub: str) -> list[str]:
-        d = game_root / sub
+        d = resolve_ci(game_root, sub)
         return sorted(f.name for f in d.iterdir() if f.is_file()) if d.is_dir() else []
 
     data = {
@@ -1012,9 +1019,7 @@ def reset_to_vanilla(game: str, game_root: Path,
     result = {"override_removed": 0, "modules_removed": 0, "restored": []}
 
     for sub, key in (("Override", "override"), ("Modules", "modules")):
-        d = game_root / sub
-        if not d.is_dir():
-            d = game_root / sub.lower()
+        d = resolve_ci(game_root, sub)
         if not d.is_dir():
             continue
         keep = set(data.get(key, []))
@@ -1031,7 +1036,7 @@ def reset_to_vanilla(game: str, game_root: Path,
         src = root / name
         if src.is_file():
             try:
-                shutil.copy2(src, game_root / name)
+                shutil.copy2(src, resolve_ci(game_root, name))
                 result["restored"].append(name)
             except OSError as e:
                 log(f"Could not restore {name}: {e}")

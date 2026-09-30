@@ -75,7 +75,7 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
   }, []);
 
   const browse = async () => {
-    const dir = await pickDirectory();
+    const dir = await pickDirectory(t("dialog.selectDownloadFolder"));
     if (dir) { setSaved(false); setS((prev) => ({ ...prev, download_dir: dir })); }
   };
 

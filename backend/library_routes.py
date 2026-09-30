@@ -78,10 +78,43 @@ def _source_folder(mod, download_dir: Optional[Path] = None) -> Optional[Path]:
     return (download_dir or _download_dir()) / f"{mod.source_ref}_{slug}"
 
 
+def _build_entry(build_key: Optional[str], file_id: str) -> Optional[tuple[str, str]]:
+    """(host, url) of a mod in a build list: the loaded one, else the cached one."""
+    if not build_key:
+        return None
+    for m in (getattr(_state, "loaded_mods", {}) or {}).get(build_key, []):
+        if m.file_id == file_id:
+            return m.source_host, m.url
+    try:
+        import json
+        with open(cfg.CONFIG_DIR / "cache" / "build_lists.json", encoding="utf-8") as f:
+            entry = json.load(f).get(build_key, {}).get("data", [])
+        for m in entry:
+            if m.get("file_id") == file_id:
+                return m.get("source_host", ""), m.get("url", "")
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def _source_of(mod) -> tuple[str, str]:
+    """Where an installed mod came from. Mods installed before the host was
+    recorded are worked out: a numeric id is DeadlyStream, and a guide:<n> id is
+    looked up in its build list (empty when that is not available)."""
+    if mod.source_host:
+        return mod.source_host, mod.source_url
+    if mod.source_type != "build" or not mod.source_ref:
+        return "", ""
+    if str(mod.source_ref).isdigit():
+        return "deadlystream", ""
+    return _build_entry(mod.build_key, mod.source_ref) or ("", "")
+
+
 def _mod_dict(mod, conflict_count: int = 0, download_dir: Optional[Path] = None) -> dict:
     folder = _source_folder(mod, download_dir)
     exists = bool(folder and folder.exists())
-    return installed_mod_to_dict(mod, conflict_count, source_exists=exists)
+    return installed_mod_to_dict(mod, conflict_count, source_exists=exists,
+                                 source=_source_of(mod))
 
 
 # ---------------------------------------------------------------------------

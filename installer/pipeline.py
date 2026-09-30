@@ -14,8 +14,9 @@ import json
 import re
 import shutil
 import threading
+import time
 from urllib.parse import unquote
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -25,6 +26,7 @@ from installer.build_directives import match_option_index
 from installer.detector import InstallMethod, InstallPlan, ModFileMapping, detect
 from installer.extractor import ExtractionError, extract
 from installer.installer import InstallError, install
+from installer.pathcase import resolve_ci, rglob_ci
 from installer.patcher_strategy import run_tslpatcher_cascade
 from installer.runner import PatcherError, run_holopatcher
 from scraper.build_scraper import BuildMod
@@ -53,6 +55,34 @@ class ModStatus(Enum):
     SKIPPED          = "Skipped"
     MANUAL           = "Manual install needed"
     ERROR            = "Error"
+
+
+# Downloads run side by side across sites, each with its own limit. Nexus is
+# one at a time because a free account needs a click per mod; MEGA and Google
+# Drive ration bandwidth per connection.
+_HOST_LIMITS = {"deadlystream": 3, "nexus": 1, "mega": 1, "googledrive": 1,
+                "github": 2, "direct": 2}
+_DEFAULT_HOST_LIMIT = 1
+# How long one "Mod manager download" click is waited for before giving up.
+_NXM_CLICK_TIMEOUT = 900
+# How long a mod the app cannot download waits for the player to add its file.
+_DROP_WAIT_SECONDS = 900
+_DROP_POLL_SECONDS = 1.0
+# When DeadlyStream keeps refusing a mod, the whole mod is tried again after these
+# pauses (seconds) before it is reported as failed.
+_MOD_RETRY_WAITS = (45, 90)
+# A file counts as finished once its size has not changed for this long.
+_DROP_SETTLE_SECONDS = 2.5
+_DROP_ARCHIVES = (".zip", ".7z", ".rar")
+# One worker per download that can run at once, plus spares for the sites that
+# fall back to the default limit. Downloads are not held back while earlier mods
+# wait (a Nexus click, say): installs run in build order, but every other download
+# carries on, and the archives stay on disk either way.
+_DOWNLOAD_WORKERS = sum(_HOST_LIMITS.values()) + 2 * _DEFAULT_HOST_LIMIT
+
+
+def _download_host(pm) -> str:
+    return getattr(pm.build_mod, "source_host", "") or "deadlystream"
 
 
 class ManualInstallRequired(Exception):
@@ -146,6 +176,14 @@ class Pipeline:
         self._screen_resolution = screen_resolution
 
         self._stop_event = threading.Event()
+        # Free Nexus accounts: the clicks are collected ahead of the downloads.
+        self._nexus_lock = threading.Lock()
+        self._nexus_chosen_cache: dict = {}
+        self._nxm_links: dict = {}            # (game, mod, file) -> link clicked ahead
+        self._nxm_pending_mods: set = set()   # mods the click queue still means to ask about
+        self._nxm_queue_done = threading.Event()
+        self._nxm_queue_done.set()            # no queue running
+        self._dl_started: set = set()         # mods whose download has begun
         self._pause_event = threading.Event()
         self._pause_event.set()  # not paused initially
         self._thread: Optional[threading.Thread] = None
@@ -220,37 +258,61 @@ class Pipeline:
         pending = [pm for pm in self._mods if pm.status not in (ModStatus.DONE, ModStatus.SKIPPED)]
         self._resolve_skip_constraints()
         self._check_dependencies()
+        self._start_click_queue(pending)
         try:
-            with ThreadPoolExecutor(max_workers=3, thread_name_prefix="mod-dl") as pool:
-                futures: dict = {}  # Future -> PipelineMod
+            with ThreadPoolExecutor(max_workers=_DOWNLOAD_WORKERS, thread_name_prefix="mod-dl") as pool:
+                futures: dict = {}   # Future -> PipelineMod, until its install turn
                 queue = list(pending)
+                active: dict = {}    # site -> downloads running right now
+                lock = threading.Lock()
+
+                def finished(host: str) -> None:
+                    with lock:
+                        active[host] -= 1
 
                 def fill_pool() -> None:
-                    while queue and len(futures) < 3 and not self._stop_event.is_set():
-                        pm = queue.pop(0)
-                        futures[pool.submit(self._download_mod, pm)] = pm
-
-                fill_pool()
+                    """Start the earliest queued mods whose site has a free slot,
+                    so one site's backlog (a Nexus click, a MEGA quota) never
+                    holds up downloads from the others."""
+                    i = 0
+                    while i < len(queue) and not self._stop_event.is_set():
+                        host = _download_host(queue[i])
+                        with lock:
+                            free = active.get(host, 0) < _HOST_LIMITS.get(host, _DEFAULT_HOST_LIMIT)
+                            if free:
+                                active[host] = active.get(host, 0) + 1
+                        if not free:
+                            i += 1
+                            continue
+                        pm = queue.pop(i)
+                        fut = pool.submit(self._download_mod, pm)
+                        fut.add_done_callback(lambda _f, h=host: finished(h))
+                        futures[fut] = pm
 
                 for pm in pending:
+                    # Installs stay in build order: wait for this mod's own
+                    # download, starting others whenever a site frees up.
+                    # _download_mod never raises; errors are stored on
+                    # pm.status / pm.error instead.
+                    f = None
+                    while not self._stop_event.is_set():
+                        fill_pool()
+                        f = next((k for k, v in futures.items() if v is pm), None)
+                        if f is not None and f.done():
+                            break
+                        wait(list(futures), timeout=0.5, return_when=FIRST_COMPLETED)
                     if self._stop_event.is_set():
                         break
 
-                    # Wait for this mod's download future (already in-flight or
-                    # about to be submitted). _download_mod never raises; errors
-                    # are stored on pm.status / pm.error instead.
-                    f = next((k for k, v in futures.items() if v is pm), None)
-                    if f is not None:
-                        try:
-                            f.result()
-                        except Exception as e:
-                            self._log(f"  Unexpected pipeline error: {e}", "error")
-                            pm.status = ModStatus.ERROR
-                            pm.error = str(e)
-                        del futures[f]
-                        fill_pool()
+                    try:
+                        f.result()
+                    except Exception as e:
+                        self._log(f"  Unexpected pipeline error: {e}", "error")
+                        pm.status = ModStatus.ERROR
+                        pm.error = str(e)
+                    del futures[f]
 
-                    if self._stop_event.is_set() or pm.status == ModStatus.ERROR:
+                    if pm.status == ModStatus.ERROR:
                         continue
 
                     self._pause_event.wait()
@@ -289,36 +351,136 @@ class Pipeline:
         except Exception:
             pass
 
+    def _mod_dir(self, pm: PipelineMod) -> Path:
+        mod = pm.build_mod
+        return self._download_dir / f"{mod.file_id}_{mod.slug[:30]}"
+
+    def _cached_for(self, pm: PipelineMod, dest_dir: Path) -> list:
+        """Complete archives already on disk for this mod, or []."""
+        if not dest_dir.exists():
+            return []
+        self._migrate_encoded_cache_names(dest_dir)
+        cached = self._cached_archives(dest_dir)
+        # Honour the guide's download filters on cache reuse too - an old cache
+        # may hold every variant of a submission (e.g. HQ Skyboxes' per-mod
+        # editions) when the guide wants just one.
+        if len(cached) > 1:
+            cached = self._filter_cached(cached, pm.build_mod)
+        return cached
+
+    def _finish_download(self, pm: PipelineMod, archives: list, dest_dir: Path) -> None:
+        pm.archive_paths = archives
+        self._write_cache_manifest(dest_dir, archives)
+        if len(archives) > 1:
+            self._log(f"  Downloaded {len(archives)} files.")
+        for a in archives:
+            self._log(f"  Downloaded: {a.name} ({a.stat().st_size // 1024} KB)")
+        # Installs run in build order, so a finished download can wait a while
+        # for the mods ahead of it. Say so rather than still "Downloading".
+        self._set_status(pm, ModStatus.READY, "Downloaded, waiting for earlier mods")
+
+    # Files the player adds by hand --------------------------------------------
+
+    @staticmethod
+    def _name_score(filename: str, name: str) -> int:
+        words = {w for w in re.split(r"[^a-z0-9]+", name.lower()) if len(w) > 2}
+        return sum(1 for w in words if w in filename.lower())
+
+    def _dropped_archive(self, pm: PipelineMod, dest_dir: Path, seen: dict) -> "list[Path] | None":
+        """An archive the player put in this mod's folder, or loose in the mod
+        folder root. Only finished files count: one must stop growing first."""
+        def settled(p: Path) -> bool:
+            try:
+                size = p.stat().st_size
+            except OSError:
+                return False
+            now = time.monotonic()
+            last, since = seen.get(p, (None, now))
+            if size != last:
+                since = now
+            seen[p] = (size, since)
+            return size > 0 and now - since >= _DROP_SETTLE_SECONDS
+
+        cached = self._cached_for(pm, dest_dir)
+        if cached and all(settled(f) for f in cached):
+            return cached
+        try:
+            loose = [p for p in self._download_dir.iterdir()
+                     if p.is_file() and not p.name.startswith(".")
+                     and p.suffix.lower() in _DROP_ARCHIVES]
+        except OSError:
+            return None
+        ready = [p for p in loose if settled(p)]
+        if not ready:
+            return None
+        if len(loose) > 1:
+            # Several files loose at once: take the one named like this mod.
+            ready.sort(key=lambda p: self._name_score(p.name, pm.build_mod.name), reverse=True)
+            if self._name_score(ready[0].name, pm.build_mod.name) == 0:
+                return None
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        target = dest_dir / ready[0].name
+        shutil.move(str(ready[0]), str(target))
+        return [target]
+
+    def _await_dropped_file(self, pm: PipelineMod, dest_dir: Path, why: str):
+        """The app cannot fetch this mod. Wait for the player to add the file to
+        the mod folder (or drop it loose in the root) and carry on with it."""
+        self._log(f"  {why} Save the file in {self._download_dir} and the app "
+                  f"carries on by itself.", "warning")
+        self._set_status(pm, ModStatus.DOWNLOADING, "Add the file to your Downloads folder (Settings>General)")
+        seen: dict = {}
+        deadline = time.monotonic() + _DROP_WAIT_SECONDS
+        while time.monotonic() < deadline and not self._stop_event.is_set():
+            found = self._dropped_archive(pm, dest_dir, seen)
+            if found:
+                return found
+            self._stop_event.wait(_DROP_POLL_SECONDS)
+        return None
+
     def _download_mod(self, pm: PipelineMod) -> None:
         """Download all files for a mod. Called concurrently; never raises."""
         if self._stop_event.is_set():
             return
 
         mod = pm.build_mod
+        self._dl_started.add(mod.file_id)
         self._log(f"\n── [{mod.install_order:3d}] {mod.name}")
 
         try:
-            dest_dir = self._download_dir / f"{mod.file_id}_{mod.slug[:30]}"
+            dest_dir = self._mod_dir(pm)
 
             # If complete archives are already on disk, skip re-downloading.
             # This makes pressing Install again (or Retry) resumable without
             # restarting every download from zero.
-            if dest_dir.exists():
-                self._migrate_encoded_cache_names(dest_dir)
-                cached = self._cached_archives(dest_dir)
-                # Honour the guide's download filters on cache reuse too - an
-                # old cache may hold every variant of a submission (e.g. HQ
-                # Skyboxes' per-mod editions) when the guide wants just one.
-                if len(cached) > 1:
-                    cached = self._filter_cached(cached, mod)
-                if cached:
-                    pm.archive_paths = cached
-                    total_kb = sum(f.stat().st_size for f in cached) // 1024
-                    for a in cached:
-                        self._log(f"  Cached: {a.name} ({a.stat().st_size // 1024} KB)")
-                    if self._on_progress:
-                        self._on_progress(mod.file_id, 1.0, total_kb, total_kb)
+            cached = self._cached_for(pm, dest_dir)
+            if cached:
+                pm.archive_paths = cached
+                total_kb = sum(f.stat().st_size for f in cached) // 1024
+                for a in cached:
+                    self._log(f"  Cached: {a.name} ({a.stat().st_size // 1024} KB)")
+                if self._on_progress:
+                    self._on_progress(mod.file_id, 1.0, total_kb, total_kb)
+                return
+
+            # Hosts with no downloader (GameFront, unknown) have no
+            # DeadlyStream page to fetch either.
+            from scraper import hosts as _hosts
+            if mod.source_host not in ("deadlystream", "nexus") \
+                    and not _hosts.can_download(mod.source_host):
+                from scraper.build_scraper import HOST_LABELS
+                site = HOST_LABELS.get(mod.source_host, mod.source_host)
+                archives = self._await_dropped_file(
+                    pm, dest_dir, f"The app cannot download from {site} ({mod.url}).")
+                if not archives:
+                    pm.error = (f"Download this one yourself from {site}"
+                                + (f" ({mod.url})" if mod.url else "")
+                                + f", save it in {self._download_dir}, then press Install again.")
+                    self._set_status(pm, ModStatus.ERROR, pm.error)
+                    self._log(f"  {pm.error}", "warning")
                     return
+                self._finish_download(pm, archives, dest_dir)
+                return
 
             self._set_status(pm, ModStatus.DOWNLOADING)
             dest_dir.mkdir(parents=True, exist_ok=True)
@@ -342,18 +504,53 @@ class Pipeline:
             if ignore_names:
                 self._log(
                     f"  Build guide: skipping download of {', '.join(ignore_names)}.")
-            archives = self._client.download_all_files(
-                file_id=mod.file_id,
-                slug=mod.slug,
-                dest_dir=dest_dir,
-                progress_callback=dl_progress,
-                cancel_event=self._stop_event,
-                pause_event=self._pause_event,
-                keep_names=keep_names,
-                ignore_names=ignore_names,
-                language=self._language,
-                screen_resolution=self._screen_resolution,
-            )
+            if mod.source_host == "nexus":
+                archives = self._download_from_nexus(
+                    pm, dest_dir, dl_progress, keep_names, ignore_names)
+                if archives is None:
+                    return
+            elif _hosts.can_download(mod.source_host):
+                try:
+                    archives = _hosts.download_from_host(
+                        mod.source_host, mod.url, dest_dir, dl_progress,
+                        self._stop_event, self._pause_event)
+                except _hosts.HostDownloadError as e:
+                    self._set_status(pm, ModStatus.ERROR, str(e))
+                    self._log(f"  Download failed: {e}", "error")
+                    pm.error = str(e)
+                    return
+            else:
+                import requests
+                for attempt in range(len(_MOD_RETRY_WAITS) + 1):
+                    try:
+                        archives = self._client.download_all_files(
+                            file_id=mod.file_id,
+                            slug=mod.slug,
+                            dest_dir=dest_dir,
+                            progress_callback=dl_progress,
+                            cancel_event=self._stop_event,
+                            pause_event=self._pause_event,
+                            keep_names=keep_names,
+                            ignore_names=ignore_names,
+                            language=self._language,
+                            screen_resolution=self._screen_resolution,
+                        )
+                        break
+                    except requests.HTTPError as e:
+                        code = getattr(e.response, "status_code", 0)
+                        if (code not in (403, 429, 502, 503, 504)
+                                or attempt == len(_MOD_RETRY_WAITS)
+                                or self._stop_event.is_set()):
+                            raise
+                        wait = _MOD_RETRY_WAITS[attempt]
+                        self._log(f"  DeadlyStream is refusing for now (HTTP {code}); "
+                                  f"trying this mod again in {wait} seconds.", "warning")
+                        self._set_status(pm, ModStatus.DOWNLOADING,
+                                         "DeadlyStream is busy, trying again shortly")
+                        self._stop_event.wait(wait)
+                        if self._stop_event.is_set():
+                            raise
+                        self._set_status(pm, ModStatus.DOWNLOADING)
             pm.archive_paths = archives
             if not archives:
                 # Everything was filtered out: an over-broad "do not download"
@@ -366,11 +563,7 @@ class Pipeline:
                             "guide's download filter matched nothing).")
                 self._log(f"  {pm.error}", "error")
                 return
-            self._write_cache_manifest(dest_dir, archives)
-            if len(archives) > 1:
-                self._log(f"  Downloaded {len(archives)} files.")
-            for a in archives:
-                self._log(f"  Downloaded: {a.name} ({a.stat().st_size // 1024} KB)")
+            self._finish_download(pm, archives, dest_dir)
 
         except DownloadError as e:
             self._set_status(pm, ModStatus.ERROR, str(e))
@@ -380,6 +573,235 @@ class Pipeline:
             self._set_status(pm, ModStatus.ERROR, str(e))
             self._log(f"  Unexpected download error: {e}", "error")
             pm.error = str(e)
+
+    def _nexus_key(self) -> str:
+        import config as cfg
+        from scraper import nexus
+        return nexus.load_api_key(cfg.load().get("nexus_api_key", ""))
+
+    @staticmethod
+    def _nexus_mod_id(mod) -> "int | None":
+        m = re.search(r"/mods/(\d+)", mod.url or "")
+        return int(m.group(1)) if m else None
+
+    def _nexus_chosen(self, pm: PipelineMod, mod_id: int, key: str) -> list:
+        """The Nexus files to fetch for a mod, asked for once per run."""
+        from scraper import nexus
+        mod = pm.build_mod
+        with self._nexus_lock:
+            hit = self._nexus_chosen_cache.get(mod.file_id)
+        if hit is not None:
+            return hit
+        chosen = nexus.pick_files(nexus.list_files(mod.game, mod_id, key),
+                                  mod.directives.download_only,
+                                  mod.directives.download_ignore)
+        with self._nexus_lock:
+            self._nexus_chosen_cache[mod.file_id] = chosen
+        return chosen
+
+    # Free Nexus accounts ---------------------------------------------------
+    #
+    # Nexus hands a free account a download link only when its "Mod manager
+    # download" button is pressed, so each Nexus mod needs a click. They are
+    # collected in a queue that runs AHEAD of the downloads: the pages open one
+    # after another as each click lands, and the downloads then run unattended.
+
+    def _start_click_queue(self, pending: list) -> None:
+        targets = [pm for pm in pending
+                   if pm.build_mod.source_host == "nexus"
+                   and not self._cached_for(pm, self._mod_dir(pm))]
+        if not targets:
+            return
+        with self._nexus_lock:
+            self._nxm_pending_mods = {pm.build_mod.file_id for pm in targets}
+        self._nxm_queue_done.clear()
+        threading.Thread(target=self._run_click_queue, args=(targets,),
+                         name="nexus-clicks", daemon=True).start()
+
+    def _run_click_queue(self, targets: list) -> None:
+        from scraper import nexus
+        try:
+            key = self._nexus_key()
+            if not key:
+                return
+            check = nexus.validate(key)
+            # Premium needs no clicks, and a failed check leaves each download
+            # to explain the problem itself.
+            if not check.get("ok") or check.get("is_premium"):
+                return
+            skip = (ModStatus.DONE, ModStatus.SKIPPED, ModStatus.ERROR)
+            with nexus.NXM.hold():
+                for pm in targets:
+                    mod = pm.build_mod
+                    try:
+                        if self._stop_event.is_set():
+                            return
+                        mod_id = self._nexus_mod_id(mod)
+                        if mod_id is None or pm.status in skip:
+                            continue
+                        try:
+                            chosen = self._nexus_chosen(pm, mod_id, key)
+                        except Exception:
+                            continue  # the download reports the real problem
+                        for f in chosen:
+                            link = self._await_nxm_click(pm, mod, mod_id, f["file_id"],
+                                                         ahead=True)
+                            if link is None:
+                                if not self._stop_event.is_set():
+                                    self._log(
+                                        "Nexus: no click came in time, so the rest will "
+                                        "ask when their turn comes.", "warning")
+                                return
+                            with self._nexus_lock:
+                                self._nxm_links[(nexus.GAME_DOMAIN.get(mod.game, "kotor"),
+                                                 mod_id, f["file_id"])] = link
+                    finally:
+                        with self._nexus_lock:
+                            self._nxm_pending_mods.discard(mod.file_id)
+        except Exception as e:
+            self._log(f"Nexus click queue stopped: {e}", "warning")
+        finally:
+            with self._nexus_lock:
+                self._nxm_pending_mods.clear()
+            self._nxm_queue_done.set()
+
+    def _link_for(self, pm: PipelineMod, mod, mod_id: int, file_id: int):
+        """A Nexus link for this file: one clicked ahead, else wait for the
+        queue to reach it, else ask now. None if stopped or not clicked."""
+        from scraper import nexus
+        k = (nexus.GAME_DOMAIN.get(mod.game, "kotor"), mod_id, file_id)
+        announced = False
+        while not self._stop_event.is_set():
+            with self._nexus_lock:
+                link = self._nxm_links.pop(k, None)
+                queued = (not self._nxm_queue_done.is_set()
+                          and mod.file_id in self._nxm_pending_mods)
+            if link is not None:
+                if announced:
+                    # Clear "Waiting for your click": the download starts now.
+                    self._set_status(pm, ModStatus.DOWNLOADING)
+                return link
+            if not queued:
+                break
+            if not announced:
+                self._set_status(pm, ModStatus.DOWNLOADING, "Waiting for your click on Nexus")
+                announced = True
+            self._stop_event.wait(0.5)
+        if self._stop_event.is_set():
+            return None
+        return self._await_nxm_click(pm, mod, mod_id, file_id)
+
+    def _await_nxm_click(self, pm: PipelineMod, mod, mod_id: int, file_id: int,
+                         ahead: bool = False, expired: bool = False):
+        """Open the mod's Nexus page and wait for the player to click "Mod manager
+        download", which hands the app an nxm:// link. `ahead` means the click
+        is being collected before this mod's download has started."""
+        import webbrowser
+        from scraper import nexus
+        url = nexus.nxm_page_url(mod.game, mod_id, file_id)
+        if ahead:
+            self._log(
+                f"Nexus: a page for \"{mod.name}\" is opening in your browser. "
+                f"Click \"Mod manager download\" there; it downloads by itself later.",
+                "warning")
+        else:
+            self._log(
+                f"  Nexus free account: a page for \"{mod.name}\" is opening in your "
+                f"browser. Click \"Mod manager download\" there and this will carry on "
+                f"by itself.", "warning")
+        self._log(f"  {url}", "muted")
+
+        def open_page() -> None:
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+
+        # The badge would otherwise read "Downloading" for up to 15 minutes.
+        if not ahead or pm.status == ModStatus.PENDING:
+            self._set_status(pm, ModStatus.DOWNLOADING,
+                             "Nexus link expired, click again" if expired
+                             else "Waiting for your click on Nexus")
+        # The page opens only once the app holds nxm:// links, so the click works.
+        link = nexus.NXM.wait(nexus.GAME_DOMAIN.get(mod.game, "kotor"), mod_id, file_id,
+                              timeout=_NXM_CLICK_TIMEOUT, stop_event=self._stop_event,
+                              on_waiting=open_page)
+        if ahead:
+            # Not downloading yet: put the badge back.
+            if mod.file_id not in self._dl_started and pm.status == ModStatus.DOWNLOADING:
+                self._set_status(pm, ModStatus.PENDING)
+        elif link is not None:
+            self._set_status(pm, ModStatus.DOWNLOADING)
+        return link
+
+    def _download_from_nexus(self, pm: PipelineMod, dest_dir: Path, progress,
+                             keep_names, ignore_names) -> "list[Path] | None":
+        """Download a Nexus Mods file. Returns None after flagging the mod failed."""
+        import urllib.error
+        import config as cfg
+        from scraper import nexus
+
+        mod = pm.build_mod
+
+        def fail(msg: str) -> None:
+            pm.error = msg
+            self._set_status(pm, ModStatus.ERROR, msg)
+            self._log(f"  {msg}", "error")
+            return None
+
+        mod_id = self._nexus_mod_id(mod)
+        if mod_id is None:
+            return fail(f"Could not find this mod's Nexus page ({mod.url or 'no link'}).")
+        key = self._nexus_key()
+        if not key:
+            return fail("This mod is on Nexus Mods. Add your Nexus API key in "
+                        "Settings so the app can download it.")
+        try:
+            chosen = self._nexus_chosen(pm, mod_id, key)
+            if not chosen:
+                return fail("Nexus lists no downloadable file for this mod.")
+            archives = []
+            for f in chosen:
+                self._log(f"  Nexus: {f.get('file_name') or f.get('name')}")
+                args = dict(progress_callback=progress, cancel_event=self._stop_event,
+                            pause_event=self._pause_event)
+                try:
+                    archives.append(nexus.download_file(
+                        mod.game, mod_id, f["file_id"], dest_dir, key, **args))
+                except nexus.NexusAuthError as e:
+                    if not e.free_account:
+                        raise
+                    timed_out = ("Waiting for the Nexus download button timed out "
+                                 "(or the install was stopped). Press Install to try again.")
+                    link = self._link_for(pm, mod, mod_id, f["file_id"])
+                    if link is None:
+                        return fail(timed_out)
+                    try:
+                        archives.append(nexus.download_file(
+                            mod.game, mod_id, f["file_id"], dest_dir, key,
+                            nxm_key=link.key, nxm_expires=link.expires, **args))
+                    except nexus.NexusAuthError as e2:
+                        if not e2.free_account:
+                            raise
+                        # A link clicked ahead can expire before its turn.
+                        self._log("  That Nexus link expired before its turn, so "
+                                  "asking again.", "warning")
+                        link = self._await_nxm_click(pm, mod, mod_id, f["file_id"],
+                                                     expired=True)
+                        if link is None:
+                            return fail(timed_out)
+                        archives.append(nexus.download_file(
+                            mod.game, mod_id, f["file_id"], dest_dir, key,
+                            nxm_key=link.key, nxm_expires=link.expires, **args))
+            return archives
+        except nexus.NexusAuthError as e:
+            return fail(str(e))
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                return fail("Nexus rejected your API key. Check it in Settings.")
+            return fail(f"Nexus returned an error (HTTP {e.code}).")
+        except (nexus.NexusDownloadError, urllib.error.URLError, OSError) as e:
+            return fail(f"Nexus download failed: {e}")
 
     # Cache bookkeeping for downloaded archives -------------------------------
 
@@ -669,7 +1091,7 @@ class Pipeline:
             tslpatchdata = exe.parent / "tslpatchdata" if exe else None
             if not tslpatchdata or not tslpatchdata.exists():
                 if exe:
-                    for candidate in exe.parent.rglob("tslpatchdata"):
+                    for candidate in rglob_ci(exe.parent, "tslpatchdata"):
                         if candidate.is_dir():
                             tslpatchdata = candidate
                             break
@@ -872,7 +1294,7 @@ class Pipeline:
             exe = sub_plan.holopatcher_exe
             tslpatchdata = exe.parent / "tslpatchdata" if exe else None
             if exe and (not tslpatchdata or not tslpatchdata.exists()):
-                for candidate in exe.parent.rglob("tslpatchdata"):
+                for candidate in rglob_ci(exe.parent, "tslpatchdata"):
                     if candidate.is_dir():
                         tslpatchdata = candidate
                         break
@@ -1035,7 +1457,7 @@ class Pipeline:
         just installed. Some engine versions prefer .tpc over .dds, so the old
         files must be gone for HD textures to take effect.
         """
-        override_dir = self._game_path / "Override"
+        override_dir = resolve_ci(self._game_path, "Override")
         if not override_dir.exists():
             return
         dds_stems = {
@@ -1082,8 +1504,8 @@ class Pipeline:
         # Also reject embedded separators that Path() might not split on Windows.
         if "/" in fn or "\\" in fn:
             return None
-        target = game_path / subdir / fn
-        allowed_root = (game_path / subdir).resolve()
+        target = resolve_ci(game_path, f"{subdir}/{fn}")
+        allowed_root = resolve_ci(game_path, subdir).resolve()
         try:
             if not target.resolve().is_relative_to(allowed_root):
                 return None
@@ -1123,7 +1545,7 @@ class Pipeline:
                 if target is None:
                     continue
                 if not target.exists():
-                    parent = self._game_path / subdir
+                    parent = resolve_ci(self._game_path, subdir)
                     if parent.is_dir():
                         for f in parent.iterdir():
                             if f.name.lower() == fn.lower():
@@ -1312,7 +1734,7 @@ class Pipeline:
             for name in names:
                 if "/" in name or "\\" in name or ".." in name:
                     continue
-                for found in root.rglob(name):
+                for found in rglob_ci(root, name):
                     try:
                         found.unlink()
                         removed.append(found.name)
@@ -1364,7 +1786,7 @@ class Pipeline:
         for p in [plan, *plan.sub_plans]:
             keep = []
             for fm in p.file_mappings:
-                if (game_path / fm.dest_relative).exists():
+                if resolve_ci(game_path, fm.dest_relative).exists():
                     skipped += 1
                     continue
                 keep.append(fm)
@@ -1558,7 +1980,7 @@ class Pipeline:
         mappings = loose_mappings(plan)
         pre_existing = {
             rel for (rel, _src) in mappings
-            if (self._game_path / rel).exists()
+            if resolve_ci(self._game_path, rel).exists()
         }
         return {"baked": False, "mappings": mappings, "pre_existing": pre_existing}
 
@@ -1579,6 +2001,7 @@ class Pipeline:
                     build_key=mod.build_key, option_hint=mod.option_hint,
                     readme_text=plan.readme_text, game_type=self._game_type,
                     source_slug=mod.slug, category=getattr(mod, "category", "") or "",
+                    source_host=mod.source_host, source_url=mod.url,
                 )
             else:
                 mod_manager.record_install(
@@ -1591,6 +2014,7 @@ class Pipeline:
                     build_key=mod.build_key, option_hint=mod.option_hint,
                     readme_text=plan.readme_text, game_type=self._game_type,
                     source_slug=mod.slug, category=getattr(mod, "category", "") or "",
+                    source_host=mod.source_host, source_url=mod.url,
                 )
         except Exception as e:  # recording must never fail an install
             self._log(f"    (library record skipped: {e})", "muted")

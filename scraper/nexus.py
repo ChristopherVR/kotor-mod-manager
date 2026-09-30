@@ -31,8 +31,10 @@ name-search endpoint; the officially-supported accurate lookup is by file MD5.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -55,6 +57,11 @@ _KEY_ENTRY = "__api_key__"
 
 class NexusAuthError(Exception):
     """The API key is missing, invalid, or lacks rights for this download."""
+
+    def __init__(self, message: str, free_account: bool = False):
+        super().__init__(message)
+        # True when Nexus wants the free-account "Mod manager download" handoff.
+        self.free_account = free_account
 
 
 class NexusDownloadError(Exception):
@@ -189,6 +196,37 @@ def list_files(game: str, mod_id: int, key: str) -> list[dict]:
     return (data or {}).get("files", []) if isinstance(data, dict) else []
 
 
+def pick_files(files: list[dict], keep_names: Optional[list[str]] = None,
+               ignore_names: Optional[list[str]] = None) -> list[dict]:
+    """
+    Choose which of a mod's files to download.
+
+    Build guides say "download only X" / "skip Y"; without those, take the
+    primary MAIN file (newest if there are several). Old, archived and deleted
+    files are never offered.
+    """
+    from scraper.deadlystream import download_name_excluded, download_name_matches
+
+    usable = [f for f in files
+              if (f.get("category_name") or "").upper()
+              in ("MAIN", "UPDATE", "OPTIONAL", "MISCELLANEOUS")]
+    if ignore_names:
+        usable = [f for f in usable
+                  if not download_name_excluded(f.get("file_name", ""), ignore_names)]
+
+    def newest(fs: list[dict]) -> dict:
+        return max(fs, key=lambda f: f.get("uploaded_timestamp") or 0)
+
+    if keep_names:
+        named = [f for f in usable if download_name_matches(f.get("file_name", ""), keep_names)]
+        if named:
+            return named
+    mains = [f for f in usable if (f.get("category_name") or "").upper() == "MAIN"]
+    primary = [f for f in mains if f.get("is_primary")]
+    pool = primary or mains or usable
+    return [newest(pool)] if pool else []
+
+
 def download_link(game: str, mod_id: int, file_id: int, api_key: str,
                   nxm_key: str = "", nxm_expires: str = "") -> str:
     """
@@ -212,7 +250,8 @@ def download_link(game: str, mod_id: int, file_id: int, api_key: str,
                 "Nexus refused the download link. Free accounts can only "
                 "download after clicking 'Mod manager download' on the mod "
                 "page, which hands this app an nxm:// link. A Premium account "
-                "can download without that step."
+                "can download without that step.",
+                free_account=True,
             ) from e
         if e.code == 401:
             raise NexusAuthError("Nexus rejected the API key.") from e
@@ -224,11 +263,24 @@ def download_link(game: str, mod_id: int, file_id: int, api_key: str,
     raise NexusDownloadError("Nexus returned no download URL.")
 
 
+def _escape_url(url: str) -> str:
+    """Escape what Nexus leaves raw (its CDN paths contain spaces from the file
+    name) without touching sequences that are already escaped."""
+    p = urllib.parse.urlsplit(url)
+    return urllib.parse.urlunsplit((
+        p.scheme, p.netloc,
+        urllib.parse.quote(p.path, safe="/%:@+,;=~!$&'()*-._"),
+        p.query.replace(" ", "%20"), p.fragment))
+
+
 def download_file(game: str, mod_id: int, file_id: int, dest_dir: Path,
                   api_key: str, nxm_key: str = "", nxm_expires: str = "",
                   progress_callback: Optional[Callable[[int, int, str], None]] = None,
-                  cancel_event=None) -> Path:
-    """Fetch one Nexus file into dest_dir and return its path."""
+                  cancel_event=None, pause_event=None) -> Path:
+    """Fetch one Nexus file into dest_dir and return its path.
+
+    pause_event: a cleared event holds the download until it is set again.
+    """
     info = file_info(game, mod_id, file_id, api_key)
     filename = re.sub(r'[<>:"/\\|?*]', "_",
                       info.get("file_name") or f"nexus_{mod_id}_{file_id}.zip")
@@ -239,15 +291,38 @@ def download_file(game: str, mod_id: int, file_id: int, dest_dir: Path,
     dest = dest_dir / filename
     part = dest_dir / (filename + ".part")
 
-    req = urllib.request.Request(url, headers={"User-Agent": _UA})
-    with urllib.request.urlopen(req, timeout=60) as r:
-        total = int(r.headers.get("Content-Length", 0))
-        done = 0
-        with open(part, "wb") as f:
+    safe_url = _escape_url(url)
+    # A partial file from an earlier run (the app was closed, or the connection
+    # dropped): ask for the rest instead of starting over.
+    offset = part.stat().st_size if part.exists() else 0
+    headers = {"User-Agent": _UA}
+    if offset:
+        headers["Range"] = f"bytes={offset}-"
+    try:
+        r = urllib.request.urlopen(urllib.request.Request(safe_url, headers=headers), timeout=60)
+    except urllib.error.HTTPError as e:
+        if not (offset and e.code == 416):
+            raise
+        # The partial cannot be continued (it is already whole, or the file changed).
+        part.unlink(missing_ok=True)
+        offset = 0
+        r = urllib.request.urlopen(
+            urllib.request.Request(safe_url, headers={"User-Agent": _UA}), timeout=60)
+    with r:
+        resumed = offset > 0 and r.getcode() == 206
+        if not resumed:
+            offset = 0
+        length = int(r.headers.get("Content-Length", 0))
+        total = offset + length if length else 0
+        done = offset
+        with open(part, "ab" if resumed else "wb") as f:
             while True:
                 if cancel_event is not None and cancel_event.is_set():
-                    part.unlink(missing_ok=True)
+                    # The partial file stays, so a later run can carry on from it.
                     raise NexusDownloadError("Download cancelled.")
+                while (pause_event is not None and not pause_event.is_set()
+                       and not (cancel_event is not None and cancel_event.is_set())):
+                    pause_event.wait(timeout=0.25)
                 chunk = r.read(512 * 1024)
                 if not chunk:
                     break
@@ -255,8 +330,113 @@ def download_file(game: str, mod_id: int, file_id: int, dest_dir: Path,
                 done += len(chunk)
                 if progress_callback:
                     progress_callback(done, total, filename)
+    if total and done != total:
+        raise NexusDownloadError(
+            f"The download was cut short ({done} of {total} bytes). "
+            f"Press Install to continue it.")
     part.replace(dest)
     return dest
+
+
+class NxmBroker:
+    """
+    Hands nxm:// links from the Nexus website to the download that is waiting
+    for them. A free account's download cannot start until the player clicks
+    "Mod manager download", so the pipeline waits here for that click.
+
+    nxm:// links exist for every game on Nexus, so links are matched on the game
+    as well as the ids, and links for other games are refused.
+    """
+
+    def __init__(self, on_active: Optional[Callable[[bool], None]] = None) -> None:
+        self._lock = threading.Lock()
+        self._links: "dict[tuple[str, int, int], NxmLink]" = {}
+        self._events: "dict[tuple[str, int, int], threading.Event]" = {}
+        self._waiting = 0
+        # Called with True when the first download starts waiting and False when
+        # the last one stops, so the app only claims nxm:// links while needed.
+        self.on_active = on_active
+
+    @contextlib.contextmanager
+    def hold(self):
+        """Keep nxm:// links claimed for a whole run of waits, so the app does
+        not hand them back and take them again between one mod and the next."""
+        with self._lock:
+            self._waiting += 1
+            first = self._waiting == 1
+        if first and self.on_active:
+            self.on_active(True)
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._waiting -= 1
+                last = self._waiting == 0
+            if last and self.on_active:
+                self.on_active(False)
+
+    @staticmethod
+    def _key(domain: str, mod_id: int, file_id: int) -> "tuple[str, int, int]":
+        return (domain.lower(), mod_id, file_id)
+
+    def deliver(self, link: NxmLink) -> bool:
+        """Accept a link. False if it is for a game this app does not handle."""
+        if link.game_domain.lower() not in GAME_DOMAIN.values():
+            return False
+        k = self._key(link.game_domain, link.mod_id, link.file_id)
+        with self._lock:
+            self._links[k] = link
+            ev = self._events.get(k)
+        if ev:
+            ev.set()
+        return True
+
+    def wait(self, domain: str, mod_id: int, file_id: int, timeout: float = 600,
+             stop_event=None, on_waiting: Optional[Callable[[], None]] = None
+             ) -> Optional[NxmLink]:
+        """Block until the link for this file arrives. None on timeout or stop.
+
+        on_waiting runs once the wait is registered (and the app has been told
+        to claim nxm:// links), so the page the player clicks on is opened only
+        after links will actually reach the app."""
+        k = self._key(domain, mod_id, file_id)
+        with self._lock:
+            link = self._links.pop(k, None)
+            if link:
+                return link
+            ev = self._events.setdefault(k, threading.Event())
+            self._waiting += 1
+            first = self._waiting == 1
+        if first and self.on_active:
+            self.on_active(True)
+        try:
+            if on_waiting:
+                on_waiting()
+            waited = 0.0
+            while waited < timeout and not ev.is_set():
+                if stop_event is not None and stop_event.is_set():
+                    break
+                ev.wait(0.5)
+                waited += 0.5
+            with self._lock:
+                self._events.pop(k, None)
+                return self._links.pop(k, None)
+        finally:
+            with self._lock:
+                self._waiting -= 1
+                last = self._waiting == 0
+            if last and self.on_active:
+                self.on_active(False)
+
+
+NXM = NxmBroker()
+
+
+def nxm_page_url(game: str, mod_id: int, file_id: int) -> str:
+    """The mod page opened so the player can click "Mod manager download"."""
+    domain = GAME_DOMAIN.get(game, "kotor")
+    return (f"https://www.nexusmods.com/{domain}/mods/{mod_id}"
+            f"?tab=files&file_id={file_id}&nmm=1")
 
 
 def download_from_nxm(url: str, dest_dir: Path, api_key: str,
