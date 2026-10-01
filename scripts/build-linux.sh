@@ -2,7 +2,9 @@
 # Build the Linux version: one self-contained executable with the backend and
 # HoloPatcher embedded, like the Windows .exe.
 #
-# Usage:  scripts/build-linux.sh [--skip-holopatcher]
+# Usage:  scripts/build-linux.sh [--skip-holopatcher] [--fast]
+#   --fast  skip LTO and use parallel codegen for the Tauri shell: much quicker
+#           to build, slightly larger binary. Use for testing, not releases.
 # Output: dist/KOTOR-Mod-Installer-linux-x86_64
 #
 # Needs (Debian/Ubuntu package names):
@@ -11,6 +13,16 @@
 #   libssl-dev patchelf  (and Rust from https://rustup.rs)
 # Fedora/Arch equivalents: webkit2gtk4.1-devel / webkit2gtk-4.1, gtk3, etc.
 set -euo pipefail
+
+SKIP_HOLO=0
+FAST=0
+for arg in "$@"; do
+  case "$arg" in
+    --skip-holopatcher) SKIP_HOLO=1 ;;
+    --fast) FAST=1 ;;
+    *) echo "Unknown option: $arg" >&2; exit 1 ;;
+  esac
+done
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
@@ -45,13 +57,19 @@ if [ -d "$VENV" ] && ! "$VENV/bin/python" -c "import sys; sys.exit(0 if sys.vers
   rm -rf "$VENV"
 fi
 [ -d "$VENV" ] || "$PY" -m venv "$VENV"
-"$VENV/bin/python" -m pip install --quiet --upgrade pip
-"$VENV/bin/python" -m pip install --quiet -r requirements.txt pyinstaller
+# Only reinstall when requirements.txt changed (saves the network round trips).
+REQ_STAMP="$VENV/.requirements.sha256"
+REQ_HASH="$(sha256sum requirements.txt | cut -d' ' -f1)"
+if [ "$(cat "$REQ_STAMP" 2>/dev/null)" != "$REQ_HASH" ] || ! "$VENV/bin/python" -c "import PyInstaller" 2>/dev/null; then
+  "$VENV/bin/python" -m pip install --quiet --upgrade pip
+  "$VENV/bin/python" -m pip install --quiet -r requirements.txt pyinstaller
+  echo "$REQ_HASH" > "$REQ_STAMP"
+fi
 
 step "Backend sanity check"
 "$VENV/bin/python" -c "import backend.server, installer.pipeline, installer.patcher_strategy; print('backend imports OK')"
 
-if [ "${1:-}" != "--skip-holopatcher" ]; then
+if [ "$SKIP_HOLO" != 1 ]; then
   step "Build HoloPatcher (pinned PyKotor source)"
   "$VENV/bin/python" tools/setup_holopatcher.py
 fi
@@ -59,13 +77,26 @@ fi
 tools/HoloPatcher/HoloPatcher --help >/dev/null || { echo "HoloPatcher does not run headlessly." >&2; exit 1; }
 
 step "Build backend (PyInstaller)"
-"$VENV/bin/python" -m PyInstaller backend.spec --noconfirm
+# Reuse the previous backend if nothing it is built from has changed.
+if [ -f dist/kotor-backend ] && [ -z "$(find backend installer config.py backend.spec requirements.txt CHANGELOG.md tools/HoloPatcher/HoloPatcher \
+     -type f -not -path '*/__pycache__/*' -newer dist/kotor-backend -print -quit 2>/dev/null)" ]; then
+  echo "Backend unchanged, reusing dist/kotor-backend"
+else
+  "$VENV/bin/python" -m PyInstaller backend.spec --noconfirm
+fi
 mkdir -p frontend/src-tauri/binaries
 cp dist/kotor-backend frontend/src-tauri/binaries/kotor-backend
 chmod +x frontend/src-tauri/binaries/kotor-backend
 
 step "Build frontend + Tauri shell"
-( cd frontend && npm ci && npx tauri build --no-bundle )
+# Only reinstall node modules when the lockfile changed.
+if [ ! -d frontend/node_modules ] || [ frontend/package-lock.json -nt frontend/node_modules/.package-lock.json ]; then
+  ( cd frontend && npm ci )
+fi
+if [ "$FAST" = 1 ]; then
+  export CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 CARGO_PROFILE_RELEASE_INCREMENTAL=true
+fi
+( cd frontend && npx tauri build --no-bundle )
 
 step "Collect result"
 mkdir -p dist
