@@ -129,10 +129,13 @@ def get_library(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     counts = mod_manager.conflict_counts_by_mod(conflicts)
     mods = sorted(manifest.mods, key=lambda m: m.load_order)
     dl = _download_dir()
-    return {
-        "game": game_type, "profile": scope,
-        "mods": [_mod_dict(m, counts.get(m.id, 0), dl) for m in mods],
-    }
+    unmerge = mod_manager.unmergeable_duplicates(mods)
+    out = []
+    for m in mods:
+        d = _mod_dict(m, counts.get(m.id, 0), dl)
+        d["duplicate_unmergeable"] = m.id in unmerge
+        out.append(d)
+    return {"game": game_type, "profile": scope, "mods": out}
 
 
 @library_router.get("/library/{mod_id}")

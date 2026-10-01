@@ -328,6 +328,37 @@ def _name_key(name: str) -> str:
     return (name or "").strip().lower()
 
 
+def _same_origin(a: "InstalledMod", b: "InstalledMod") -> bool:
+    """Same name and recorded from the very same download."""
+    return (_name_key(a.name) == _name_key(b.name)
+            and a.source_type == b.source_type
+            and str(a.source_ref) == str(b.source_ref))
+
+
+def _same_content(a: "InstalledMod", b: "InstalledMod") -> bool:
+    """Whether two records installed exactly the same mod, file for file.
+
+    The same mod fetched from two places writes the same files. Two unrelated
+    mods that share a name, or two versions of one mod, do not. Both records
+    must list exactly the same files, and the loose ones must have identical
+    checksums. Patcher-written files are compared by name only, because a
+    patcher edits shared game files and their checksums depend on what else
+    was installed."""
+    pa = {f.rel_path.lower() for f in a.deployed_files} | {f.rel_path.lower() for f in a.baked_files}
+    pb = {f.rel_path.lower() for f in b.deployed_files} | {f.rel_path.lower() for f in b.baked_files}
+    if not pa or pa != pb:
+        return False
+    sa = {f.rel_path.lower(): f.sha256 for f in a.deployed_files}
+    sb = {f.rel_path.lower(): f.sha256 for f in b.deployed_files}
+    return all(sa[k] == sb[k] for k in sa.keys() & sb.keys())
+
+
+def _same_mod(a: "InstalledMod", b: "InstalledMod") -> bool:
+    if _name_key(a.name) != _name_key(b.name) or not _name_key(a.name):
+        return False
+    return _same_origin(a, b) or _same_content(a, b)
+
+
 def _fold_into(keeper: InstalledMod, other: InstalledMod) -> None:
     """Move everything `other` deployed onto `keeper` (same name, kind, state).
     The newer record wins for a file both list, since it wrote last."""
@@ -375,6 +406,35 @@ def _fold_disabled_store(game: str, keeper_id: str, other_id: str) -> None:
     shutil.rmtree(src_root, ignore_errors=True)
 
 
+def _clusters(mods: list) -> list[list]:
+    """Group records that are the same mod (transitively), per on/off state."""
+    clusters: list[list[InstalledMod]] = []
+    for m in sorted(mods, key=lambda x: x.load_order):
+        home = [c for c in clusters
+                if c[0].enabled == m.enabled and any(_same_mod(x, m) for x in c)]
+        if not home:
+            clusters.append([m])
+            continue
+        home[0].append(m)
+        for extra in home[1:]:      # m bridged several clusters: join them
+            home[0].extend(extra)
+            clusters.remove(extra)
+    return clusters
+
+
+def unmergeable_duplicates(mods: list) -> set[str]:
+    """Ids of mods that share a name with another entry but cannot be merged
+    with it, so the player needs to look at them (they may be two different
+    mods, or two versions of one)."""
+    by_name: dict[str, int] = {}
+    members: dict[str, list[str]] = {}
+    for c in _clusters(mods):
+        k = _name_key(c[0].name)
+        by_name[k] = by_name.get(k, 0) + 1
+        members.setdefault(k, []).extend(m.id for m in c)
+    return {i for k, n in by_name.items() if n > 1 and k for i in members[k]}
+
+
 def dedupe(game: str) -> dict:
     """
     Fold mods that share a name into one entry, without touching game files.
@@ -383,19 +443,19 @@ def dedupe(game: str) -> dict:
     uninstalling the extras would delete files the surviving entry still needs.
     Instead the extras' file lists are merged into the earliest entry and the
     extra entries are dropped. Mods are only merged when they were installed
-    the same on/off state. A mod with both a patcher part and a loose-file part
+    the same on/off state and came from the same download or wrote the same files (see
+    _same_content), so unrelated mods that share a name are left alone. A mod with both a patcher part and a loose-file part
     becomes one patcher-style entry.
     """
     with _MANIFEST_LOCK:
         manifest = load_manifest(game)
-        groups: dict[tuple, list[InstalledMod]] = {}
-        for m in sorted(manifest.mods, key=lambda x: x.load_order):
-            groups.setdefault((_name_key(m.name), m.enabled), []).append(m)
+        clusters = _clusters(manifest.mods)
         drop: set[str] = set()
         names: list[str] = []
-        for (key, _en), mods in groups.items():
-            if not key or len(mods) < 2:
+        for mods in clusters:
+            if len(mods) < 2:
                 continue
+            mods.sort(key=lambda x: x.load_order)
             keeper = mods[0]
             for other in mods[1:]:
                 disabled_loose = (keeper.deploy_kind == DeployKind.LOOSE.value
@@ -409,7 +469,8 @@ def dedupe(game: str) -> dict:
         if drop:
             manifest.mods = [m for m in manifest.mods if m.id not in drop]
             save_manifest(manifest)
-        return {"removed": len(drop), "mods": names}
+        left = [m for m in manifest.mods if m.id in unmergeable_duplicates(manifest.mods)]
+        return {"removed": len(drop), "mods": names, "remaining": len(left)}
 
 
 # ---------------------------------------------------------------------------
@@ -507,8 +568,7 @@ def record_install(
         # those into the entry already there instead of listing the mod twice.
         existing = next(
             (m for m in manifest.mods
-             if _name_key(m.name) == _name_key(name)
-             and m.enabled), None)
+             if _same_mod(m, mod) and m.enabled), None)
         if existing is not None:
             _fold_into(existing, mod)
             save_manifest(manifest)

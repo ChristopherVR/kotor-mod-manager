@@ -96,6 +96,9 @@ export function LibraryView({
       addLog(r.removed
         ? t("library.dedupeDone", { count: r.removed })
         : t("library.dedupeNone"), r.removed ? "success" : "warning");
+      if (r.removed && r.remaining) {
+        addLog(t("library.dedupeRemaining", { count: r.remaining }), "warning");
+      }
       setDupesOnly(false);
       await load();
     } catch (e: any) {

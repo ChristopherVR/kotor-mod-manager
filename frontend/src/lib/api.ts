@@ -110,6 +110,8 @@ export interface LibraryMod {
   file_count: number; baked_count: number; install_ts: number;
   has_conflict: boolean; conflict_count: number;
   source_exists: boolean;
+  /** Shares a name with another entry but cannot safely be merged with it. */
+  duplicate_unmergeable?: boolean;
 }
 
 export type LibraryDetail = LibraryMod & {
@@ -322,7 +324,7 @@ export const api = {
       `/api/library/baseline/reset?profile=${encodeURIComponent(profile)}`,
       { method: "POST" }),
   dedupeLibrary: (profile: string) =>
-    req<{ ok: boolean; removed: number; mods: string[] }>(
+    req<{ ok: boolean; removed: number; mods: string[]; remaining: number }>(
       `/api/library/dedupe?profile=${encodeURIComponent(profile)}`,
       { method: "POST" }),
   bulkToggle: (profile: string, mod_ids: string[], action: "enable" | "disable") =>

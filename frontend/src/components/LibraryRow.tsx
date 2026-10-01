@@ -120,7 +120,13 @@ export function LibraryRow({
         </p>
         <p className="truncate text-xs text-muted-foreground">{sub}</p>
       </div>
-      {duplicate && (
+      {duplicate && mod.duplicate_unmergeable && (
+        <Badge variant="warning" className="gap-1" title={t("library.duplicateUnmergeableHint")}>
+          <Copy className="size-3" />
+          {t("library.duplicateUnmergeable")}
+        </Badge>
+      )}
+      {duplicate && !mod.duplicate_unmergeable && (
         <Badge variant="muted" className="gap-1" title={t("library.duplicateHint")}>
           <Copy className="size-3" />
           {t("library.duplicate")}

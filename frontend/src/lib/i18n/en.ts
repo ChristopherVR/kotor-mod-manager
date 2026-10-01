@@ -136,6 +136,9 @@ export const en: Dict = {
   "library.dedupeHint": "Merges mods listed more than once into a single entry. Nothing is removed from your game.",
   "library.dedupeDone": "Merged {count} duplicate entries.",
   "library.dedupeNone": "No duplicates could be merged. Entries with the same name but a different on/off state are left alone.",
+  "library.duplicateUnmergeable": "same name, not identical",
+  "library.duplicateUnmergeableHint": "Another entry has this name but installed different files, so it was not merged. It may be a different mod or another version. Check both and uninstall the one you do not want.",
+  "library.dedupeRemaining": "{count} entries share a name with another mod but are not identical, so they were left alone. Look for the orange badge.",
   "library.dedupeFailed": "Couldn't remove duplicates: {error}",
 
   // Mod detail
