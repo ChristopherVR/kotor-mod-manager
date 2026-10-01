@@ -399,6 +399,22 @@ def bulk_uninstall(req: BulkModRequest,
             "requested": len(set(req.mod_ids or []))}
 
 
+@library_router.post("/library/dedupe")
+def dedupe_library(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """Merge mods listed more than once into a single entry. Game files are
+    not touched, so this is safe while the game is closed or open."""
+    scope, _root, _gt = _resolve(game, profile)
+    result = mod_manager.dedupe(scope)
+    if result["removed"]:
+        _publish({"type": "log",
+                  "message": f"Merged {result['removed']} duplicate entr"
+                             f"{'y' if result['removed'] == 1 else 'ies'} "
+                             f"across {len(result['mods'])} mod(s).",
+                  "tag": "success"})
+        _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, **result}
+
+
 @library_router.post("/library/bulk/toggle")
 def bulk_toggle(req: BulkModRequest, action: str = Query("disable"),
                 game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:

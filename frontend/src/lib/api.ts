@@ -321,6 +321,10 @@ export const api = {
           restored: string[] }>(
       `/api/library/baseline/reset?profile=${encodeURIComponent(profile)}`,
       { method: "POST" }),
+  dedupeLibrary: (profile: string) =>
+    req<{ ok: boolean; removed: number; mods: string[] }>(
+      `/api/library/dedupe?profile=${encodeURIComponent(profile)}`,
+      { method: "POST" }),
   bulkToggle: (profile: string, mod_ids: string[], action: "enable" | "disable") =>
     req<{ ok: boolean; action: string; changed: string[];
           failed: { mod: string; reason: string }[] }>(

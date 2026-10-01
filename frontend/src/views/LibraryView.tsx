@@ -88,6 +88,23 @@ export function LibraryView({
       .catch(() => setHasBaseline(false));
   }, [activeProfile, refreshTick]);
 
+  const runDedupe = useCallback(async () => {
+    if (!activeProfile || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const r = await api.dedupeLibrary(activeProfile);
+      addLog(r.removed
+        ? t("library.dedupeDone", { count: r.removed })
+        : t("library.dedupeNone"), r.removed ? "success" : "warning");
+      setDupesOnly(false);
+      await load();
+    } catch (e: any) {
+      addLog(t("library.dedupeFailed", { error: e?.message ?? "error" }), "error");
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [activeProfile, bulkBusy, addLog, load, t]);
+
   const runReset = useCallback(async () => {
     if (!activeProfile || bulkBusy) return;
     setBulkBusy(true);
@@ -326,6 +343,17 @@ export function LibraryView({
               onClick={() => setDupesOnly((v) => !v)}
             >
               {t("library.duplicatesOnly")}
+            </Button>
+          )}
+          {dupeCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkBusy}
+              title={t("library.dedupeHint")}
+              onClick={runDedupe}
+            >
+              {t("library.dedupe")}
             </Button>
           )}
         </div>

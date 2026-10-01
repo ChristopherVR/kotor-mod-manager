@@ -132,6 +132,11 @@ export const en: Dict = {
   "library.duplicateHint": "Another installed mod shares this name.",
   "library.duplicateSummary": "{count} duplicate name(s)",
   "library.duplicatesOnly": "Duplicates",
+  "library.dedupe": "Remove duplicates",
+  "library.dedupeHint": "Merges mods listed more than once into a single entry. Nothing is removed from your game.",
+  "library.dedupeDone": "Merged {count} duplicate entries.",
+  "library.dedupeNone": "No duplicates could be merged. Entries with the same name but a different on/off state are left alone.",
+  "library.dedupeFailed": "Couldn't remove duplicates: {error}",
 
   // Mod detail
   "modDetail.viewDetails": "View details",
