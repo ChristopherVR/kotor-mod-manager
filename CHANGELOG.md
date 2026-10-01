@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.18] - 2026-10-01
+
+### Miscellaneous
+
+- Bump the npm-minor-and-patch group in /frontend with 3 updates
+- Bump taiki-e/install-action from 2.87.15 to 2.87.20
+- Bump tauri
 ## [0.16.17] - 2026-09-21
 
 ### Miscellaneous
