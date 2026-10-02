@@ -138,6 +138,15 @@ def get_library(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     return {"game": game_type, "profile": scope, "mods": out}
 
 
+# Registered before /library/{mod_id}, which would otherwise match "baseline".
+@library_router.get("/library/baseline")
+def baseline_status(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """Whether a clean snapshot exists to reset back to."""
+    scope, root, _gt = _resolve(game, profile)
+    return {"has_baseline": mod_manager.has_baseline(scope),
+            "game_path": str(root) if root else ""}
+
+
 @library_router.get("/library/{mod_id}")
 def get_library_mod(mod_id: str, game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     from dataclasses import asdict
@@ -274,14 +283,6 @@ def clear_cache(req: ClearCacheRequest, game: str = Query("KOTOR1"),
                          f"freeing {mb:.0f} MB.",
               "tag": "success" if result["removed"] else "muted"})
     return {"ok": True, **result}
-
-
-@library_router.get("/library/baseline")
-def baseline_status(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
-    """Whether a clean snapshot exists to reset back to."""
-    scope, root, _gt = _resolve(game, profile)
-    return {"has_baseline": mod_manager.has_baseline(scope),
-            "game_path": str(root) if root else ""}
 
 
 @library_router.post("/library/baseline/capture")
