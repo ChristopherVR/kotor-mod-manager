@@ -29,6 +29,7 @@ import config as cfg
 from backend.models import (
     ActiveProfileRequest,
     AddBuildRequest,
+    ConfirmAnswer,
     LoginRequest,
     NxmRequest,
     SourceSiteRequest,
@@ -492,6 +493,7 @@ def get_settings() -> dict:
         "language": conf.get("language", "en"),
         "custom_patcher_path": conf.get("custom_patcher_path", ""),
         "nexus_api_key": conf.get("nexus_api_key", ""),
+        "preferred_resolution": conf.get("preferred_resolution", ""),
     }
 
 
@@ -1017,6 +1019,10 @@ def install_start(req: StartInstallRequest) -> dict:
         hub.publish({"type": "manual", "file_id": file_id, "name": name,
                      "folder": folder, "readme": readme[:4000]})
 
+    def on_confirm(request_id: str, title: str, body: str, options: list) -> None:
+        hub.publish({"type": "confirm", "id": request_id, "title": title,
+                     "body": body, "options": options})
+
     state.pipeline = Pipeline(
         mods=mods,
         game_path=game_path,
@@ -1027,6 +1033,7 @@ def install_start(req: StartInstallRequest) -> dict:
         on_progress=on_progress,
         on_install_progress=on_install_progress,
         on_manual=on_manual,
+        on_confirm=on_confirm,
         auto_unattended=req.unattended,
         game_key=scope,
         game_type=game,
@@ -1050,6 +1057,15 @@ def install_start(req: StartInstallRequest) -> dict:
 
     threading.Thread(target=_watch, args=(state.pipeline,), daemon=True).start()
     return {"ok": True, "total": len(mods), "game_path": str(game_path)}
+
+
+@app.post("/api/install/confirm")
+def install_confirm(req: ConfirmAnswer) -> dict:
+    """The player's answer to a question the installer is waiting on."""
+    pl = state.pipeline
+    if not pl or not pl.answer_confirm(req.id, req.choice):
+        return JSONResponse(status_code=404, content={"ok": False, "error": "no_such_question"})
+    return {"ok": True}
 
 
 @app.post("/api/install/{action}")

@@ -259,4 +259,10 @@ export const es: Dict = {
   // What's New
   "whatsNew.title": "Novedades de la v{version}",
   "whatsNew.gotIt": "Entendido",
+
+  "settings.general.screenSize": "Tamaño de pantalla para mods panorámicos",
+  "settings.general.screenSizeHint": "Déjalo vacío para usar el tamaño de tu pantalla. Se usa para elegir los archivos de menú y preparar el programa del juego.",
+  // Questions from the installer
+  "confirm.continue": "Continuar",
+  "confirm.skip": "Omitir por ahora",
 };

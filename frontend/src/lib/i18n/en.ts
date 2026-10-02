@@ -319,4 +319,10 @@ export const en: Dict = {
   // What's New
   "whatsNew.title": "What's new in v{version}",
   "whatsNew.gotIt": "Got it",
+
+  "settings.general.screenSize": "Screen size for widescreen mods",
+  "settings.general.screenSizeHint": "Leave empty to use your screen's size. Used to pick the right menu files and to set up the game program file.",
+  // Questions from the installer
+  "confirm.continue": "Continue",
+  "confirm.skip": "Skip for now",
 };

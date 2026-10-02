@@ -114,10 +114,11 @@ def test_galaxy_map_installs_its_base_mod_rather_than_asking_the_player():
     assert "HR Menu Patch" in out.file_except
 
 
-def test_steam_breaking_4gb_patcher_is_forced_to_manual():
-    out = build_overrides.apply(Directives(), "k1_spoilerfree", "", guide_index=180)
-    assert out.manual_only
-    assert "Steam" in out.manual_reason
+def test_exe_patch_mods_are_done_by_the_app_not_left_manual():
+    for kwargs, step in (({"guide_index": 180}, "laa"), ({"file_id": "1159"}, "hrmenus")):
+        out = build_overrides.apply(Directives(), "k1_spoilerfree", **kwargs)
+        assert out.tool_step == step
+        assert not out.manual_only
 
 
 def test_duplicate_texture_cleanup_sorts_last():
@@ -349,3 +350,8 @@ def test_no_overwrite_is_off_by_default(tmp_path):
     )
     assert Pipeline._apply_no_overwrite(plan, Directives(), tmp_path) == 0
     assert len(plan.file_mappings) == 1
+
+
+def test_full_build_does_the_program_file_patches_too():
+    assert build_overrides.apply(Directives(), "k1_full", "", guide_index=186).tool_step == "laa"
+    assert build_overrides.apply(Directives(), "k1_full", "1159").tool_step == "hrmenus"

@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { useLanguage, LOCALES, type Locale } from "@/lib/i18n";
 import { isUiSoundEnabled, setUiSoundEnabled, playClick } from "@/lib/sound";
 
-const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "", language: "en", custom_patcher_path: "", nexus_api_key: "" };
+const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "", language: "en", custom_patcher_path: "", nexus_api_key: "", preferred_resolution: "" };
 
 interface GeneralSectionProps {
   addLog: (message: string, tag?: string) => void;
@@ -145,6 +145,15 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
             <p className="text-xs text-muted-foreground">
               {t("settings.general.downloadFolderHint")}
             </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>{t("settings.general.screenSize")}</Label>
+            <Input
+              value={s.preferred_resolution}
+              placeholder="1920x1080"
+              onChange={(e) => { setSaved(false); setS({ ...s, preferred_resolution: e.target.value.trim() }); }}
+            />
+            <p className="text-xs text-muted-foreground">{t("settings.general.screenSizeHint")}</p>
           </div>
           <div className="flex items-center gap-3">
             <Button onClick={save} disabled={saving}>

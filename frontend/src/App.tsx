@@ -7,6 +7,7 @@ import { DEFAULT_RUNTIME, type ModRuntime } from "@/components/ModList";
 import { type LogLine } from "@/components/LogPanel";
 import { LoginDialog } from "@/components/LoginDialog";
 import { WhatsNew } from "@/components/WhatsNew";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { AppShell } from "@/layouts/AppShell";
 import { useT } from "@/lib/i18n";
 import { setNxmHandler } from "@/lib/tauri";
@@ -52,6 +53,7 @@ export default function App() {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [patcherMod, setPatcherMod] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null);
   const [username, setUsername] = useState("");
   const [conflictCount, setConflictCount] = useState(0);
   // Live per-mod progress for a running bulk action, so the Library screen can
@@ -211,6 +213,9 @@ export default function App() {
           ...prev,
           [e.file_id]: { ...(prev[e.file_id] ?? DEFAULT_RUNTIME), progress: e.pct * 100, progressLabel: e.label },
         }));
+        break;
+      case "confirm":
+        setConfirmReq({ id: e.id, title: e.title, body: e.body, options: e.options });
         break;
       case "manual":
         setActiveFileId(e.file_id);
@@ -376,6 +381,14 @@ export default function App() {
         open={showLogin}
         onClose={() => setShowLogin(false)}
         onLoggedIn={(u) => { setUsername(u); refreshStatus(); }}
+      />
+
+      <ConfirmDialog
+        request={confirmReq}
+        onAnswer={(id, choice) => {
+          setConfirmReq(null);
+          api.answerConfirm(id, choice).catch(() => {});
+        }}
       />
 
       <WhatsNew

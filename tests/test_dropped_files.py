@@ -113,3 +113,15 @@ def test_stopping_ends_the_wait(tmp_path):
     p._stop_event.set()
     t.join(3)
     assert not t.is_alive()
+
+
+def test_a_lone_unrelated_file_is_not_handed_to_the_waiting_mod(tmp_path, monkeypatch):
+    """The 4GB Patcher once got an Ebon Hawk retexture because it was the only file."""
+    monkeypatch.setattr(pl, "_DROP_WAIT_SECONDS", 0.6)
+    p = _pipeline(tmp_path, [_manual_mod(name="4GB Patcher")])
+    root = tmp_path / "dl"
+    root.mkdir()
+    (root / "vurt_k1_eh_retexture_v10.rar").write_bytes(b"Rar!data")
+    p._download_mod(p.mods[0])
+    assert p.mods[0].status.name == "ERROR"
+    assert (root / "vurt_k1_eh_retexture_v10.rar").exists()

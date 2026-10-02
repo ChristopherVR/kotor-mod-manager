@@ -61,6 +61,7 @@ export interface Settings {
   language: string;
   custom_patcher_path: string;
   nexus_api_key: string;
+  preferred_resolution: string;
 }
 
 export interface NexusValidation {
@@ -151,6 +152,7 @@ export type WsEvent =
   | { type: "auth"; logged_in: boolean; username: string }
   | { type: "log"; message: string; tag: string }
   | { type: "nxm_wait"; active: boolean }
+  | { type: "confirm"; id: string; title: string; body: string; options: string[] }
   | { type: "status"; file_id: string; status: ModStatus; status_label: string; detail: string }
   | { type: "progress"; file_id: string; pct: number; kb: number; total_kb: number }
   | { type: "install_progress"; file_id: string; pct: number; label: string }
@@ -183,6 +185,11 @@ export const api = {
     req<{ installs: { game: GameKey; path: string; source: string; already_added: boolean }[] }>(
       "/api/games/detect"),
   status: () => req<AppStatus>("/api/status"),
+  answerConfirm: (id: string, choice: string) =>
+    req<{ ok: boolean }>("/api/install/confirm", {
+      method: "POST",
+      body: JSON.stringify({ id, choice }),
+    }),
   builds: () => req<{ builds: BuildInfo[] }>("/api/builds"),
   addBuild: (label: string, game: string, url: string) =>
     req<{ ok: boolean; build: BuildInfo }>("/api/builds", {

@@ -259,4 +259,10 @@ export const de: Dict = {
   // What's New
   "whatsNew.title": "Neu in v{version}",
   "whatsNew.gotIt": "Verstanden",
+
+  "settings.general.screenSize": "Bildschirmgröße für Widescreen-Mods",
+  "settings.general.screenSizeHint": "Leer lassen, um die Größe Ihres Bildschirms zu verwenden. Wird für die passenden Menüdateien und die Programmdatei des Spiels genutzt.",
+  // Questions from the installer
+  "confirm.continue": "Fortfahren",
+  "confirm.skip": "Vorerst überspringen",
 };

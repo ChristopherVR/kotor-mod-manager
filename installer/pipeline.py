@@ -130,6 +130,7 @@ LogCallback      = Callable[[str, str], None]              # (message, tag)
 ProgressCB       = Callable[[str, float, int, int], None]  # (file_id, pct, kb, total_kb)
 InstallProgressCB = Callable[[str, float, str], None]      # (file_id, pct, label)
 ManualCB         = Callable[[str, str, str, str], None]     # (file_id, name, folder, readme)
+ConfirmCB        = Callable[[str, str, str, list], None]    # (request_id, title, body, options)
 
 
 class Pipeline:
@@ -144,6 +145,7 @@ class Pipeline:
         on_progress: Optional[ProgressCB] = None,
         on_install_progress: Optional[InstallProgressCB] = None,
         on_manual: Optional[ManualCB] = None,
+        on_confirm: Optional[ConfirmCB] = None,
         auto_unattended: bool = False,
         game_key: str = "",
         game_type: str = "",
@@ -160,6 +162,9 @@ class Pipeline:
         self._on_progress = on_progress
         self._on_install_progress = on_install_progress
         self._on_manual = on_manual
+        self._on_confirm = on_confirm
+        # Open questions for the player: request id -> (event, answer holder).
+        self._confirms: dict[str, tuple[threading.Event, list[str]]] = {}
         # When True, never fall back to a manual GUI click (fully unattended).
         self._auto_unattended = auto_unattended
         # Mod-manager recording. game_key is the manifest scope (profile id or
@@ -188,6 +193,9 @@ class Pipeline:
         self._pause_event.set()  # not paused initially
         self._thread: Optional[threading.Thread] = None
         self._running = False
+        self._manual_left: list[tuple[str, str]] = []
+        # Mods that edit the game's program file; handled together at the end.
+        self._tool_mods: list[PipelineMod] = []
         self._current: Optional[PipelineMod] = None
 
     @property
@@ -201,6 +209,40 @@ class Pipeline:
         self._running = True
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+
+    def confirm(self, title: str, body: str, options: Optional[list[str]] = None) -> str:
+        """
+        Ask the player a question and wait for the answer.
+
+        Returns the chosen option, or "" when nobody can answer: no window to
+        ask in (a headless run) or the run being stopped. Callers treat "" as
+        "no", so nothing is ever changed without an explicit yes. The app's
+        "unattended" flag only means "no manual GUI clicks", and does not stop
+        a question appearing in the app's own window.
+        """
+        options = options or ["continue", "skip"]
+        if not self._on_confirm:
+            return ""
+        request_id = f"c{int(time.time() * 1000)}"
+        event, answer = threading.Event(), []
+        self._confirms[request_id] = (event, answer)
+        try:
+            self._on_confirm(request_id, title, body, options)
+            while not event.wait(0.25):
+                if self._stop_event.is_set():
+                    return ""
+            return answer[0] if answer else ""
+        finally:
+            self._confirms.pop(request_id, None)
+
+    def answer_confirm(self, request_id: str, choice: str) -> bool:
+        """Deliver the player's answer to a waiting confirm(). False if none waits."""
+        entry = self._confirms.get(request_id)
+        if not entry:
+            return False
+        entry[1].append(choice)
+        entry[0].set()
+        return True
 
     def stop(self) -> None:
         self._stop_event.set()
@@ -341,7 +383,95 @@ class Pipeline:
         finally:
             self._running = False
             self._current = None
+            self._run_exe_tools()
+            self._log_manual_summary()
             self._log_overlap_summary()
+
+    def _run_exe_tools(self) -> None:
+        """Patch swkotor.exe once for every mod that asked for it, after asking."""
+        mods, self._tool_mods = self._tool_mods, []
+        if not mods or self._stop_event.is_set():
+            return
+        from installer import exe_setup
+        self._log("\n── Game program file (swkotor.exe)")
+        steps = {m.build_mod.directives.tool_step for m in mods}
+        if "hrmenus" in steps:
+            steps.add("uniws")           # the menus patch needs the widescreen patch first
+
+        def finish(ok: bool, reason: str) -> None:
+            for m in mods:
+                if ok:
+                    self._set_status(m, ModStatus.DONE)
+                else:
+                    self._set_status(m, ModStatus.MANUAL, reason)
+                    self._manual_left.append((m.build_mod.name, reason))
+
+        game = self._game_type or "KOTOR1"
+        skipped = ("The game program file was not patched, so widescreen will not work "
+                   "yet. Run the install again and choose Continue when asked.")
+        try:
+            if game != "KOTOR1":
+                finish(False, "The program file patches are only automated for KOTOR 1.")
+                return
+            ini = ""
+            if "uniws" in steps:
+                ini = self._fetch_uniws_ini()
+                if not ini:
+                    finish(False, "Could not download the widescreen patch data. Check your "
+                                  "connection and run the install again.")
+                    return
+            ok = exe_setup.run(
+                self._game_path, sorted(steps), self._screen_resolution, ini,
+                confirm=lambda t, b: self.confirm(t, b) == "continue",
+                fetch_base=lambda: exe_setup.fetch_editable_exe(
+                    self._client, self._download_dir / "_editable_exe", self._log),
+                log=self._log, game=game)
+            if ok:
+                from installer import game_settings
+                w, h = (int(x) for x in self._screen_resolution.lower().split("x"))
+                if game_settings.set_resolution(self._game_path, w, h):
+                    self._log(f"  Set the game's screen size to {w}x{h} in swkotor.ini.", "success")
+                for m in mods:
+                    if m.build_mod.directives.tool_step == "hrmenus" and m.extracted_paths:
+                        exe_setup.copy_gui_set(m.extracted_paths[0], self._game_path,
+                                               self._screen_resolution, game, self._log)
+            finish(ok, skipped)
+        except Exception as e:
+            self._log(f"  The program file patches failed: {e}", "error")
+            finish(False, skipped)
+
+    def _fetch_uniws_ini(self) -> str:
+        """patches.ini from the Universal Widescreen Patcher download."""
+        from installer import exe_setup
+        from scraper import hosts as _hosts
+        dest = self._download_dir / "_uniws"
+        try:
+            dest.mkdir(parents=True, exist_ok=True)
+            cached = dest / "uniws.zip"
+            if not cached.is_file():
+                s = _hosts._session()
+                s.headers["Referer"] = "https://www.wsgf.org/"   # the site refuses requests without it
+                cached = _hosts.download_direct("https://www.wsgf.org/downloads/uniws.zip", dest, session=s)
+            return exe_setup.load_uniws_ini(cached)
+        except Exception as e:
+            self._log(f"  Could not get the widescreen patch data: {e}", "warning")
+            return ""
+
+    def _log_manual_summary(self) -> None:
+        """
+        Repeat the steps left for the player, in order, once the run ends.
+
+        The per-mod warning scrolls past among hundreds of log lines, and a
+        skipped step (such as the widescreen executable patches) leaves the
+        game visibly broken, so the list closes the log where it is seen.
+        """
+        if not self._manual_left:
+            return
+        self._log("", "")
+        self._log("Steps still left for you to do (in this order):", "warning")
+        for i, (name, reason) in enumerate(self._manual_left, 1):
+            self._log(f"  {i}. {name}: {reason}", "warning")
+        self._manual_left = []
 
     def _log_overlap_summary(self) -> None:
         """
@@ -440,11 +570,11 @@ class Pipeline:
         ready = [p for p in loose if settled(p)]
         if not ready:
             return None
-        if len(loose) > 1:
-            # Several files loose at once: take the one named like this mod.
-            ready.sort(key=lambda p: self._name_score(p.name, pm.build_mod.name), reverse=True)
-            if self._name_score(ready[0].name, pm.build_mod.name) == 0:
-                return None
+        # Take only a file named like this mod. Taking a lone unrelated file
+        # handed one mod's archive to whichever manual mod happened to wait first.
+        ready.sort(key=lambda p: self._name_score(p.name, pm.build_mod.name), reverse=True)
+        if self._name_score(ready[0].name, pm.build_mod.name) == 0:
+            return None
         dest_dir.mkdir(parents=True, exist_ok=True)
         target = dest_dir / ready[0].name
         shutil.move(str(ready[0]), str(target))
@@ -473,6 +603,12 @@ class Pipeline:
         mod = pm.build_mod
         self._dl_started.add(mod.file_id)
         self._log(f"\n── [{mod.install_order:3d}] {mod.name}")
+
+        if mod.directives.tool_step == "laa":
+            self._log("  Nothing to download: the app makes this change itself, together "
+                      "with the other game program file patches at the end.", "muted")
+            self._set_status(pm, ModStatus.READY, "Done with the program file patches")
+            return
 
         try:
             dest_dir = self._mod_dir(pm)
@@ -930,6 +1066,10 @@ class Pipeline:
         if self._stop_event.is_set():
             return
 
+        if pm.build_mod.directives.tool_step == "laa":
+            self._tool_mods.append(pm)
+            return
+
         # Stale caches may still hold bundled translation patches for other
         # languages (new downloads already filter them). Never install those:
         # e.g. K1CP's Russian patch would overwrite an English game's credits
@@ -1007,12 +1147,19 @@ class Pipeline:
                 "warning")
             return
 
+        # Edits of the game's program file run together at the end, in order.
+        if dirs.tool_step:
+            self._tool_mods.append(pm)
+            self._set_status(pm, ModStatus.READY, "Done with the program file patches")
+            return
+
         # Some steps genuinely cannot be automated (interactive .bat files, a
         # patcher that would break a Steam executable). Say so rather than
         # doing something destructive.
         if getattr(dirs, "manual_only", False):
             reason = getattr(dirs, "manual_reason", "") or "This mod needs manual steps."
             self._log(f"  '{pm.build_mod.name}' needs a manual step: {reason}", "warning")
+            self._manual_left.append((pm.build_mod.name, reason))
             self._flag_manual(pm, ManualInstallRequired(
                 pm.plans[0].mod_root if pm.plans else pm.extracted_paths[0],
                 reason))

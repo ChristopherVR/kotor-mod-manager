@@ -695,22 +695,15 @@ K1_SPOILERFREE: dict[str, dict] = {
 
     # -- Layer 17: widescreen ----------------------------------------------
 
-    # [180] Hard stop on Steam: the 4GB patcher breaks Steam's encrypted
-    # executable unless the widescreen .exe replaced it first.
-    "guide:180": {
-        "layer": LAYER_WIDESCREEN,
-        "manual_only": True,
-        "manual_reason": "Do NOT apply to the Steam version unless the UniWS "
-                         "widescreen patch has already replaced swkotor.exe - it "
-                         "will break the encrypted Steam executable and the game "
-                         "will not launch.",
-    },
+    # [180] The 4GB patch is done by the app, on a copy of the program file,
+    # after the widescreen patches (it must come last, and a Steam program
+    # file needs the unprotected one first - see installer/exe_setup.py).
+    "guide:180": {"layer": LAYER_WIDESCREEN, "tool_step": "laa"},
 
     "guide:181": {"layer": LAYER_WIDESCREEN},
-    "1159": {"layer": LAYER_WIDESCREEN, "manual_only": True,
-             "manual_reason": "Needs a copy of swkotor.exe placed in the mod folder "
-                              "and the .bat (not the .exe) run interactively, after "
-                              "the UniWS widescreen patch."},
+    # Also applies the UniWS widescreen patch, which the high resolution menus
+    # patch needs first, and copies the menu files for the player's screen.
+    "1159": {"layer": LAYER_WIDESCREEN, "tool_step": "hrmenus"},
     "1226": {"layer": LAYER_WIDESCREEN},
     "1742": {"layer": LAYER_UI_COSMETIC},
 
@@ -782,14 +775,22 @@ K1_SPOILERFREE_NOTES = {
         "other mod including widescreen. Skipping it can crash the game."
     ),
     "steam_4gb": (
-        "The 4GB Patcher (180) must not be applied to a Steam install unless the "
-        "widescreen .exe replaced swkotor.exe first."
+        "The 4GB Patcher (180) must come after the widescreen patches. The app "
+        "does all of these on a copy of swkotor.exe, in the right order."
     ),
 }
 
 
+# The full build has no curated rules yet, only the program file patches, which
+# are the same steps as in the spoiler-free build (entries 186 and 188 here).
+K1_FULL = {
+    "guide:186": {"tool_step": "laa"},
+    "1159": {"tool_step": "hrmenus"},
+}
+
 BUILD_OVERRIDES = {
     "k1_spoilerfree": K1_SPOILERFREE,
+    "k1_full": K1_FULL,
 }
 
 BUILD_NOTES = {
@@ -800,7 +801,7 @@ BUILD_NOTES = {
 _SCALAR_FIELDS = {
     "prefer_compatible", "patch_first", "requires_patch", "multi_run",
     "rename_base_copies", "tolerate_patcher_errors", "no_overwrite",
-    "layer", "manual_only", "manual_reason",
+    "layer", "manual_only", "manual_reason", "tool_step",
 }
 
 

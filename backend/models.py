@@ -22,6 +22,7 @@ class SettingsModel(BaseModel):
     language: str = "en"
     custom_patcher_path: str = ""
     nexus_api_key: str = ""
+    preferred_resolution: str = ""    # e.g. 1920x1080; empty = detect the screen
 
 
 class StartInstallRequest(BaseModel):
@@ -81,6 +82,11 @@ class ResolveConflictsRequest(BaseModel):
 
 class NxmRequest(BaseModel):
     url: str
+
+
+class ConfirmAnswer(BaseModel):
+    id: str
+    choice: str
 
 
 class ProfileCreate(BaseModel):

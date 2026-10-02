@@ -1203,6 +1203,16 @@ def reset_to_vanilla(game: str, game_root: Path,
             except OSError as e:
                 log(f"Could not restore {name}: {e}")
 
+    # The widescreen patches keep the player's own swkotor.exe as swkotor.exe.bak;
+    # putting it back also clears the patch record.
+    try:
+        from installer import exe_setup
+        if exe_setup.restore_original(game_root, game):
+            result["restored"].append("swkotor.exe")
+            shutil.rmtree(cfg.CONFIG_DIR / "exe_patch" / f"{game}-gui-backup", ignore_errors=True)
+    except OSError as e:
+        log(f"Could not restore the original swkotor.exe: {e}")
+
     manifest = GameManifest(game=game)
     save_manifest(manifest)
     for sub in ("disabled", "backups"):
