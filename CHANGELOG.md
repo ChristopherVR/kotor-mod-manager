@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.16.19] - 2026-10-03
+
+### Bug Fixes
+
+- Repair mod downloads and make the app easier to navigate
 ## [0.16.18] - 2026-10-01
 
 ### Miscellaneous
