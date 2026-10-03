@@ -26,6 +26,7 @@ from backend.models import (
 )
 from installer import mod_manager
 from installer.detector import InstallMethod
+from installer.download_paths import download_folder_name
 
 library_router = APIRouter(prefix="/api", tags=["library"])
 
@@ -74,8 +75,8 @@ def _source_folder(mod, download_dir: Optional[Path] = None) -> Optional[Path]:
         return Path(mod.source_ref) if mod.source_ref else None
     if not mod.source_ref:
         return None
-    slug = (mod.source_slug or "")[:30]
-    return (download_dir or _download_dir()) / f"{mod.source_ref}_{slug}"
+    return (download_dir or _download_dir()) / download_folder_name(
+        mod.source_ref, mod.source_slug or "")
 
 
 def _mod_dict(mod, conflict_count: int = 0, download_dir: Optional[Path] = None) -> dict:

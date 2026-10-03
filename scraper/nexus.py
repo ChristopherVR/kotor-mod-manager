@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -227,7 +228,7 @@ def download_link(game: str, mod_id: int, file_id: int, api_key: str,
 def download_file(game: str, mod_id: int, file_id: int, dest_dir: Path,
                   api_key: str, nxm_key: str = "", nxm_expires: str = "",
                   progress_callback: Optional[Callable[[int, int, str], None]] = None,
-                  cancel_event=None) -> Path:
+                  cancel_event=None, pause_event=None) -> Path:
     """Fetch one Nexus file into dest_dir and return its path."""
     info = file_info(game, mod_id, file_id, api_key)
     filename = re.sub(r'[<>:"/\\|?*]', "_",
@@ -243,18 +244,27 @@ def download_file(game: str, mod_id: int, file_id: int, dest_dir: Path,
     with urllib.request.urlopen(req, timeout=60) as r:
         total = int(r.headers.get("Content-Length", 0))
         done = 0
-        with open(part, "wb") as f:
-            while True:
-                if cancel_event is not None and cancel_event.is_set():
-                    part.unlink(missing_ok=True)
-                    raise NexusDownloadError("Download cancelled.")
-                chunk = r.read(512 * 1024)
-                if not chunk:
-                    break
-                f.write(chunk)
-                done += len(chunk)
-                if progress_callback:
-                    progress_callback(done, total, filename)
+        try:
+            with open(part, "wb") as f:
+                while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise NexusDownloadError("Download cancelled.")
+                    if pause_event is not None and not pause_event.is_set():
+                        time.sleep(0.1)
+                        continue
+                    chunk = r.read(512 * 1024)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    done += len(chunk)
+                    if progress_callback:
+                        progress_callback(done, total, filename)
+            if total and done != total:
+                raise NexusDownloadError("Download incomplete. Retry the download.")
+        except Exception:
+            # Close the handle before unlinking: Windows cannot delete an open file.
+            part.unlink(missing_ok=True)
+            raise
     part.replace(dest)
     return dest
 

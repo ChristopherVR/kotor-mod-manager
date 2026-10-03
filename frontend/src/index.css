@@ -3,31 +3,31 @@
 
 @layer base {
   :root {
-    --background: 30 8% 9%;
-    --foreground: 40 18% 92%;
-    --card: 30 7% 12%;
-    --card-foreground: 40 18% 92%;
-    --primary: 15 63% 56%;
-    --primary-foreground: 30 20% 98%;
-    --secondary: 30 6% 18%;
-    --secondary-foreground: 40 16% 90%;
-    --muted: 30 6% 16%;
-    --muted-foreground: 35 10% 62%;
-    --accent: 30 7% 20%;
-    --accent-foreground: 40 18% 94%;
-    --sidebar: 30 9% 7%;
-    --sidebar-foreground: 40 14% 80%;
-    --sidebar-accent: 24 22% 22%;
-    --sidebar-border: 30 7% 16%;
+    --background: 210 19% 9%;
+    --foreground: 40 16% 91%;
+    --card: 210 16% 12%;
+    --card-foreground: 40 16% 91%;
+    --primary: 39 59% 64%;
+    --primary-foreground: 210 24% 9%;
+    --secondary: 210 13% 19%;
+    --secondary-foreground: 40 16% 91%;
+    --muted: 210 14% 16%;
+    --muted-foreground: 210 9% 67%;
+    --accent: 210 13% 21%;
+    --accent-foreground: 40 16% 94%;
+    --sidebar: 210 24% 7%;
+    --sidebar-foreground: 210 10% 72%;
+    --sidebar-accent: 39 20% 16%;
+    --sidebar-border: 210 14% 18%;
     --destructive: 6 70% 52%;
     --destructive-foreground: 30 20% 98%;
     --success: 145 45% 48%;
     --warning: 35 85% 55%;
     --info: 205 60% 56%;
-    --border: 30 6% 18%;
-    --input: 30 6% 20%;
-    --ring: 15 63% 56%;
-    --radius: 0.6rem;
+    --border: 210 13% 21%;
+    --input: 210 13% 28%;
+    --ring: 39 59% 64%;
+    --radius: 0.3rem;
   }
 }
 
@@ -44,6 +44,33 @@
     @apply bg-background text-foreground antialiased;
     overflow: hidden;
     font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Quiet surfaces and clear hierarchy for a desktop mod-management tool. */
+.view-header {
+  flex-shrink: 0;
+  padding: 1.4rem 1.5rem 1.1rem;
+  background: hsl(var(--background));
+}
+.view-header h1 {
+  font-family: "Bahnschrift", "Segoe UI", sans-serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.view-header p { margin-top: 0.25rem; }
+.mod-row { border-bottom: 1px solid hsl(var(--border) / 0.5); }
+.mod-row:last-child { border-bottom-color: transparent; }
+button, select { cursor: pointer; }
+button:disabled, select:disabled { cursor: default; }
+:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 

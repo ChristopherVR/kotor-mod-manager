@@ -13,17 +13,11 @@ from bs4 import BeautifulSoup, NavigableString
 
 DS_RE = re.compile(r"deadlystream\.com/files/file/(\d+)-([^\s\"'<>#/?]+)", re.I)
 
-# Hosts the app can download from unattended. Verified against the KOTOR 1
-# Spoiler-Free build rather than assumed:
-#   deadlystream - signed in with the player's own account
-#   mega         - public links carry their own decryption key, no account
-#   github       - release assets are plain file URLs
-#   googledrive  - works once the large-file confirm token is followed
-#   direct       - a plain file URL on an author's own site
-# Nexus is deliberately absent: its API refuses downloads to free accounts
-# unless the request carries a token minted by clicking "Mod manager download"
-# on the site, so it always needs a hand. GameFront is untested.
-AUTO_HOSTS = frozenset({"deadlystream", "mega", "github", "googledrive", "direct"})
+# Nexus automation additionally requires the player's API key and Premium.
+# GitHub and direct downloads must point to archive URLs, not landing pages.
+AUTO_HOSTS = frozenset({"deadlystream", "github", "direct"})
+# Keep public mirrors as useful manual-download links when a guide offers them.
+_MIRROR_HOSTS = frozenset({"mega", "googledrive"})
 
 _HOST_PATTERNS = (
     ("deadlystream", "deadlystream.com"),
@@ -112,7 +106,9 @@ class BuildMod:
     @property
     def auto_downloadable(self) -> bool:
         """Whether the app can fetch this without the player doing anything."""
-        return self.source_host in AUTO_HOSTS
+        return self.source_host == "deadlystream" or (
+            self.source_host in ("direct", "github") and bool(re.search(
+                r"\.(zip|7z|rar|exe)(\?|$)", self.url, re.I)))
 
     @property
     def ds_url(self) -> str:
@@ -438,10 +434,10 @@ def _scrape_other_hosts(main, game: str, build_key: str,
         raw = el.get_text(" ", strip=True)
         name = raw.split(":", 1)[1].strip() if ":" in raw else raw
         links = [a["href"] for a in el.find_all("a", href=True)]
-        # Prefer a link we can actually download from, so an entry offering both
-        # a Nexus page and a MEGA mirror is reported by the one that works.
+        # Prefer an archive host, then a public mirror, then the original page.
         url = next((u for u in links if host_of(u) in AUTO_HOSTS),
-                   links[0] if links else "")
+                   next((u for u in links if host_of(u) in _MIRROR_HOSTS),
+                        links[0] if links else ""))
 
         block = _gather_block(el)
         hint_source = " ".join([block["instructions"], block["warnings"],

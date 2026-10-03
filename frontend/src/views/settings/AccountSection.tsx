@@ -67,8 +67,10 @@ export function AccountSection({ status, username, onSignIn, onSignOut, addLog }
     setBusy(true);
     setValidation(null);
     try {
-      await api.setSettings({ ...settings, nexus_api_key: nexusKey.trim() });
-      setSettings({ ...settings, nexus_api_key: nexusKey.trim() });
+      const latest = await api.getSettings();
+      const next = { ...latest, nexus_api_key: nexusKey.trim() };
+      await api.setSettings(next);
+      setSettings(next);
       const v = await api.nexusValidate();
       setValidation(v);
       addLog(v.ok ? `Nexus key valid (${v.name}).` : `Nexus key invalid.`, v.ok ? "success" : "error");
@@ -152,7 +154,7 @@ export function AccountSection({ status, username, onSignIn, onSignOut, addLog }
                   {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                 </button>
               </div>
-              <Button onClick={saveNexus} disabled={busy}>
+              <Button onClick={saveNexus} disabled={busy} aria-label={`${t("common.save")} ${t("settings.nexus.label")}`}>
                 {busy ? t("settings.nexus.saving") : t("common.save")}
               </Button>
             </div>

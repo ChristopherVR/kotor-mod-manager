@@ -49,7 +49,7 @@ export const de: Dict = {
   "builds.pickGameFolder": "Wähle deinen {game}-Installationsordner…",
   "builds.invalidGameFolder": "Dieser Ordner ist keine {game}-Installation (keine Spieldateien in {path} gefunden). Wähle den Ordner mit chitin.key und swkotor.exe.",
   "builds.overall": "Gesamt",
-  "builds.loadList": "Mod-Liste laden",
+  "builds.loadList": "Liste aktualisieren",
   "builds.loading": "Lädt…",
   "builds.installAll": "Alle herunterladen & installieren",
   "builds.installSelected": "Herunterladen & installieren ({count})",
@@ -73,7 +73,7 @@ export const de: Dict = {
   "builds.statusPaused": "Pausiert",
   "builds.statusConnecting": "Verbinde mit Backend…",
   "builds.empty": "Wähle ein Paket und klicke auf Mod-Liste laden, um zu beginnen.",
-  "builds.loadMore": "Mod-Liste laden",
+  "builds.loadMore": "Liste aktualisieren",
   "builds.patcherBanner":
     "TSLPatcher ist für {mod} geöffnet. Der Spielpfad liegt in deiner Zwischenablage - füge ihn ein, klicke auf Installieren und schließe dann das Patcher-Fenster.",
 
@@ -179,13 +179,13 @@ export const de: Dict = {
   // Settings → Account
   "settings.account.title": "DeadlyStream",
   "settings.account.signedInName": "Angemeldet",
-  "settings.account.signedInHint": "Bei DeadlyStream angemeldet. Premium-Downloads sind verfügbar.",
+  "settings.account.signedInHint": "Mit DeadlyStream verbunden.",
   "settings.account.notSignedIn": "Nicht angemeldet",
   "settings.account.notSignedInHint": "Melde dich bei DeadlyStream an, um Mods herunterzuladen, die ein Konto erfordern.",
 
   // Settings → Nexus
   "settings.nexus.title": "Nexus Mods",
-  "settings.nexus.hint": "Füge deinen persönlichen Nexus-API-Schlüssel hinzu, um Mods mit ihrer echten Nexus-Seite zu verknüpfen.",
+  "settings.nexus.hint": "Ein persönlicher API-Schlüssel ermöglicht Nexus-Downloads. Automatische Downloads benötigen Nexus Premium. Mit einem kostenlosen Konto das Archiv auf der Website herunterladen und im Download-Ordner des Mods ablegen.",
   "settings.nexus.getKey": "API-Schlüssel holen",
   "settings.nexus.showKey": "API-Schlüssel anzeigen",
   "settings.nexus.hideKey": "API-Schlüssel verbergen",
@@ -239,4 +239,11 @@ export const de: Dict = {
   // What's New
   "whatsNew.title": "Neu in v{version}",
   "whatsNew.gotIt": "Verstanden",
+  "builds.refreshHint": "Die Mod-Liste aus der Anleitung aktualisieren.",
+  "builds.manualDownloadHint": "Von {source} herunterladen, das Archiv im Download-Ordner dieses Mods ablegen und erneut versuchen.",
+  "modDetail.sourcePage": "Mod-Seite öffnen",
+  "modDetail.guideWarnings": "Kompatibilitätshinweise",
+  "library.loadFailed": "Installierte Mods konnten nicht geladen werden",
+  "library.retryLoad": "Erneut versuchen",
+  "builds.nexusDownloadHint": "Automatische Downloads benötigen einen Nexus-API-Schlüssel und Premium. Kostenlose Konten können das Archiv auf Nexus herunterladen und im Download-Ordner dieses Mods ablegen.",
 };

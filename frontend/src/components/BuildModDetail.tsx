@@ -27,6 +27,11 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
 
   useEffect(() => {
     let alive = true;
+    setInfo(null);
+    if (mod.source_host && mod.source_host !== "deadlystream") {
+      setInfoLoading(false);
+      return () => { alive = false; };
+    }
     setInfoLoading(true);
     api.modInfo(mod.file_id, mod.slug, mod.game)
       .then((r) => { if (alive) setInfo(r); })
@@ -36,15 +41,15 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
   }, [mod.file_id, mod.slug, mod.game]);
 
   const title = info?.title?.trim() || mod.name;
-  const description = info?.description?.trim();
+  const description = info?.description?.trim() || mod.description?.trim();
   const images = info?.images ?? [];
   const note = mod.note?.trim();
   const summary = mod.directive_summary?.trim();
   const instructions = mod.instructions?.trim();
 
   const links: { label: string; url?: string }[] = [
-    { label: t("modDetail.viewOnDeadlyStream"), url: info?.ds_url || mod.url },
-    { label: t("modDetail.viewOnNexus"), url: info?.nexus_url },
+    { label: mod.source_host === "deadlystream" ? t("modDetail.viewOnDeadlyStream") : t("modDetail.sourcePage"), url: info?.ds_url || mod.url },
+    { label: t("modDetail.viewOnNexus"), url: info?.nexus_url === mod.url ? undefined : info?.nexus_url },
   ];
 
   return (
@@ -63,18 +68,18 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
                   variant={mod.auto_downloadable === false ? "warning" : "muted"}
                   title={
                     mod.auto_downloadable === false
-                      ? `${mod.source_label} needs you to start the download on their site`
+                      ? mod.source_host === "nexus" ? t("builds.nexusDownloadHint") : t("builds.manualDownloadHint", { source: mod.source_label ?? "" })
                       : `Downloaded automatically from ${mod.source_label}`
                   }
                 >
                   {mod.source_label}
-                  {mod.auto_downloadable === false && " · manual"}
+                  {mod.auto_downloadable === false && mod.source_host !== "nexus" && " · manual"}
                 </Badge>
               )}
               {info?.author && <span className="text-xs text-muted-foreground">{info.author}</span>}
             </div>
           </div>
-          <button onClick={onClose} className="shrink-0 rounded-sm text-muted-foreground transition-colors hover:text-foreground">
+          <button onClick={onClose} aria-label={t("common.close")} className="shrink-0 rounded-sm p-1 text-muted-foreground transition-colors hover:text-foreground">
             <X className="size-4" />
           </button>
         </div>
@@ -114,7 +119,13 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
           )}
 
           {/* Build note */}
-          {note && (
+          {mod.warnings?.trim() && (
+            <section className="border-l-2 border-warning pl-3">
+              <h3 className="mb-1 text-sm font-semibold text-warning">{t("modDetail.guideWarnings")}</h3>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">{mod.warnings}</p>
+            </section>
+          )}
+          {note && !instructions && !description && !mod.warnings?.trim() && (
             <section className="rounded-md border border-[hsl(var(--warning)/0.4)] bg-[hsl(var(--warning)/0.08)] p-3">
               <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-[hsl(var(--warning))]">
                 {t("modDetail.buildNote")}

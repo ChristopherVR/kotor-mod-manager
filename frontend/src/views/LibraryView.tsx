@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { FolderOpen, Library as LibraryIcon, Power, ScrollText, Trash2 } from "lucide-react";
 import { api, type LibraryMod, type Profile } from "@/lib/api";
 import { LibraryRow } from "@/components/LibraryRow";
@@ -63,14 +63,16 @@ export function LibraryView({
   const [bulkStatus, setBulkStatus] = useState<string | null>(null);
   const [hasBaseline, setHasBaseline] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const loadedProfile = useRef("");
 
   const load = useCallback(async () => {
     if (!activeProfile) { setMods([]); setLoading(false); return; }
-    setLoading(true);
+    setLoading(loadedProfile.current !== activeProfile);
     setErrored(false);
     try {
       const r = await api.library(activeProfile);
       setMods(r.mods ?? []);
+      loadedProfile.current = activeProfile;
     } catch {
       setErrored(true);
       setMods([]);
@@ -91,7 +93,7 @@ export function LibraryView({
   const runReset = useCallback(async () => {
     if (!activeProfile || bulkBusy) return;
     setBulkBusy(true);
-    setBulkStatus("Putting the game back to its clean state…");
+    setBulkStatus("Restoring game backup…");
     try {
       const r = await api.baselineReset(activeProfile);
       addLog(
@@ -273,7 +275,7 @@ export function LibraryView({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="space-y-3 border-b bg-card/30 px-5 py-3">
+      <header className="space-y-3 view-header border-b">
         <div className="flex items-center gap-3">
           <div>
             <h1 className="text-base font-semibold">{t("library.title")}</h1>
@@ -284,7 +286,7 @@ export function LibraryView({
           </div>
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs text-muted-foreground">{t("library.enabledOnly")}</span>
-            <Switch checked={enabledOnly} onCheckedChange={setEnabledOnly} />
+            <Switch aria-label={t("library.enabledOnly")} checked={enabledOnly} onCheckedChange={setEnabledOnly} />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -300,6 +302,7 @@ export function LibraryView({
             ))}
           </Select>
           <Input
+            aria-label={t("library.search")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t("library.search")}
@@ -383,7 +386,7 @@ export function LibraryView({
                   </span>
                   <Button size="sm" variant="destructive" disabled={bulkBusy}
                     onClick={runReset}>
-                    Yes, reset the game
+                    Restore backup
                   </Button>
                   <Button size="sm" variant="ghost" disabled={bulkBusy}
                     onClick={() => setConfirmReset(false)}>
@@ -396,9 +399,9 @@ export function LibraryView({
                   variant="outline"
                   disabled={bulkBusy}
                   onClick={() => setConfirmReset(true)}
-                  title="Restores the snapshot taken before your first install. This is the only way to undo mods installed by a patcher."
+                  title="Remove installed mods and restore the backup taken before the first installation."
                 >
-                  Reset game to clean
+                  Restore game backup
                 </Button>
               )
             )}
@@ -407,7 +410,7 @@ export function LibraryView({
                 <span className="text-xs text-[hsl(var(--destructive))]">
                   {removable.length > 0
                     ? `Remove ${removable.length} mod${removable.length === 1 ? "" : "s"}?`
-                    : `Forget ${patcherOnly.length} patcher mod${patcherOnly.length === 1 ? "" : "s"}? Game files stay changed.`}
+                    : `Remove ${patcherOnly.length} patcher mod${patcherOnly.length === 1 ? "" : "s"}? Game files stay changed.`}
                 </span>
                 <Button
                   size="sm"
@@ -415,7 +418,7 @@ export function LibraryView({
                   disabled={bulkBusy}
                   onClick={() => runBulkUninstall(removable.length === 0)}
                 >
-                  {removable.length > 0 ? "Yes, uninstall" : "Yes, forget them"}
+                  {removable.length > 0 ? "Uninstall" : "Remove entries"}
                 </Button>
                 <Button size="sm" variant="ghost" disabled={bulkBusy}
                   onClick={() => setConfirmBulk(false)}>
@@ -436,7 +439,7 @@ export function LibraryView({
               >
                 {removable.length > 0
                   ? `Uninstall ${removable.length} shown`
-                  : "Forget patcher mods"}
+                  : "Remove patcher entries"}
               </Button>
             )}
           </div>
@@ -446,7 +449,10 @@ export function LibraryView({
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading ? (
           <EmptyState icon={LibraryIcon} title={t("library.loading")} />
-        ) : errored || total === 0 ? (
+        ) : errored ? (
+          <EmptyState icon={LibraryIcon} title={t("library.loadFailed")}
+            action={{ label: t("library.retryLoad"), onClick: load }} />
+        ) : total === 0 ? (
           <EmptyState
             icon={LibraryIcon}
             title={t("library.emptyTitle")}

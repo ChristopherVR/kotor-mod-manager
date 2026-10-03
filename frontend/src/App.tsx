@@ -26,9 +26,22 @@ export default function App() {
     const h = typeof location !== "undefined" ? (location.hash.replace("#", "") as ViewId) : "builds";
     return VIEW_IDS.includes(h) ? h : "builds";
   });
+  const [visited, setVisited] = useState(() => new Set<ViewId>([view]));
   const setView = useCallback((v: ViewId) => {
+    setVisited(prev => prev.has(v) ? prev : new Set([...prev, v]));
     setViewState(v);
     if (typeof location !== "undefined") location.hash = v;
+  }, []);
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = (location.hash.slice(1) || "builds") as ViewId;
+      if (VIEW_IDS.includes(next)) {
+        setVisited(prev => prev.has(next) ? prev : new Set([...prev, next]));
+        setViewState(next);
+      }
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
   // Which Settings sub-section is open, so other parts of the UI (e.g. clicking
@@ -293,8 +306,9 @@ export default function App() {
       onSignOut={handleSignOut}
       onOpenAccount={() => openSettingsSection("account")}
     >
-      {view === "builds" && (
+      {visited.has("builds") && <div hidden={view !== "builds"} className="h-full">
         <BuildsView
+          active={view === "builds"}
           ready={ready}
           loggedIn={!!status?.logged_in}
           builds={builds}
@@ -321,8 +335,8 @@ export default function App() {
           requestLogin={() => setShowLogin(true)}
           activeProfile={activeProfile}
         />
-      )}
-      {view === "library" && (
+      </div>}
+      {visited.has("library") && <div hidden={view !== "library"} className="h-full">
         <LibraryView
           onGoToBuilds={() => setView("builds")}
           onGoToConflicts={() => setView("conflicts")}
@@ -333,8 +347,8 @@ export default function App() {
           setActiveProfile={setActiveProfile}
           bulkProgress={bulkProgress}
         />
-      )}
-      {view === "conflicts" && (
+      </div>}
+      {visited.has("conflicts") && <div hidden={view !== "conflicts"} className="h-full">
         <ConflictsView
           refreshTick={dataTick}
           profiles={profiles}
@@ -344,9 +358,11 @@ export default function App() {
           onResolved={() => { refreshConflicts(); setDataTick((t) => t + 1); }}
           onCountChange={setConflictCount}
         />
-      )}
-      {view === "activity" && <ActivityView logs={logs} onClear={() => setLogs([])} />}
-      {view === "settings" && (
+      </div>}
+      {visited.has("activity") && <div hidden={view !== "activity"} className="h-full">
+        <ActivityView logs={logs} onClear={() => setLogs([])} />
+      </div>}
+      {visited.has("settings") && <div hidden={view !== "settings"} className="h-full">
         <SettingsView
           status={status}
           username={username}
@@ -360,7 +376,7 @@ export default function App() {
           section={settingsSection}
           setSection={setSettingsSection}
         />
-      )}
+      </div>}
 
       <LoginDialog
         open={showLogin}

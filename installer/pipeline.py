@@ -24,6 +24,7 @@ from typing import Callable, Optional
 from installer.build_directives import match_option_index
 from installer.detector import InstallMethod, InstallPlan, ModFileMapping, detect
 from installer.extractor import ExtractionError, extract
+from installer.download_paths import download_folder_name
 from installer.installer import InstallError, install
 from installer.patcher_strategy import run_tslpatcher_cascade
 from installer.runner import PatcherError, run_holopatcher
@@ -298,7 +299,7 @@ class Pipeline:
         self._log(f"\n── [{mod.install_order:3d}] {mod.name}")
 
         try:
-            dest_dir = self._download_dir / f"{mod.file_id}_{mod.slug[:30]}"
+            dest_dir = self._download_dir / download_folder_name(mod.file_id, mod.slug)
 
             # If complete archives are already on disk, skip re-downloading.
             # This makes pressing Install again (or Retry) resumable without
@@ -342,18 +343,24 @@ class Pipeline:
             if ignore_names:
                 self._log(
                     f"  Build guide: skipping download of {', '.join(ignore_names)}.")
-            archives = self._client.download_all_files(
-                file_id=mod.file_id,
-                slug=mod.slug,
-                dest_dir=dest_dir,
-                progress_callback=dl_progress,
-                cancel_event=self._stop_event,
-                pause_event=self._pause_event,
-                keep_names=keep_names,
-                ignore_names=ignore_names,
-                language=self._language,
-                screen_resolution=self._screen_resolution,
-            )
+            if mod.source_host != "deadlystream":
+                from installer.external_downloads import download_external
+                archives = download_external(
+                    mod, dest_dir, self._client, dl_progress,
+                    self._stop_event, self._pause_event)
+            else:
+                archives = self._client.download_all_files(
+                    file_id=mod.file_id,
+                    slug=mod.slug,
+                    dest_dir=dest_dir,
+                    progress_callback=dl_progress,
+                    cancel_event=self._stop_event,
+                    pause_event=self._pause_event,
+                    keep_names=keep_names,
+                    ignore_names=ignore_names,
+                    language=self._language,
+                    screen_resolution=self._screen_resolution,
+                )
             pm.archive_paths = archives
             if not archives:
                 # Everything was filtered out: an over-broad "do not download"

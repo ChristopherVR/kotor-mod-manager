@@ -105,8 +105,8 @@ export function LibraryRow({
       tabIndex={0}
       onClick={onOpen}
       onContextMenu={onContextMenu}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
-      className="flex cursor-pointer items-center gap-3 rounded-md border border-transparent px-3 py-2 transition-colors hover:bg-card/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }}
+      className="mod-row flex cursor-pointer items-center gap-3 border border-transparent px-3 py-2.5 transition-colors hover:bg-card/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="w-8 shrink-0 text-right font-mono text-xs text-muted-foreground">
         {mod.load_order}
@@ -134,6 +134,7 @@ export function LibraryRow({
       )}
       <div onClick={(e) => e.stopPropagation()}>
         <Switch
+          aria-label={`${t(mod.enabled ? "library.disable" : "library.enable")} ${mod.name}`}
           checked={mod.enabled}
           disabled={!mod.toggleable}
           onCheckedChange={onToggle}

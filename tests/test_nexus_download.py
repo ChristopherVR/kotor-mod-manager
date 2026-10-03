@@ -7,6 +7,8 @@ account tier rule, so the error has to say so rather than look like a bad key.
 """
 
 import urllib.error
+import io
+import threading
 from pathlib import Path
 
 import pytest
@@ -146,3 +148,21 @@ def test_download_from_nxm_forwards_the_link_credentials(monkeypatch, tmp_path):
         "nxm://kotor/mods/1364/files/2213?key=kk&expires=77", tmp_path, "apikey")
     assert captured == {"mod_id": 1364, "file_id": 2213,
                         "nxm_key": "kk", "nxm_expires": "77"}
+
+
+@pytest.mark.parametrize("cancelled,content_length", [(True, 4), (False, 12)])
+def test_cancelled_or_truncated_download_leaves_no_cached_archive(
+        monkeypatch, tmp_path, cancelled, content_length):
+    monkeypatch.setattr(nexus, "file_info", lambda *args: {"file_name": "mod.zip"})
+    monkeypatch.setattr(nexus, "download_link", lambda *args: "https://cdn.test/mod.zip")
+
+    class Response(io.BytesIO):
+        headers = {"Content-Length": str(content_length)}
+
+    monkeypatch.setattr(nexus.urllib.request, "urlopen", lambda *args, **kwargs: Response(b"data"))
+    cancel = threading.Event()
+    if cancelled:
+        cancel.set()
+    with pytest.raises(nexus.NexusDownloadError):
+        nexus.download_file("KOTOR1", 123, 45, tmp_path, "test-key", cancel_event=cancel)
+    assert not list(tmp_path.iterdir())
