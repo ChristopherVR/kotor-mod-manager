@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.16.21] - 2026-10-05
+
+### Miscellaneous
+
+- Bump the npm-minor-and-patch group across 1 directory with 6 updates
+- Update the Tauri app framework packages together so builds stop breaking
 ## [0.16.20] - 2026-10-05
 
 ### Miscellaneous
