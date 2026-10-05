@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.20] - 2026-10-05
+
+### Miscellaneous
+
+- Bump taiki-e/install-action from 2.87.20 to 2.87.22
+- Update cryptography requirement from >=50.0.1 to >=50.0.2
+- Update fastapi requirement from >=0.141.1 to >=0.142.2
+- Update uvicorn requirement from >=0.53.0 to >=0.54.0
+- Bump the cargo-minor-and-patch group
 ## [0.16.19] - 2026-10-03
 
 ### Bug Fixes
