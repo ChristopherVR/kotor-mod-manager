@@ -423,6 +423,11 @@ def _clusters(mods: list) -> list[list]:
     return clusters
 
 
+def mergeable_count(mods: list) -> int:
+    """How many entries dedupe() would merge away right now."""
+    return sum(len(c) - 1 for c in _clusters(mods))
+
+
 def unmergeable_duplicates(mods: list) -> set[str]:
     """Ids of mods that share a name with another entry but cannot be merged
     with it, so the player needs to look at them (they may be two different

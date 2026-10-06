@@ -47,6 +47,7 @@ export function LibraryView({
 }: LibraryViewProps) {
   const t = useT();
   const [mods, setMods] = useState<LibraryMod[]>([]);
+  const [mergeable, setMergeable] = useState(0);
   const [query, setQuery] = useState("");
   const [enabledOnly, setEnabledOnly] = useState(false);
   const [dupesOnly, setDupesOnly] = useState(false);
@@ -72,10 +73,12 @@ export function LibraryView({
     try {
       const r = await api.library(activeProfile);
       setMods(r.mods ?? []);
+      setMergeable(r.mergeable_duplicates ?? 0);
       loadedProfile.current = activeProfile;
     } catch {
       setErrored(true);
       setMods([]);
+      setMergeable(0);
     } finally {
       setLoading(false);
     }
@@ -123,7 +126,7 @@ export function LibraryView({
       await load();
     } catch (e: any) {
       addLog(`Could not reset the game: ${e?.data?.message ?? e?.message ?? "error"}`,
-             "error");
+        "error");
     } finally {
       setBulkBusy(false);
       setConfirmReset(false);
@@ -178,7 +181,7 @@ export function LibraryView({
       setBulkStatus(`${action === "enable" ? "Enabling" : "Disabling"} ${filtered.length} mod(s)…`);
       const r = await api.bulkToggle(activeProfile, filtered.map(m => m.id), action);
       addLog(`${action === "enable" ? "Enabled" : "Disabled"} ${r.changed.length} mod(s).`,
-             "success");
+        "success");
       r.failed.forEach(f => addLog(`${f.mod}: ${f.reason}`, "warning"));
       await load();
     } catch (e: any) {
@@ -201,7 +204,7 @@ export function LibraryView({
       addLog(
         force
           ? `Removed ${r.removed.length} of ${r.requested} mod(s) from the library. `
-            + `Files patchers wrote are still in the game.`
+          + `Files patchers wrote are still in the game.`
           : `Uninstalled ${r.removed.length} of ${r.requested} mod(s).`,
         r.removed.length ? "success" : "warning",
       );
@@ -222,7 +225,7 @@ export function LibraryView({
 
   const switchProfile = (id: string) => {
     setActiveProfile(id);
-    api.setActiveProfile(id).catch(() => {});
+    api.setActiveProfile(id).catch(() => { });
   };
 
   const toggle = async (mod: LibraryMod, next: boolean) => {
@@ -351,7 +354,7 @@ export function LibraryView({
               {t("library.duplicatesOnly")}
             </Button>
           )}
-          {dupeCount > 0 && (
+          {mergeable > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -430,7 +433,7 @@ export function LibraryView({
                   variant="outline"
                   disabled={bulkBusy}
                   onClick={() => setConfirmReset(true)}
-                  title="Remove installed mods and restore the backup taken before the first installation."
+                  title="Remove installed mods and restore the original executable"
                 >
                   Restore game backup
                 </Button>

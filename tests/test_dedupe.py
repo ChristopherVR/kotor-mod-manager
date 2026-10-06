@@ -100,3 +100,13 @@ def test_unmergeable_same_names_are_flagged(store, tmp_path):
     flagged = mod_manager.unmergeable_duplicates(store["m"].mods)
     assert flagged == {a.id, b.id} and c.id not in flagged
     assert mod_manager.dedupe("KOTOR1")["remaining"] == 2
+
+
+def test_mergeable_count_ignores_same_name_different_mods(store, tmp_path):
+    _record(tmp_path, "Texture Pack", ["Override/a.tga"])
+    b = _record(tmp_path, "Other", ["Override/b.tga"])
+    b.name = "Texture Pack"; b.source_ref = "999"
+    assert mod_manager.mergeable_count(store["m"].mods) == 0
+    c = _record(tmp_path, "Another", ["Override/a.tga"])
+    c.name = "Texture Pack"; c.source_ref = "1"
+    assert mod_manager.mergeable_count(store["m"].mods) == 1

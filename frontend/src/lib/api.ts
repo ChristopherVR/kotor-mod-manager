@@ -261,7 +261,7 @@ export const api = {
     }),
 
   library: (profile: string) =>
-    req<{ game: string; profile: string; mods: LibraryMod[] }>(
+    req<{ game: string; profile: string; mods: LibraryMod[]; mergeable_duplicates?: number }>(
       `/api/library?profile=${encodeURIComponent(profile)}`),
   libraryDetail: (id: string, profile: string) =>
     req<LibraryDetail>(

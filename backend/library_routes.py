@@ -136,7 +136,8 @@ def get_library(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
         d = _mod_dict(m, counts.get(m.id, 0), dl)
         d["duplicate_unmergeable"] = m.id in unmerge
         out.append(d)
-    return {"game": game_type, "profile": scope, "mods": out}
+    return {"game": game_type, "profile": scope, "mods": out,
+            "mergeable_duplicates": mod_manager.mergeable_count(mods)}
 
 
 # Registered before /library/{mod_id}, which would otherwise match "baseline".
