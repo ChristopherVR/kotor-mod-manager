@@ -1,8 +1,10 @@
 {
   "name": "kotor-mod-installer-frontend",
   "private": true,
-  "engines": { "node": ">=20" },
-  "version": "0.16.21",
+  "engines": {
+    "node": ">=20"
+  },
+  "version": "0.17.0",
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {

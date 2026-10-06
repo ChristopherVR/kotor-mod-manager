@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.17.0] - 2026-10-06
+
+### Features
+
+- Add Linux build; automatically download mods from MEGA, Google Drive and GitHub; if an API key is configured, Nexus mods are downloaded automatically for Premium users, or semi-automatically for free users (requires a click for each mod)
+- Add resumable downloads for most mod sources
+- Auto-merge duplicate mod entries
+- Flag mods that share a name (but differ in content) for user review
+- Automatic widescreen patching, including DRM-free executable downloading
+- Auto-remove duplicate textures after every install
 ## [0.16.21] - 2026-10-05
 
 ### Miscellaneous
