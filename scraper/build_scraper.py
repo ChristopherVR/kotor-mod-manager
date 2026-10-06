@@ -13,11 +13,18 @@ from bs4 import BeautifulSoup, NavigableString
 
 DS_RE = re.compile(r"deadlystream\.com/files/file/(\d+)-([^\s\"'<>#/?]+)", re.I)
 
-# Nexus automation additionally requires the player's API key and Premium.
-# GitHub and direct downloads must point to archive URLs, not landing pages.
-AUTO_HOSTS = frozenset({"deadlystream", "github", "direct"})
-# Keep public mirrors as useful manual-download links when a guide offers them.
-_MIRROR_HOSTS = frozenset({"mega", "googledrive"})
+# Hosts the app can download from unattended. Verified against the KOTOR 1
+# Spoiler-Free build rather than assumed:
+#   deadlystream - signed in with the player's own account
+#   mega         - public links carry their own decryption key, no account
+#   github       - release assets are plain file URLs
+#   googledrive  - works once the large-file confirm token is followed
+#   direct       - a plain file URL on an author's own site
+#   nexus        - Premium downloads unattended; a free account needs one click
+#                  on "Mod manager download" per mod, which the app then acts on
+# GameFront is not automatic: its pages and file server are behind a bot check, so
+# the player downloads the file and adds it to the mod folder.
+AUTO_HOSTS = frozenset({"deadlystream", "nexus", "mega", "github", "googledrive", "direct"})
 
 _HOST_PATTERNS = (
     ("deadlystream", "deadlystream.com"),
@@ -106,9 +113,7 @@ class BuildMod:
     @property
     def auto_downloadable(self) -> bool:
         """Whether the app can fetch this without the player doing anything."""
-        return self.source_host == "deadlystream" or (
-            self.source_host in ("direct", "github") and bool(re.search(
-                r"\.(zip|7z|rar|exe)(\?|$)", self.url, re.I)))
+        return self.source_host in AUTO_HOSTS
 
     @property
     def ds_url(self) -> str:
@@ -434,9 +439,10 @@ def _scrape_other_hosts(main, game: str, build_key: str,
         raw = el.get_text(" ", strip=True)
         name = raw.split(":", 1)[1].strip() if ":" in raw else raw
         links = [a["href"] for a in el.find_all("a", href=True)]
-        # Prefer an archive host, then a public mirror, then the original page.
-        url = next((u for u in links if host_of(u) in AUTO_HOSTS),
-                   next((u for u in links if host_of(u) in _MIRROR_HOSTS),
+        # Prefer a link that needs no account: a MEGA mirror beats a Nexus page,
+        # which needs an API key (and Premium, or a click per mod).
+        url = next((u for u in links if host_of(u) in AUTO_HOSTS - {"nexus"}),
+                   next((u for u in links if host_of(u) == "nexus"),
                         links[0] if links else ""))
 
         block = _gather_block(el)

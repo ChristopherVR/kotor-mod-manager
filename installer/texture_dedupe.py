@@ -8,19 +8,30 @@ the game can crash. The KOTOR 1 build guides therefore make removing these pairs
 a mandatory final step (entry 175 of the K1 Spoiler-Free build, which ships a
 DelDuplicateTGA-TPC .bat for Windows and a shell script for Linux).
 
-Their tool deletes the .tpc side and keeps the .tga, so this does the same.
+Their tool deletes the .tpc side and keeps the .tga (or .dds), so this does the
+same. The pipeline runs it once at the end of every install, so the player never
+has to run the guide's script, which is interactive on Windows and easy to get
+wrong elsewhere. A .tpc with both a .tga and a .dds is handled in one pass here,
+where the guide's own script needs running twice.
 
-.dds is handled separately by the pipeline's own post-install sweep, which drops
-a stale .tpc/.tga when a mod installs a .dds of the same name.
+The pipeline's own post-install sweep separately drops a stale .tpc/.tga when a
+mod installs a .dds of the same name.
 """
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-# Extension kept, versus the extensions removed when a same-stem clash exists.
-KEEP_EXT = ".tga"
+# Extensions kept, versus the extensions removed when a same-stem clash exists.
+KEEP_EXTS = (".tga", ".dds")
 DROP_EXTS = (".tpc",)
+
+
+def is_cleanup_step(name: str) -> bool:
+    """True for the build guides' "Remove Duplicate TGA/TPC" entry, which the app
+    does itself, so the entry's script is never downloaded or shown as manual."""
+    n = " ".join(name.lower().replace("/", " ").split())
+    return "remove duplicate" in n and "tga" in n and "tpc" in n
 
 
 @dataclass
@@ -36,8 +47,8 @@ class DedupeResult:
 
 def find_duplicates(override_dir: Path) -> dict[str, dict[str, Path]]:
     """
-    Map stem -> {extension: path} for every stem that exists under more than one
-    of the texture extensions we care about. Matching is case-insensitive, since
+    Map stem -> {extension: path} for every stem that has a .tpc alongside a .tga
+    or .dds. Matching is case-insensitive, since
     KOTOR mods are wildly inconsistent about casing.
     """
     seen: dict[str, dict[str, Path]] = {}
@@ -47,19 +58,19 @@ def find_duplicates(override_dir: Path) -> dict[str, dict[str, Path]]:
         if not f.is_file():
             continue
         ext = f.suffix.lower()
-        if ext != KEEP_EXT and ext not in DROP_EXTS:
+        if ext not in KEEP_EXTS and ext not in DROP_EXTS:
             continue
         seen.setdefault(f.stem.lower(), {})[ext] = f
     return {
         stem: exts for stem, exts in seen.items()
-        if KEEP_EXT in exts and any(e in exts for e in DROP_EXTS)
+        if any(e in exts for e in KEEP_EXTS) and any(e in exts for e in DROP_EXTS)
     }
 
 
 def dedupe(override_dir: Path, dry_run: bool = False,
            on_log: Optional[Callable[[str], None]] = None) -> DedupeResult:
     """
-    Delete the .tpc side of every .tga/.tpc pair in Override.
+    Delete the .tpc side of every .tpc that has a .tga or .dds twin in Override.
 
     dry_run reports what would go without touching anything, so the count can be
     shown to the player before they commit to it.

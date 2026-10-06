@@ -62,13 +62,13 @@ def test_the_host_is_recorded_for_each():
     assert [m.source_host for m in out] == ["nexus", "mega", "mega"]
 
 
-def test_a_mirror_is_retained_but_not_advertised_as_automatic():
-    """Keep the guide's mirror available, without promising a MEGA transfer
-    that the current downloader does not implement."""
+def test_a_downloadable_mirror_wins_over_a_page_we_cannot_fetch():
+    """The last entry offers a Nexus page and a MEGA mirror. Nexus needs an API
+    key (and Premium or a click per mod), MEGA needs nothing, so prefer MEGA."""
     out = _scrape_other_hosts(_soup(), "KOTOR1", "k1_spoilerfree", claimed={1})
     korriban = out[-1]
     assert korriban.source_host == "mega"
-    assert not korriban.auto_downloadable
+    assert korriban.auto_downloadable
 
 
 def test_instructions_are_captured_for_these_too():
@@ -80,8 +80,9 @@ def test_instructions_are_captured_for_these_too():
     assert taris.install_method == "Loose-File Mod"
 
 
-def test_auto_hosts_matches_the_implemented_downloaders():
-    assert AUTO_HOSTS == {"deadlystream", "github", "direct"}
+def test_auto_hosts_are_the_ones_with_a_downloader():
+    for h in ("deadlystream", "nexus", "mega", "github", "googledrive", "direct"):
+        assert h in AUTO_HOSTS
 
 
 def test_a_bare_archive_url_counts_as_directly_downloadable():

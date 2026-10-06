@@ -101,7 +101,7 @@ function Row({
           <Badge
             variant="warning"
             className="shrink-0"
-            title={mod.source_host === "nexus" ? t("builds.nexusDownloadHint") : t("builds.manualDownloadHint", { source: mod.source_label })}
+            title={t("builds.manualDownloadHint", { source: mod.source_label })}
           >
             {mod.source_label}
           </Badge>

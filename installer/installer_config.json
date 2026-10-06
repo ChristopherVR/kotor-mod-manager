@@ -5,6 +5,8 @@
   "holopatcher_search_paths": [
     "HoloPatcher.exe",
     "HoloPatcher/HoloPatcher.exe",
+    "HoloPatcher",
+    "HoloPatcher/HoloPatcher",
     "C:/Program Files/HoloPatcher/HoloPatcher.exe",
     "C:/Program Files (x86)/HoloPatcher/HoloPatcher.exe",
     "C:/tools/HoloPatcher/HoloPatcher.exe"

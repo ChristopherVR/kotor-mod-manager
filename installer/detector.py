@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 
+from installer.pathcase import rglob_ci, walk_sorted
+
 _UNC_PREFIX = "\\\\?\\"
 
 
@@ -107,7 +109,7 @@ class InstallPlan:
 
 def _find_file(root: Path, name: str) -> "Path | None":
     name_lower = name.lower()
-    for p in _long(root).rglob("*"):
+    for p in walk_sorted(_long(root)):
         if p.is_file() and p.name.lower() == name_lower:
             return p
     return None
@@ -116,7 +118,7 @@ def _find_file(root: Path, name: str) -> "Path | None":
 def _find_dir(root: Path, name: str) -> "Path | None":
     name_lower = name.lower()
     try:
-        for p in _long(root).rglob("*"):
+        for p in walk_sorted(_long(root)):
             if p.is_dir() and p.name.lower() == name_lower:
                 return _short(p)
     except OSError:
@@ -200,7 +202,7 @@ def _collect_loose_files(root: Path) -> list[ModFileMapping]:
 
 
 def _find_holopatcher(root: Path) -> "Path | None":
-    for p in _long(root).rglob("*.exe"):
+    for p in rglob_ci(_long(root), "*.exe"):
         if "holopatcher" in p.name.lower() or "holocron" in p.name.lower():
             return p
     return None
@@ -218,11 +220,11 @@ def _tslpatcher_exe_names() -> set:
 def _find_tslpatcher(root: Path) -> "Path | None":
     names = _tslpatcher_exe_names()
     # Exact name match is most reliable
-    for p in _long(root).rglob("*.exe"):
+    for p in rglob_ci(_long(root), "*.exe"):
         if p.name.lower() in names:
             return p
     # Heuristic fallback for oddly-named patchers that still ship tslpatchdata
-    for p in _long(root).rglob("*.exe"):
+    for p in rglob_ci(_long(root), "*.exe"):
         low = p.name.lower()
         if "patch" in low or "install" in low or "modder" in low:
             # Avoid uninstallers / unrelated tools
@@ -238,7 +240,7 @@ def _find_standalone_patcher(root: Path) -> "Path | None":
     if _collect_loose_files(root):
         return None
     _KEYWORDS = {"patch", "patcher", "fix", "fixer", "repair"}
-    for p in _long(root).rglob("*.exe"):
+    for p in rglob_ci(_long(root), "*.exe"):
         low = p.name.lower()
         if "uninstall" in low:
             continue
@@ -250,7 +252,7 @@ def _find_standalone_patcher(root: Path) -> "Path | None":
 def _find_tlk_variants(root: Path) -> list[tuple[str, Path]]:
     """Find dialog.tlk files. Returns (label, path) pairs."""
     variants = []
-    for p in _long(root).rglob("dialog.tlk"):
+    for p in rglob_ci(_long(root), "dialog.tlk"):
         # Label = parent folder name, or "Default" if at root
         label = p.parent.name if p.parent != root else "Default"
         variants.append((label, p))

@@ -34,6 +34,7 @@ from installer.config_loader import (
 )
 from installer.runner import PatcherError, run_holopatcher, run_tslpatcher
 from installer import ui_automation
+from installer.pathcase import rglob_ci
 
 ProgressCallback = Callable[[str], None]
 
@@ -63,7 +64,7 @@ def _find_tslpatchdata(mod_root: Path, exe: Optional[Path]) -> Optional[Path]:
         if candidate.is_dir():
             return candidate
     # Search the mod tree
-    for p in mod_root.rglob("tslpatchdata"):
+    for p in rglob_ci(mod_root, "tslpatchdata"):
         if p.is_dir():
             return p
     # Some very old mods put changes.ini at root with no tslpatchdata folder

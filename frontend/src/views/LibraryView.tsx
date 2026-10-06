@@ -47,6 +47,7 @@ export function LibraryView({
 }: LibraryViewProps) {
   const t = useT();
   const [mods, setMods] = useState<LibraryMod[]>([]);
+  const [mergeable, setMergeable] = useState(0);
   const [query, setQuery] = useState("");
   const [enabledOnly, setEnabledOnly] = useState(false);
   const [dupesOnly, setDupesOnly] = useState(false);
@@ -72,10 +73,12 @@ export function LibraryView({
     try {
       const r = await api.library(activeProfile);
       setMods(r.mods ?? []);
+      setMergeable(r.mergeable_duplicates ?? 0);
       loadedProfile.current = activeProfile;
     } catch {
       setErrored(true);
       setMods([]);
+      setMergeable(0);
     } finally {
       setLoading(false);
     }
@@ -90,6 +93,26 @@ export function LibraryView({
       .catch(() => setHasBaseline(false));
   }, [activeProfile, refreshTick]);
 
+  const runDedupe = useCallback(async () => {
+    if (!activeProfile || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      const r = await api.dedupeLibrary(activeProfile);
+      addLog(r.removed
+        ? t("library.dedupeDone", { count: r.removed })
+        : t("library.dedupeNone"), r.removed ? "success" : "warning");
+      if (r.removed && r.remaining) {
+        addLog(t("library.dedupeRemaining", { count: r.remaining }), "warning");
+      }
+      setDupesOnly(false);
+      await load();
+    } catch (e: any) {
+      addLog(t("library.dedupeFailed", { error: e?.message ?? "error" }), "error");
+    } finally {
+      setBulkBusy(false);
+    }
+  }, [activeProfile, bulkBusy, addLog, load, t]);
+
   const runReset = useCallback(async () => {
     if (!activeProfile || bulkBusy) return;
     setBulkBusy(true);
@@ -103,7 +126,7 @@ export function LibraryView({
       await load();
     } catch (e: any) {
       addLog(`Could not reset the game: ${e?.data?.message ?? e?.message ?? "error"}`,
-             "error");
+        "error");
     } finally {
       setBulkBusy(false);
       setConfirmReset(false);
@@ -158,7 +181,7 @@ export function LibraryView({
       setBulkStatus(`${action === "enable" ? "Enabling" : "Disabling"} ${filtered.length} mod(s)…`);
       const r = await api.bulkToggle(activeProfile, filtered.map(m => m.id), action);
       addLog(`${action === "enable" ? "Enabled" : "Disabled"} ${r.changed.length} mod(s).`,
-             "success");
+        "success");
       r.failed.forEach(f => addLog(`${f.mod}: ${f.reason}`, "warning"));
       await load();
     } catch (e: any) {
@@ -181,7 +204,7 @@ export function LibraryView({
       addLog(
         force
           ? `Removed ${r.removed.length} of ${r.requested} mod(s) from the library. `
-            + `Files patchers wrote are still in the game.`
+          + `Files patchers wrote are still in the game.`
           : `Uninstalled ${r.removed.length} of ${r.requested} mod(s).`,
         r.removed.length ? "success" : "warning",
       );
@@ -202,7 +225,7 @@ export function LibraryView({
 
   const switchProfile = (id: string) => {
     setActiveProfile(id);
-    api.setActiveProfile(id).catch(() => {});
+    api.setActiveProfile(id).catch(() => { });
   };
 
   const toggle = async (mod: LibraryMod, next: boolean) => {
@@ -331,6 +354,17 @@ export function LibraryView({
               {t("library.duplicatesOnly")}
             </Button>
           )}
+          {mergeable > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={bulkBusy}
+              title={t("library.dedupeHint")}
+              onClick={runDedupe}
+            >
+              {t("library.dedupe")}
+            </Button>
+          )}
         </div>
       </header>
 
@@ -399,7 +433,7 @@ export function LibraryView({
                   variant="outline"
                   disabled={bulkBusy}
                   onClick={() => setConfirmReset(true)}
-                  title="Remove installed mods and restore the backup taken before the first installation."
+                  title="Remove installed mods and restore the original executable"
                 >
                   Restore game backup
                 </Button>

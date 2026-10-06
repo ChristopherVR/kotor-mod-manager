@@ -22,6 +22,13 @@ export function LoginDialog({
   const [save, setSave] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // The backend may still be starting when this mounts, so guess from the
+  // webview first and confirm with the backend each time the dialog opens.
+  const [isWindows, setIsWindows] = useState(() => /Windows/i.test(navigator.userAgent));
+
+  useEffect(() => {
+    if (open) api.health().then((h) => setIsWindows(h.platform === "windows")).catch(() => {});
+  }, [open]);
 
   useEffect(() => {
     if (open) api.credentials().then((c) => c.username && setUsername(c.username)).catch(() => {});
@@ -60,7 +67,7 @@ export function LoginDialog({
         </div>
         <div className="flex items-center gap-2 pt-1">
           <Switch id="save" checked={save} onCheckedChange={setSave} />
-          <Label htmlFor="save" className="cursor-pointer">{t("login.saveCredentials")}</Label>
+          <Label htmlFor="save" className="cursor-pointer">{t("login.saveCredentials", { store: t(isWindows ? "login.store.windows" : "login.store.other") })}</Label>
         </div>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button className="w-full" onClick={submit} disabled={busy || !username || !password}>

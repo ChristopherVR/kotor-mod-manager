@@ -7,8 +7,10 @@ import { DEFAULT_RUNTIME, type ModRuntime } from "@/components/ModList";
 import { type LogLine } from "@/components/LogPanel";
 import { LoginDialog } from "@/components/LoginDialog";
 import { WhatsNew } from "@/components/WhatsNew";
+import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { AppShell } from "@/layouts/AppShell";
 import { useT } from "@/lib/i18n";
+import { setNxmHandler } from "@/lib/tauri";
 import { BuildsView } from "@/views/BuildsView";
 import { LibraryView } from "@/views/LibraryView";
 import { ConflictsView } from "@/views/ConflictsView";
@@ -64,6 +66,7 @@ export default function App() {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [patcherMod, setPatcherMod] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
+  const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null);
   const [username, setUsername] = useState("");
   const [conflictCount, setConflictCount] = useState(0);
   // Live per-mod progress for a running bulk action, so the Library screen can
@@ -186,6 +189,9 @@ export default function App() {
       case "log":
         addLog(e.message, e.tag);
         break;
+      case "nxm_wait":
+        setNxmHandler(e.active);
+        break;
       case "status": {
         setActiveFileId(e.file_id);
         if (e.status === "WAITING_PATCHER") setPatcherMod(e.file_id);
@@ -207,7 +213,11 @@ export default function App() {
         const label = e.total_kb ? `${fmtKb(e.kb)} / ${fmtKb(e.total_kb)}` : `${fmtKb(e.kb)}`;
         setRuntime((prev) => ({
           ...prev,
-          [e.file_id]: { ...(prev[e.file_id] ?? DEFAULT_RUNTIME), progress: e.pct * 100, progressLabel: label },
+          [e.file_id]: {
+            ...(prev[e.file_id] ?? DEFAULT_RUNTIME), progress: e.pct * 100, progressLabel: label,
+            // Bytes are arriving, so any "waiting for you" note is out of date.
+            ...(prev[e.file_id]?.status === "DOWNLOADING" && e.kb > 0 ? { detail: "" } : {}),
+          },
         }));
         break;
       }
@@ -216,6 +226,9 @@ export default function App() {
           ...prev,
           [e.file_id]: { ...(prev[e.file_id] ?? DEFAULT_RUNTIME), progress: e.pct * 100, progressLabel: e.label },
         }));
+        break;
+      case "confirm":
+        setConfirmReq({ id: e.id, title: e.title, body: e.body, options: e.options });
         break;
       case "manual":
         setActiveFileId(e.file_id);
@@ -266,12 +279,14 @@ export default function App() {
 
   // Overall progress = finished / total. MANUAL counts as finished (the app has
   // done all it can; the player just has a few hand steps left) but is tracked
-  // separately so it never reads as a failure.
+  // separately so it never reads as a failure. Mods installed in an earlier run
+  // are not part of this run, so they have no status but are finished too.
   const { done, errors, manual, overall } = useMemo(() => {
     let d = 0, er = 0, mn = 0;
     for (const m of mods) {
       const st = runtime[m.file_id]?.status;
       if (st === "DONE" || st === "SKIPPED") d++;
+      else if (m.installed && (!st || st === "PENDING")) d++;
       else if (st === "MANUAL") { d++; mn++; }
       else if (st === "ERROR") { d++; er++; }
     }
@@ -382,6 +397,14 @@ export default function App() {
         open={showLogin}
         onClose={() => setShowLogin(false)}
         onLoggedIn={(u) => { setUsername(u); refreshStatus(); }}
+      />
+
+      <ConfirmDialog
+        request={confirmReq}
+        onAnswer={(id, choice) => {
+          setConfirmReq(null);
+          api.answerConfirm(id, choice).catch(() => {});
+        }}
       />
 
       <WhatsNew

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from installer.detector import InstallMethod, InstallPlan, NamespaceOption
+from installer.pathcase import resolve_ci
 
 
 class InstallError(Exception):
@@ -29,8 +30,11 @@ def _copy_files(plan: InstallPlan, game_path: Path, cb: Optional[ProgressCallbac
     # sources past the 260-char MAX_PATH limit; read them the same way or the
     # copy fails on machines without the long-path policy enabled.
     from installer.extractor import _unc
+    from installer.pathcase import CaseResolver
+    # Keep the casing already on disk (Linux is case-sensitive).
+    resolver = CaseResolver(game_path)
     for mapping in plan.file_mappings:
-        dest = game_path / mapping.dest_relative
+        dest = resolver.resolve(mapping.dest_relative)
         dest.parent.mkdir(parents=True, exist_ok=True)
         _log(f"  {'[overwrite]' if dest.exists() else '[copy]':12s} {mapping.dest_relative}", cb)
         shutil.copy2(_unc(mapping.source), _unc(dest))
@@ -117,7 +121,7 @@ def install(
                 raise InstallError("No variant selected - installation cancelled.")
             chosen_label, chosen_path = result
 
-        dest = game_path / "dialog.tlk"
+        dest = resolve_ci(game_path, "dialog.tlk")
         if dest.exists():
             backup = game_path / "dialog.tlk.bak"
             if not backup.exists():
@@ -140,7 +144,7 @@ def install(
                 raise InstallError("No variant selected - installation cancelled.")
             chosen_label, chosen_path = result
 
-        dest = game_path / "dialog.tlk"
+        dest = resolve_ci(game_path, "dialog.tlk")
         if dest.exists():
             backup = game_path / "dialog.tlk.bak"
             if not backup.exists():

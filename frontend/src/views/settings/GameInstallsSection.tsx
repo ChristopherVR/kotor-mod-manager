@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   FolderOpen, Plus, Pencil, Trash2, Check, X, CheckCircle2, Star,
 } from "lucide-react";
@@ -30,6 +30,30 @@ export function GameInstallsSection({
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [detected, setDetected] = useState<
+    { game: GameKey; path: string; already_added: boolean }[]>([]);
+
+  // Look for Steam installs so the player does not have to find the folder.
+  useEffect(() => {
+    api.detectGames().then((r) => setDetected(r.installs)).catch(() => setDetected([]));
+  }, [profiles]);
+
+  const useDetected = async (d: { game: GameKey; path: string }) => {
+    setBusy(true);
+    try {
+      // The built-in "KOTOR 1"/"KOTOR 2" entry is usually sitting empty: fill
+      // it in rather than adding a second entry for the same game.
+      const blank = profiles.find((p) => p.id === d.game && !p.path);
+      if (blank) await api.updateProfile(blank.id, { path: d.path });
+      else await api.createProfile({ name: `${GAME_LABEL[d.game]} (Steam)`, game: d.game, path: d.path });
+      addLog(`Added ${GAME_LABEL[d.game]} from ${d.path}.`, "success");
+      await refreshProfiles();
+    } catch (e: any) {
+      addLog(`Failed to add install: ${e?.message}`, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Add form state.
   const [newName, setNewName] = useState("");
@@ -113,6 +137,21 @@ export function GameInstallsSection({
         )}
       </CardHeader>
       <CardContent className="space-y-2">
+        {detected.some((d) => !d.already_added) && (
+          <div className="space-y-2 rounded-md border border-primary/40 bg-primary/5 p-3">
+            <p className="text-sm font-medium">{t("settings.installs.detected")}</p>
+            {detected.filter((d) => !d.already_added).map((d) => (
+              <div key={d.path} className="flex items-center gap-3">
+                <Badge variant={d.game === "KOTOR1" ? "info" : "secondary"}>{GAME_LABEL[d.game]}</Badge>
+                <p className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" title={d.path}>{d.path}</p>
+                <Button size="sm" disabled={busy} onClick={() => useDetected(d)}>
+                  <Plus /> {t("settings.installs.useDetected")}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {profiles.length === 0 && !adding && (
           <p className="text-sm text-muted-foreground">{t("settings.installs.empty")}</p>
         )}
@@ -139,7 +178,7 @@ export function GameInstallsSection({
                     <div className="flex gap-2">
                       <Input value={editPath} onChange={(e) => setEditPath(e.target.value)} />
                       <Button variant="outline" size="icon" title={t("common.browse")}
-                              onClick={async () => { const d = await pickDirectory(); if (d) setEditPath(d); }}>
+                              onClick={async () => { const d = await pickDirectory(t("builds.pickGameFolder", { game: GAME_LABEL[p.game] })); if (d) setEditPath(d); }}>
                         <FolderOpen />
                       </Button>
                     </div>
@@ -221,7 +260,7 @@ export function GameInstallsSection({
                   <Input value={newPath} placeholder={t("settings.installs.pathPlaceholder")}
                          onChange={(e) => setNewPath(e.target.value)} />
                   <Button variant="outline" size="icon" title={t("common.browse")}
-                          onClick={async () => { const d = await pickDirectory(); if (d) setNewPath(d); }}>
+                          onClick={async () => { const d = await pickDirectory(t("builds.pickGameFolder", { game: GAME_LABEL[newGame] })); if (d) setNewPath(d); }}>
                     <FolderOpen />
                   </Button>
                 </div>

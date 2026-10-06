@@ -1,5 +1,6 @@
 """Archive extraction: zip, 7z, rar, self-extracting exe."""
 
+import os
 import shutil
 import subprocess
 import sys
@@ -78,6 +79,8 @@ def _extract_7z(archive: Path, dest: Path) -> None:
 _7Z_CANDIDATES = [
     "7z",
     "7za",
+    "7zz",
+    "7zr",
     r"C:\Program Files\7-Zip\7z.exe",
     r"C:\Program Files (x86)\7-Zip\7z.exe",
 ]
@@ -118,7 +121,28 @@ def _extract_rar(archive: Path, dest: Path) -> None:
     unrar = _find_unrar()
     if unrar:
         result = subprocess.run(
-            [unrar, "x", "-y", str(archive), str(dest) + "\\"],
+            [unrar, "x", "-y", str(archive), str(dest) + os.sep],
+            capture_output=True
+        )
+        if result.returncode == 0:
+            return
+
+    # Linux: unar and bsdtar (libarchive) read RAR, including RAR5. Distro builds
+    # of 7-Zip leave the RAR decoder out for licence reasons, so 7z alone is
+    # not enough there.
+    unar = shutil.which("unar")
+    if unar:
+        result = subprocess.run(
+            [unar, "-quiet", "-force-overwrite", "-no-directory", "-output-directory",
+             str(dest), str(archive)],
+            capture_output=True
+        )
+        if result.returncode == 0:
+            return
+    bsdtar = shutil.which("bsdtar")
+    if bsdtar:
+        result = subprocess.run(
+            [bsdtar, "-xf", str(archive), "-C", str(dest)],
             capture_output=True
         )
         if result.returncode == 0:
@@ -145,10 +169,14 @@ def _extract_rar(archive: Path, dest: Path) -> None:
         except Exception:
             pass
 
+    if sys.platform == "win32":
+        tools = "7-Zip (https://www.7-zip.org/), WinRAR, or unrar"
+    else:
+        tools = ("unar, unrar, bsdtar (package libarchive-tools), or 7-Zip from "
+                 "https://www.7-zip.org/ (the 7z in Debian and Ubuntu cannot read RAR)")
     raise ExtractionError(
         f"Cannot extract RAR archive '{archive.name}'. "
-        "Install 7-Zip (https://www.7-zip.org/) and ensure 7z.exe is on your PATH, "
-        "or install WinRAR."
+        f"Please install one of the following tools: {tools}."
     )
 
 

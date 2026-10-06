@@ -17,7 +17,10 @@ interface BuildModDetailProps {
 export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
   const t = useT();
   const [info, setInfo] = useState<ModInfo | null>(null);
-  const [infoLoading, setInfoLoading] = useState(true);
+  // Only DeadlyStream mods have a DeadlyStream page to read details from. The
+  // others carry a placeholder id, so asking would just fail.
+  const onDeadlyStream = (mod.source_host ?? "deadlystream") === "deadlystream";
+  const [infoLoading, setInfoLoading] = useState(onDeadlyStream);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -26,19 +29,16 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
   }, [onClose]);
 
   useEffect(() => {
+    if (!onDeadlyStream) { setInfo(null); setInfoLoading(false); return; }
     let alive = true;
     setInfo(null);
-    if (mod.source_host && mod.source_host !== "deadlystream") {
-      setInfoLoading(false);
-      return () => { alive = false; };
-    }
     setInfoLoading(true);
     api.modInfo(mod.file_id, mod.slug, mod.game)
       .then((r) => { if (alive) setInfo(r); })
       .catch(() => { if (alive) setInfo(null); })
       .finally(() => { if (alive) setInfoLoading(false); });
     return () => { alive = false; };
-  }, [mod.file_id, mod.slug, mod.game]);
+  }, [mod.file_id, mod.slug, mod.game, onDeadlyStream]);
 
   const title = info?.title?.trim() || mod.name;
   const description = info?.description?.trim() || mod.description?.trim();
@@ -47,9 +47,14 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
   const summary = mod.directive_summary?.trim();
   const instructions = mod.instructions?.trim();
 
+  // One link, to the page the mod is actually hosted on. For Nexus that is the
+  // exact mod page from the build guide, not a search.
   const links: { label: string; url?: string }[] = [
-    { label: mod.source_host === "deadlystream" ? t("modDetail.viewOnDeadlyStream") : t("modDetail.sourcePage"), url: info?.ds_url || mod.url },
-    { label: t("modDetail.viewOnNexus"), url: info?.nexus_url === mod.url ? undefined : info?.nexus_url },
+    onDeadlyStream
+      ? { label: t("modDetail.viewOnDeadlyStream"), url: info?.ds_url || mod.url }
+      : mod.source_host === "nexus"
+        ? { label: t("modDetail.viewOnNexus"), url: mod.url }
+        : { label: t("modDetail.viewOnSite", { site: mod.source_label ?? "" }), url: mod.url },
   ];
 
   return (
@@ -68,7 +73,7 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
                   variant={mod.auto_downloadable === false ? "warning" : "muted"}
                   title={
                     mod.auto_downloadable === false
-                      ? mod.source_host === "nexus" ? t("builds.nexusDownloadHint") : t("builds.manualDownloadHint", { source: mod.source_label ?? "" })
+                      ? t("builds.manualDownloadHint", { source: mod.source_label ?? "" })
                       : `Downloaded automatically from ${mod.source_label}`
                   }
                 >

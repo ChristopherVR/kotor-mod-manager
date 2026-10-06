@@ -13,6 +13,11 @@ import { Screenshots } from "@/components/Screenshots";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
+const HOST_NAMES: Record<string, string> = {
+  mega: "MEGA", googledrive: "Google Drive", github: "GitHub",
+  gamefront: "GameFront", direct: "the download page",
+};
+
 interface ModDetailProps {
   mod: LibraryMod;
   profile: string;
@@ -45,13 +50,21 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Only DeadlyStream mods have a DeadlyStream page to read details from.
+  const onDeadlyStream = mod.source_host === "deadlystream";
+
   useEffect(() => {
     let alive = true;
-    setInfoLoading(true);
-    api.modInfo(mod.source_ref, mod.source_slug, mod.game)
-      .then((r) => { if (alive) setInfo(r); })
-      .catch(() => { if (alive) setInfo(null); })
-      .finally(() => { if (alive) setInfoLoading(false); });
+    if (onDeadlyStream) {
+      setInfoLoading(true);
+      api.modInfo(mod.source_ref, mod.source_slug, mod.game)
+        .then((r) => { if (alive) setInfo(r); })
+        .catch(() => { if (alive) setInfo(null); })
+        .finally(() => { if (alive) setInfoLoading(false); });
+    } else {
+      setInfo(null);
+      setInfoLoading(false);
+    }
 
     setFilesLoading(true);
     api.libraryDetail(mod.id, profile)
@@ -60,7 +73,7 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
       .finally(() => { if (alive) setFilesLoading(false); });
 
     return () => { alive = false; };
-  }, [mod.id, mod.source_ref, mod.source_slug, mod.game, profile]);
+  }, [mod.id, mod.source_ref, mod.source_slug, mod.game, profile, onDeadlyStream]);
 
   const runUninstall = async (force: boolean) => {
     setBakedPrompt(null);
@@ -92,10 +105,15 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
   const images = info?.images ?? [];
   const baked_mode = mod.deploy_kind === "baked" || (deployed.length === 0 && baked.length > 0);
 
-  const links: { label: string; url?: string }[] = [
-    { label: t("modDetail.viewOnDeadlyStream"), url: info?.ds_url },
-    { label: t("modDetail.viewOnNexus"), url: info?.nexus_url },
-  ];
+  // One link, to the page the mod is actually hosted on. Nothing when that is
+  // not known (imported mods, or installs from before it was recorded).
+  const links: { label: string; url?: string }[] = onDeadlyStream
+    ? [{ label: t("modDetail.viewOnDeadlyStream"), url: info?.ds_url }]
+    : mod.source_host === "nexus"
+      ? [{ label: t("modDetail.viewOnNexus"), url: mod.source_url }]
+      : mod.source_host
+        ? [{ label: t("modDetail.viewOnSite", { site: HOST_NAMES[mod.source_host] ?? mod.source_host }), url: mod.source_url }]
+        : [];
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">

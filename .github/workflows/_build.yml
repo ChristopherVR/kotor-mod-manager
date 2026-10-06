@@ -3,7 +3,8 @@ name: _build (reusable)
 # Reusable workflow: builds the Python backend sidecar (PyInstaller, HoloPatcher
 # bundled), then the Tauri desktop app (React + Rust) into a self-contained NSIS
 # installer. Always uploads the installer as an artifact; optionally publishes a
-# GitHub Release. Called by build.yml (PR/manual) and release.yml (tagged).
+# GitHub Release with the Windows and Linux files together. Called by build.yml
+# (PR/manual) and release.yml (tagged).
 
 on:
   workflow_call:
@@ -22,7 +23,7 @@ on:
         default: ""
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -40,8 +41,8 @@ jobs:
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          pip install -r requirements.txt -c constraints.txt
+          pip install -c constraints.txt pyinstaller
 
       - name: Backend sanity check
         run: python -c "import backend.server, installer.pipeline, installer.patcher_strategy; print('backend imports OK')"
@@ -144,11 +145,79 @@ jobs:
           path: ${{ steps.artifact.outputs.path }}
           retention-days: 30
 
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf xvfb
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri
+
+      - name: Run offline tests
+        run: |
+          python -m pip install -r requirements.txt -c constraints.txt pytest
+          python -m pytest tests -q --ignore=tests/test_build_headless.py --ignore=tests/test_install_all_build.py
+
+      - name: Build
+        run: scripts/build-linux.sh
+
+      - name: Upload Linux build
+        uses: actions/upload-artifact@v7
+        with:
+          name: KOTOR-Mod-Installer-linux
+          path: dist/KOTOR-Mod-Installer-linux-x86_64
+          retention-days: 30
+
+  # Publish once, after both builds succeed, so the two jobs never race to
+  # create the same release and a release never ships with a file missing.
+  publish:
+    needs: [build-windows, build-linux]
+    if: inputs.make_release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for the changelog)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Download builds
+        uses: actions/download-artifact@v8
+        with:
+          path: release-files
+          merge-multiple: true
+
       - name: Publish GitHub Release
-        if: inputs.make_release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag }}
-          files: ${{ steps.artifact.outputs.path }}
+          files: |
+            release-files/KOTOR-Mod-Installer.exe
+            release-files/KOTOR-Mod-Installer-linux-x86_64
           body_path: CHANGELOG.md
           fail_on_unmatched_files: true

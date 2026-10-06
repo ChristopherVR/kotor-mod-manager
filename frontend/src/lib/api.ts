@@ -61,6 +61,7 @@ export interface Settings {
   language: string;
   custom_patcher_path: string;
   nexus_api_key: string;
+  preferred_resolution: string;
 }
 
 export interface NexusValidation {
@@ -105,10 +106,13 @@ export interface LibraryMod {
   id: string; name: string; game: GameKey; enabled: boolean; toggleable: boolean;
   state: string; install_method: string; deploy_kind: string; load_order: number;
   source_type: string; source_ref: string; source_slug: string; build_key: string | null;
+  source_host?: string; source_url?: string;
   category: string;
   file_count: number; baked_count: number; install_ts: number;
   has_conflict: boolean; conflict_count: number;
   source_exists: boolean;
+  /** Shares a name with another entry but cannot safely be merged with it. */
+  duplicate_unmergeable?: boolean;
 }
 
 export type LibraryDetail = LibraryMod & {
@@ -147,6 +151,8 @@ export type WsEvent =
   | { type: "hello"; version: string }
   | { type: "auth"; logged_in: boolean; username: string }
   | { type: "log"; message: string; tag: string }
+  | { type: "nxm_wait"; active: boolean }
+  | { type: "confirm"; id: string; title: string; body: string; options: string[] }
   | { type: "status"; file_id: string; status: ModStatus; status_label: string; detail: string }
   | { type: "progress"; file_id: string; pct: number; kb: number; total_kb: number }
   | { type: "install_progress"; file_id: string; pct: number; label: string }
@@ -174,8 +180,16 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => req<{ ok: boolean; version: string }>("/api/health"),
+  health: () => req<{ ok: boolean; version: string; platform?: "windows" | "linux" | "macos" }>("/api/health"),
+  detectGames: () =>
+    req<{ installs: { game: GameKey; path: string; source: string; already_added: boolean }[] }>(
+      "/api/games/detect"),
   status: () => req<AppStatus>("/api/status"),
+  answerConfirm: (id: string, choice: string) =>
+    req<{ ok: boolean }>("/api/install/confirm", {
+      method: "POST",
+      body: JSON.stringify({ id, choice }),
+    }),
   builds: () => req<{ builds: BuildInfo[] }>("/api/builds"),
   addBuild: (label: string, game: string, url: string) =>
     req<{ ok: boolean; build: BuildInfo }>("/api/builds", {
@@ -247,7 +261,7 @@ export const api = {
     }),
 
   library: (profile: string) =>
-    req<{ game: string; profile: string; mods: LibraryMod[] }>(
+    req<{ game: string; profile: string; mods: LibraryMod[]; mergeable_duplicates?: number }>(
       `/api/library?profile=${encodeURIComponent(profile)}`),
   libraryDetail: (id: string, profile: string) =>
     req<LibraryDetail>(
@@ -315,6 +329,10 @@ export const api = {
     req<{ ok: boolean; override_removed: number; modules_removed: number;
           restored: string[] }>(
       `/api/library/baseline/reset?profile=${encodeURIComponent(profile)}`,
+      { method: "POST" }),
+  dedupeLibrary: (profile: string) =>
+    req<{ ok: boolean; removed: number; mods: string[]; remaining: number }>(
+      `/api/library/dedupe?profile=${encodeURIComponent(profile)}`,
       { method: "POST" }),
   bulkToggle: (profile: string, mod_ids: string[], action: "enable" | "disable") =>
     req<{ ok: boolean; action: string; changed: string[];

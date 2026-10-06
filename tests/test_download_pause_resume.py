@@ -3,8 +3,8 @@ Pause/resume and cancel behaviour for downloads.
 
 A paused download must stop in place and keep its partial file, then continue
 from exactly where it left off (via an HTTP range request) when resumed - never
-re-downloading from scratch and never dropping bytes. A cancelled download must
-leave no partial file behind.
+re-downloading from scratch and never dropping bytes. A cancelled or cut-off
+download keeps its partial file, and the next run carries on from it.
 
 These drive the real download loop with a fake HTTP session so they're fast and
 deterministic (no network).
@@ -125,7 +125,7 @@ def test_pause_then_resume_continues_via_range(tmp_path):
     assert sess.range_starts[0] >= 1500         # continued from where it stopped
 
 
-def test_cancel_removes_partial_file(tmp_path):
+def test_cancel_keeps_the_partial_so_the_next_run_can_continue(tmp_path):
     cancel = threading.Event()
 
     def on_bytes(downloaded):
@@ -137,8 +137,15 @@ def test_cancel_removes_partial_file(tmp_path):
     with pytest.raises(DownloadError):
         c._download_from_url("http://x/dl", tmp_path, "1", cancel_event=cancel)
 
-    assert not (tmp_path / "mod.zip").exists()
-    assert not (tmp_path / "mod.zip.part").exists()
+    assert not (tmp_path / "mod.zip").exists()          # never passed off as finished
+    kept = (tmp_path / "mod.zip.part").read_bytes()
+    assert 0 < len(kept) < len(PAYLOAD) and kept == PAYLOAD[:len(kept)]
+
+    # A later run carries on from the partial instead of starting over.
+    sess = FakeSession()
+    out = _client(sess)._download_from_url("http://x/dl", tmp_path, "1")
+    assert out.read_bytes() == PAYLOAD
+    assert sess.range_starts == [len(kept)]
 
 
 def test_resume_restarts_when_server_ignores_range(tmp_path):

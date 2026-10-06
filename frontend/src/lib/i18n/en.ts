@@ -65,6 +65,8 @@ export const en: Dict = {
   "builds.deleteBuildDone": "Removed build \"{label}\".",
   "builds.deleteBuildFailed": "Couldn't remove build: {error}",
   "builds.pickGameFolder": "Select your {game} installation folder…",
+  "dialog.selectDownloadFolder": "Select your download folder…",
+  "dialog.selectImportFolder": "Select a folder of mod archives…",
   "builds.invalidGameFolder": "No KOTOR game files found in {path}. Select your {game} installation folder.",
   "builds.overall": "Progress",
   "builds.loadList": "Refresh list",
@@ -98,7 +100,6 @@ export const en: Dict = {
     "TSLPatcher is open for {mod}. The game path is on your clipboard - paste it, click Install, then close the patcher window.",
 
   "builds.refreshHint": "Check the build guide for the latest mod list.",
-  "builds.nexusDownloadHint": "Automatic downloads require a Nexus API key and Premium. Free accounts can download the archive on Nexus and place it in this mod’s download folder.",
   "builds.manualDownloadHint": "Download from {source}, place the archive in this mod’s download folder, then retry.",
   "modDetail.sourcePage": "Open mod page",
   "modDetail.guideWarnings": "Compatibility notes",
@@ -138,6 +139,14 @@ export const en: Dict = {
   "library.duplicateHint": "Another installed mod shares this name.",
   "library.duplicateSummary": "{count} duplicate name(s)",
   "library.duplicatesOnly": "Duplicates",
+  "library.dedupe": "Remove duplicates",
+  "library.dedupeHint": "Merges mods listed more than once into a single entry. Nothing is removed from your game.",
+  "library.dedupeDone": "Merged {count} duplicate entries.",
+  "library.dedupeNone": "No duplicates could be merged. Entries with the same name but a different on/off state are left alone.",
+  "library.duplicateUnmergeable": "same name, not identical",
+  "library.duplicateUnmergeableHint": "Another entry has this name but installed different files, so it was not merged. It may be a different mod or another version. Check both and uninstall the one you do not want.",
+  "library.dedupeRemaining": "{count} entries share a name with another mod but are not identical, so they were left alone. Look for the orange badge.",
+  "library.dedupeFailed": "Couldn't remove duplicates: {error}",
 
   // Mod detail
   "modDetail.viewDetails": "View details",
@@ -147,6 +156,7 @@ export const en: Dict = {
   "modDetail.openScreenshot": "Open screenshot",
   "modDetail.viewOnDeadlyStream": "View on DeadlyStream",
   "modDetail.viewOnNexus": "View on Nexus Mods",
+  "modDetail.viewOnSite": "View on {site}",
   "modDetail.modifiedFiles": "Modified files",
   "modDetail.installedFiles": "Installed files",
   "modDetail.loadingFiles": "Loading files…",
@@ -224,6 +234,9 @@ export const en: Dict = {
 
   // Settings → Game installs
   "settings.installs.title": "Game installs",
+  "settings.installs.detected": "Found on this computer",
+  "settings.installs.useDetected": "Use this install",
+  "settings.installs.alreadyAdded": "Already added",
   "settings.installs.add": "Add install",
   "settings.installs.empty": "No game installs configured yet.",
   "settings.installs.namePlaceholder": "e.g. KOTOR 1 (Steam)",
@@ -244,7 +257,7 @@ export const en: Dict = {
 
   // Settings → Nexus
   "settings.nexus.title": "Nexus Mods",
-  "settings.nexus.hint": "Use a personal API key for Nexus downloads. Automatic downloads require Nexus Premium. Free accounts can download archives on the Nexus website and place them in the mod’s download folder.",
+  "settings.nexus.hint": "Add your personal Nexus API key so the app can download Nexus mods for you. Free accounts need one click on Nexus per mod; Premium is fully automatic.",
   "settings.nexus.getKey": "Get your API key",
   "settings.nexus.showKey": "Show API key",
   "settings.nexus.hideKey": "Hide API key",
@@ -303,7 +316,9 @@ export const en: Dict = {
   "login.title": "Sign in to DeadlyStream",
   "login.username": "Username",
   "login.password": "Password",
-  "login.saveCredentials": "Save credentials (Windows Credential Manager)",
+  "login.saveCredentials": "Save credentials ({store})",
+  "login.store.windows": "Windows Credential Manager",
+  "login.store.other": "your system keyring",
   "login.submit": "Sign in",
   "login.submitting": "Signing in…",
   "login.failed": "Login failed",
@@ -311,4 +326,10 @@ export const en: Dict = {
   // What's New
   "whatsNew.title": "What's new in v{version}",
   "whatsNew.gotIt": "Close",
+
+  "settings.general.screenSize": "Screen size for widescreen mods",
+  "settings.general.screenSizeHint": "Leave empty to use your screen's size. Used to pick the right menu files and to set up the game program file.",
+  // Questions from the installer
+  "confirm.continue": "Continue",
+  "confirm.skip": "Skip for now",
 };

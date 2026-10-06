@@ -64,3 +64,5 @@ frontend/src-tauri/binaries/
 
 # Scratch output from build-guide scraping sessions
 .playwright-mcp/
+.venv-linux-build/
+.python-version

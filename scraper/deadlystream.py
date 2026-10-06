@@ -55,15 +55,37 @@ def _parse_content_disposition(cd: str) -> str:
     return ""
 
 
-def download_name_matches(record_name: str, keep_names: list[str]) -> bool:
+_ARCHIVE_SUFFIXES = (".zip", ".7z", ".rar")
+
+
+def _norm_stem(name: str) -> str:
+    """A file name without its extension, lower-cased with punctuation removed."""
+    stem = name.rsplit(".", 1)[0] if "." in name else name
+    return re.sub(r"[^a-z0-9]", "", stem.lower())
+
+
+def exact_keep_matches(names: list[str], keep_names: list[str]) -> list[str]:
+    """The names that ARE one of the "download only X" files, as opposed to
+    merely containing its name (an add-on 'X_Yavin4.7z' is not 'X.7z')."""
+    stems = {_norm_stem(k) for k in keep_names if _norm_stem(k)}
+    return [n for n in names if _norm_stem(n) in stems]
+
+
+def download_name_matches(record_name: str, keep_names: list[str],
+                          strict: bool = False) -> bool:
     """
     Whether a download record matches one of the build guide's "download only X"
     filenames. Comparison ignores case, punctuation, and the file extension so
     'hd_twilek_female.rar' matches a record shown as 'HD Twilek Female' etc.
     Empty keep_names means "keep everything".
+
+    strict: only an exact match counts. Without it, a name that merely contains
+    the wanted one also matches, which pulls in a whole family of add-ons.
     """
     if not keep_names:
         return True
+    if strict:
+        return bool(exact_keep_matches([record_name], keep_names))
 
     def norm(s: str) -> str:
         return re.sub(r"[^a-z0-9]", "", s.lower())
@@ -138,8 +160,7 @@ def select_keep_matches(names: list[str], keep_names: list[str]) -> list[str]:
     def stem(s: str) -> str:
         return norm(s.rsplit(".", 1)[0] if "." in s else s)
 
-    keep_stems = {stem(k) for k in keep_names if stem(k)}
-    exact = [n for n in names if stem(n) in keep_stems]
+    exact = exact_keep_matches(names, keep_names)
     if exact:
         return exact
     return [n for n in names if download_name_matches(n, keep_names)]
@@ -198,6 +219,13 @@ class DownloadError(Exception):
     pass
 
 
+# DeadlyStream answers a burst of requests with 403 (or 429/5xx). Requests to it
+# are paced across all downloads, and retried after a pause when it says so.
+_MIN_REQUEST_GAP = 0.4
+_RETRY_STATUSES = (403, 429, 502, 503, 504)
+_RETRY_DELAYS = (5, 15, 30)
+
+
 class DeadlyStreamClient:
     def __init__(self):
         self._session = requests.Session()
@@ -209,6 +237,11 @@ class DeadlyStreamClient:
         self._logged_in = False
         self._csrf_key: Optional[str] = None
         self._lock = threading.Lock()
+        self._pace_lock = threading.Lock()
+        self._next_request = 0.0
+        # When the site last told us to slow down, every download waits it out:
+        # one download pausing while the others carry on only prolongs the refusal.
+        self._cooloff_until = 0.0
 
     # ------------------------------------------------------------------
     # Credential storage (uses Windows Credential Manager via keyring)
@@ -268,15 +301,23 @@ class DeadlyStreamClient:
             resp = self._session.post(LOGIN_URL, data=payload, timeout=20, allow_redirects=True)
             resp.raise_for_status()
 
+            # A rejected login re-shows the form with the site's reason. Guests
+            # also get session cookies, so cookies alone prove nothing.
+            if "_processLogin" in resp.text:
+                m = re.search(r'ipsMessage_error[^>]*>\s*([^<]{5,200})', resp.text)
+                raise AuthError(
+                    (m.group(1).strip() if m else "") or
+                    "Login failed - check your username/password.")
+
             # Check if login succeeded
             if "sign_out" in resp.text.lower() or "logout" in resp.text.lower():
                 self._logged_in = True
                 self._csrf_key = self._extract_csrf(resp.text)
                 return
 
-            # Try checking cookies
+            # Only a signed-in member has a member id cookie.
             for cookie in self._session.cookies:
-                if "member" in cookie.name.lower() or "ips" in cookie.name.lower():
+                if "member_id" in cookie.name.lower():
                     self._logged_in = True
                     self._csrf_key = self._extract_csrf(resp.text)
                     return
@@ -310,9 +351,38 @@ class DeadlyStreamClient:
             return f"{BASE}/files/file/{file_id}-{slug}/"
         return f"{BASE}/files/file/{file_id}/"   # legacy fallback (will 404 on DS)
 
+    def _pace(self) -> None:
+        """Space requests to the site at least _MIN_REQUEST_GAP apart, whichever
+        download makes them."""
+        with self._pace_lock:
+            now = time.monotonic()
+            start = max(now, self._next_request, self._cooloff_until)
+            self._next_request = start + _MIN_REQUEST_GAP
+        if start > now:
+            time.sleep(start - now)
+
+    def _get(self, url: str, **kw):
+        """GET with the request pace, retrying after a pause when the site asks
+        us to slow down. A refusal that keeps coming back is returned as is."""
+        for attempt in range(len(_RETRY_DELAYS) + 1):
+            self._pace()
+            resp = self._session.get(url, **kw)
+            if resp.status_code not in _RETRY_STATUSES or attempt == len(_RETRY_DELAYS):
+                return resp
+            delay = _RETRY_DELAYS[attempt]
+            try:
+                delay = max(delay, min(60, int(resp.headers.get("Retry-After", 0))))
+            except (TypeError, ValueError):
+                pass
+            resp.close()
+            with self._pace_lock:
+                self._cooloff_until = max(self._cooloff_until, time.monotonic() + delay)
+            time.sleep(delay)
+        return resp
+
     def _get_csrf_for_file(self, file_id: str, slug: str = "") -> str:
         url = self._file_page_url(file_id, slug)
-        resp = self._session.get(url, timeout=20)
+        resp = self._get(url, timeout=20)
         resp.raise_for_status()
         csrf = self._extract_csrf(resp.text)
         if not csrf:
@@ -322,7 +392,7 @@ class DeadlyStreamClient:
     def _get_file_info(self, file_id: str, slug: str = "") -> dict:
         """Fetch title, description, category from the mod page."""
         url = self._file_page_url(file_id, slug)
-        resp = self._session.get(url, timeout=20)
+        resp = self._get(url, timeout=20)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "lxml")
 
@@ -443,7 +513,7 @@ class DeadlyStreamClient:
         """
         page_url = self._file_page_url(file_id, slug)
         try:
-            resp = self._session.get(page_url, timeout=20)
+            resp = self._get(page_url, timeout=20)
             resp.raise_for_status()
         except (requests.RequestException, OSError) as e:
             return {"error": str(e), "ds_url": page_url}
@@ -492,8 +562,8 @@ class DeadlyStreamClient:
         list_url = f"{page_url}?do=download"
         records: list[dict] = []
         try:
-            resp = self._session.get(list_url, timeout=20, stream=True,
-                                     headers={"Referer": page_url})
+            resp = self._get(list_url, timeout=20, stream=True,
+                             headers={"Referer": page_url})
             resp.raise_for_status()
             # Single-file submissions can serve the archive itself here; don't
             # pull megabytes into memory just to look for a record list.
@@ -570,7 +640,7 @@ class DeadlyStreamClient:
             records = select_resolution_records(records, screen_resolution)
         referer = self._file_page_url(file_id, slug)
 
-        def _fetch(recs, names, excl, lang=""):
+        def _fetch(recs, names, excl, lang="", strict=False):
             out: list[Path] = []
             taken: set = set()
             for rec in recs:
@@ -587,6 +657,7 @@ class DeadlyStreamClient:
                     ignore_names=excl,
                     taken_names=taken,
                     language=lang,
+                    strict_keep=strict,
                 )
                 if path is not None:
                     out.append(path)
@@ -598,7 +669,11 @@ class DeadlyStreamClient:
         # to downloading everything rather than nothing.
         if len(records) > 1:
             if keep_names:
-                paths = _fetch(records, keep_names, ignore_names, language)
+                # Look for the exact file first, so add-ons and variants whose
+                # names merely start the same way are not downloaded at all.
+                paths = _fetch(records, keep_names, ignore_names, language, strict=True)
+                if not paths:
+                    paths = _fetch(records, keep_names, ignore_names, language)
                 if paths:
                     # The per-record substring match can keep a whole variant
                     # family (X, X_1k, X_BOSSR...); narrow to exact matches
@@ -610,6 +685,21 @@ class DeadlyStreamClient:
                 if paths:
                     return paths
         return _fetch(records, None, ignore_names)
+
+    def _explain_html(self, html: str) -> str:
+        """Say what a web page, received instead of a file, is about."""
+        low = html.lower()
+        m = re.search(r'ipsMessage_(?:error|warning)[^>]*>\s*([^<]{5,200})', html)
+        if m:
+            return f"the site said: {m.group(1).strip()}"
+        if "just a moment" in low or "cf-chl" in low or "attention required" in low:
+            return "the site is asking for a browser check"
+        if "_processLogin" in html or ("sign_out" not in low and "logout" not in low):
+            state = "signed in" if self._logged_in else "not signed in"
+            return f"it looks like a sign-in page, and the app thinks it is {state}"
+        title = BeautifulSoup(html, "lxml").find("title")
+        t = title.get_text(strip=True) if title else ""
+        return f"page titled \"{t[:80]}\"" if t else "unrecognised page"
 
     def _download_from_url(
         self,
@@ -625,6 +715,7 @@ class DeadlyStreamClient:
         pause_event: Optional[threading.Event] = None,
         taken_names: Optional[set] = None,
         language: str = "",
+        strict_keep: bool = False,
     ) -> "Path | None":
         headers = {"Referer": referer} if referer else {}
 
@@ -634,7 +725,7 @@ class DeadlyStreamClient:
         def _aborted() -> bool:
             return cancel_event is not None and cancel_event.is_set()
 
-        resp = self._session.get(
+        resp = self._get(
             download_url, stream=True, timeout=60, allow_redirects=True, headers=headers
         )
         resp.raise_for_status()
@@ -643,10 +734,11 @@ class DeadlyStreamClient:
         # back as HTML (HTTP 200). Don't write an HTML page into a .zip.
         ctype = resp.headers.get("Content-Type", "").lower()
         if "text/html" in ctype:
+            reason = self._explain_html(resp.text)
             resp.close()
             raise DownloadError(
-                "Expected a file but received an HTML page (login, CSRF, or "
-                f"download-confirm issue) for {download_url}"
+                f"Expected a file but received an HTML page ({reason}) "
+                f"for {download_url}"
             )
 
         cd = resp.headers.get("Content-Disposition", "")
@@ -658,7 +750,7 @@ class DeadlyStreamClient:
 
         # "Download only X" filtering: the per-file name is only reliable here in
         # the response headers, so skip the body of files we were told to ignore.
-        if keep_names and not download_name_matches(filename, keep_names):
+        if keep_names and not download_name_matches(filename, keep_names, strict=strict_keep):
             resp.close()
             return None
         if ignore_names and download_name_excluded(filename, ignore_names):
@@ -689,10 +781,30 @@ class DeadlyStreamClient:
         part_path = dest_dir / (filename + ".part")
 
         total = int(resp.headers.get("Content-Length", 0))
+        # A compressed body is delivered decoded, so its length is not comparable.
+        if resp.headers.get("Content-Encoding"):
+            total = 0
         downloaded = 0
         current = resp
+        mode = "wb"
+        # A partial file from an earlier run (the app was closed, or the
+        # connection dropped): ask for the rest instead of starting over.
+        have = part_path.stat().st_size if part_path.exists() else 0
+        if have > 0 and total and have < total:
+            try:
+                rest = self._get(download_url, stream=True, timeout=60,
+                                 allow_redirects=True,
+                                 headers={**headers, "Range": f"bytes={have}-"})
+            except (requests.RequestException, OSError):
+                rest = None
+            if (rest is not None and rest.status_code == 206
+                    and "text/html" not in rest.headers.get("Content-Type", "").lower()):
+                resp.close()
+                current, downloaded, mode = rest, have, "ab"
+            elif rest is not None:
+                rest.close()
         from installer.fs_retry import with_lock_retry
-        f = with_lock_retry(lambda: open(part_path, "wb"))
+        f = with_lock_retry(lambda: open(part_path, mode))
         # Throttle progress reports to ~3 per second so the WS bus doesn't
         # flood the frontend with hundreds of messages for a big archive.
         _last_report: float = 0.0
@@ -703,7 +815,8 @@ class DeadlyStreamClient:
                     if _aborted():
                         f.close()
                         current.close()
-                        part_path.unlink(missing_ok=True)
+                        # The partial file stays, so the download can carry on
+                        # from here next time.
                         raise DownloadError("Download cancelled.")
                     if chunk:
                         f.write(chunk)
@@ -729,11 +842,10 @@ class DeadlyStreamClient:
                     pause_event.wait(timeout=0.25)
                 if _aborted():
                     f.close()
-                    part_path.unlink(missing_ok=True)
                     raise DownloadError("Download cancelled.")
 
                 # Resume: ask the server to continue from where we stopped.
-                current = self._session.get(
+                current = self._get(
                     download_url, stream=True, timeout=60, allow_redirects=True,
                     headers={**headers, "Range": f"bytes={downloaded}-"},
                 )
@@ -761,6 +873,13 @@ class DeadlyStreamClient:
         finally:
             if not f.closed:
                 f.close()
+
+        # A connection that dropped early ends the stream quietly. Do not accept
+        # that as a finished archive; keep the partial so it can be continued.
+        if total and downloaded != total:
+            raise DownloadError(
+                f"The download was cut short ({downloaded} of {total} bytes). "
+                f"Press Install to continue it.")
 
         # Final progress ping so the UI always reaches 100 % even when the
         # last chunk happened to be sent within the throttle window.

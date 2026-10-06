@@ -178,6 +178,10 @@ class Directives:
     # the 4GB Patcher breaks the Steam executable unless widescreen was applied).
     manual_only: bool = False
     manual_reason: str = ""
+    # An edit of the game's program file (swkotor.exe) done by the app itself:
+    # "laa" (4GB) or "hrmenus" (high resolution menus). Run together, once, at
+    # the end of the install, in the order that works. See installer/exe_setup.py.
+    tool_step: str = ""
     raw: str = ""
 
     def is_empty(self) -> bool:
@@ -191,6 +195,7 @@ class Directives:
             self.pre_install_delete, self.skip_if,
             self.requires, self.rename_after, self.pre_patch_delete,
             self.tolerate_patcher_errors, self.no_overwrite, self.manual_only,
+            self.tool_step,
         ])
 
     def summary(self) -> str:

@@ -5,8 +5,8 @@ Download, install, and manage the recommended community mod builds from a single
 app. Pick a build, click once, and it downloads every mod, unpacks it, works out
 how each one installs, and installs them in the right order for you.
 
-> One self-contained `.exe` for Windows. No Python, Node, or separate installer
-> needed. It even checks for and installs its own updates.
+> One self-contained file for Windows (`.exe`) or Linux.
+> No Python, Node, or separate installer needed. It even checks for and installs its own updates.
 
 <p align="center">
   <a href="docs/images/01-builds.png">
@@ -38,14 +38,16 @@ this.
 
 ### 1. Download and open it
 
-Grab `KOTOR-Mod-Installer.exe` from the [latest release](../../releases/latest)
+Grab `KOTOR-Mod-Installer.exe`  from the [latest release](../../releases/latest)
 and run it. That is the whole app, one file. Nothing else to install.
 
 ### 2. Point it at your games and sign in
 
 Open **Settings → Game Installs** and tell it where KOTOR 1 and/or KOTOR 2 are
 installed, then sign in to your DeadlyStream account under **Account** (mods are
-downloaded from your own account).
+downloaded from your own account). If your build includes mods from Nexus Mods,
+also paste your Nexus API key under **Settings → Nexus** (see
+[Mods hosted on Nexus Mods](#mods-hosted-on-nexus-mods)).
 
 <a href="docs/images/05-game-installs.png"><img src="docs/images/05-game-installs.png" alt="Settings screen showing where to add your KOTOR 1 and KOTOR 2 game folders" width="100%"></a>
 
@@ -57,6 +59,22 @@ the recommended order with live progress. TSLPatcher mods are applied
 automatically, with no clicking through each one.
 
 <a href="docs/images/01-builds.png"><img src="docs/images/01-builds.png" alt="The Mod Builds screen with 173 mods loaded and selected, ready to download and install" width="100%"></a>
+
+### Mods hosted on Nexus Mods
+
+Some mods in the builds live on Nexus Mods rather than DeadlyStream. The app
+downloads those too, using your personal API key (get one at
+[nexusmods.com/users/myaccount?tab=api](https://www.nexusmods.com/users/myaccount?tab=api),
+under "Personal API Key", and paste it into **Settings → Nexus**).
+
+- **Premium account:** fully automatic.
+- **Free account:** one click per mod. When you press Install, the app opens
+  each Nexus mod's page in turn. Click **Mod manager download** on each one,
+  and the downloads then run by themselves.
+
+MEGA, Google Drive, GitHub and direct links download automatically. For sites
+the app can't download from (marked with a badge), download the file yourself
+and drop it into your download folder.
 
 ### 4. Manage your library
 
@@ -152,8 +170,33 @@ app ships as one self-contained file.
   the Rust shell that embeds + spawns the backend and kills it on exit.
 - `backend/server.py` - FastAPI wrapper exposing the pipeline + mod manager;
   streams live status/log/progress over a WebSocket.
-- `installer/`, `scraper/`, `config.py` - Python backend logic.
+- `installer/`, `scraper/`, `config.py` - Python backend logic. `scraper/hosts.py`
+  downloads from MEGA, Google Drive, GitHub and direct links; `scraper/nexus.py`
+  handles Nexus and the `nxm://` handoff.
 - `scripts/` - one-off dev/analysis scripts (not part of the app).
+
+### Nexus downloads and `nxm://`
+
+A free Nexus account cannot fetch a file from the API alone: Nexus needs a
+short-lived key minted when the player presses "Mod manager download", delivered
+as an `nxm://` link. The pipeline collects these ahead of the downloads: a click
+queue (`_run_click_queue` in `installer/pipeline.py`) opens each Nexus mod's page
+in build order as the previous click lands, and keeps the links until that mod's
+download starts. A download whose link went stale asks again. Premium accounts
+skip the queue. While the queue waits, the pipeline tells the UI to claim the scheme (`set_nxm_handler` in `src-tauri/src/main.rs`). The browser's
+link starts a second launch of the app; `tauri-plugin-single-instance` forwards it
+to the running one, which posts it to `/api/nexus/nxm`, and `NxmBroker`
+(`scraper/nexus.py`) hands it to the waiting download. Links are matched on game
+as well as mod and file id, and other games' links are refused.
+
+Because `nxm://` is shared by every Nexus game and mod manager, the app holds it
+only while waiting and restores the previous handler afterwards: on Linux via
+`xdg-mime` (the previous handler is remembered in the temp folder), on Windows by
+exporting and re-importing the `HKCU\Software\Classes\nxm` registry key with
+`reg.exe`. A claim left over from a crash is undone on the next launch.
+
+Downloads run side by side across sites with a limit per site (`_HOST_LIMITS` in
+`installer/pipeline.py`); installs still run in build order.
 
 ### The HoloPatcher shim ("dynamic patcher")
 
@@ -209,6 +252,16 @@ cp dist/kotor-backend.exe frontend/src-tauri/binaries/kotor-backend.exe
 cd frontend && npm install && npx tauri build
 # -> frontend/src-tauri/target/release/kotor-mod-installer.exe   (one self-contained file)
 ```
+
+### Build the Linux binary locally
+
+```bash
+scripts/build-linux.sh
+# -> dist/KOTOR-Mod-Installer-linux-x86_64   (one self-contained file)
+```
+
+Requires Python 3.12 or older (via pyenv), Node 20, Rust, and the WebKitGTK 4.1
+dev packages.
 
 ### Versioning & releases
 

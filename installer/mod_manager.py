@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import config as cfg
+from installer.pathcase import resolve_ci
 from installer.download_paths import download_folder_name
 
 MANIFEST_SCHEMA_VERSION = 1
@@ -103,6 +104,10 @@ class InstalledMod:
     option_hint: str = ""
     source_slug: str = ""
     category: str = ""
+    # Where the mod was downloaded from, so the Library can link to its real
+    # page. Empty on mods installed by older versions.
+    source_host: str = ""
+    source_url: str = ""
     deployed_files: list[DeployedFile] = field(default_factory=list)
     baked_files: list[BakedFile] = field(default_factory=list)
     # Incompatibilities the mod declares about ITSELF (parsed from its readme).
@@ -304,7 +309,7 @@ def snapshot_targets(game_root: Path) -> dict[str, str]:
     """
     sig: dict[str, str] = {}
     for d in SNAPSHOT_DIRS:
-        base = game_root / d
+        base = resolve_ci(game_root, d)
         if not base.is_dir():
             continue
         for p in base.rglob("*"):
@@ -312,11 +317,166 @@ def snapshot_targets(game_root: Path) -> dict[str, str]:
                 st = p.stat()
                 sig[_rel_posix(p, game_root)] = f"{st.st_size}:{st.st_mtime_ns}"
     for f in SNAPSHOT_FILES:
-        p = game_root / f
+        p = resolve_ci(game_root, f)
         if p.is_file():
             st = p.stat()
             sig[_rel_posix(p, game_root)] = f"{st.st_size}:{st.st_mtime_ns}"
     return sig
+
+
+def _name_key(name: str) -> str:
+    """Same name test the Library uses to flag a duplicate."""
+    return (name or "").strip().lower()
+
+
+def _same_origin(a: "InstalledMod", b: "InstalledMod") -> bool:
+    """Same name and recorded from the very same download."""
+    return (_name_key(a.name) == _name_key(b.name)
+            and a.source_type == b.source_type
+            and str(a.source_ref) == str(b.source_ref))
+
+
+def _same_content(a: "InstalledMod", b: "InstalledMod") -> bool:
+    """Whether two records installed exactly the same mod, file for file.
+
+    The same mod fetched from two places writes the same files. Two unrelated
+    mods that share a name, or two versions of one mod, do not. Both records
+    must list exactly the same files, and the loose ones must have identical
+    checksums. Patcher-written files are compared by name only, because a
+    patcher edits shared game files and their checksums depend on what else
+    was installed."""
+    pa = {f.rel_path.lower() for f in a.deployed_files} | {f.rel_path.lower() for f in a.baked_files}
+    pb = {f.rel_path.lower() for f in b.deployed_files} | {f.rel_path.lower() for f in b.baked_files}
+    if not pa or pa != pb:
+        return False
+    sa = {f.rel_path.lower(): f.sha256 for f in a.deployed_files}
+    sb = {f.rel_path.lower(): f.sha256 for f in b.deployed_files}
+    return all(sa[k] == sb[k] for k in sa.keys() & sb.keys())
+
+
+def _same_mod(a: "InstalledMod", b: "InstalledMod") -> bool:
+    if _name_key(a.name) != _name_key(b.name) or not _name_key(a.name):
+        return False
+    return _same_origin(a, b) or _same_content(a, b)
+
+
+def _fold_into(keeper: InstalledMod, other: InstalledMod) -> None:
+    """Move everything `other` deployed onto `keeper` (same name, kind, state).
+    The newer record wins for a file both list, since it wrote last."""
+    files = {f.rel_path: f for f in keeper.deployed_files}
+    for f in other.deployed_files:
+        old = files.get(f.rel_path)
+        if old is not None:
+            # Keep the memory of a displaced original from the first install.
+            f.overwrote = f.overwrote or old.overwrote
+            f.backup_rel = f.backup_rel or old.backup_rel
+        files[f.rel_path] = f
+    keeper.deployed_files = list(files.values())
+    if other.deploy_kind != keeper.deploy_kind:
+        # A patcher part and a loose-file part of the same mod. The patcher
+        # part cannot be undone cleanly, so the whole entry behaves like one.
+        keeper.deploy_kind = DeployKind.BAKED.value
+        keeper.state = ModState.BAKED.value
+        keeper.enabled = True
+    baked = {f.rel_path: f for f in keeper.baked_files}
+    for f in other.baked_files:
+        old = baked.get(f.rel_path)
+        if old is not None:
+            f.pre_sha256 = f.pre_sha256 or old.pre_sha256
+            f.created = f.created or old.created
+        baked[f.rel_path] = f
+    keeper.baked_files = list(baked.values())
+    for inc in other.incompatibilities:
+        if inc not in keeper.incompatibilities:
+            keeper.incompatibilities.append(inc)
+    keeper.source_host = keeper.source_host or other.source_host
+    keeper.source_url = keeper.source_url or other.source_url
+    keeper.category = keeper.category or other.category
+
+
+def _fold_disabled_store(game: str, keeper_id: str, other_id: str) -> None:
+    """A disabled loose mod keeps its files in a side folder; carry them over."""
+    src_root = _disabled_root(game, other_id)
+    if not src_root.exists():
+        return
+    dst_root = _disabled_root(game, keeper_id)
+    for f in [p for p in src_root.rglob("*") if p.is_file()]:
+        dst = dst_root / f.relative_to(src_root)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(f), str(dst))
+    shutil.rmtree(src_root, ignore_errors=True)
+
+
+def _clusters(mods: list) -> list[list]:
+    """Group records that are the same mod (transitively), per on/off state."""
+    clusters: list[list[InstalledMod]] = []
+    for m in sorted(mods, key=lambda x: x.load_order):
+        home = [c for c in clusters
+                if c[0].enabled == m.enabled and any(_same_mod(x, m) for x in c)]
+        if not home:
+            clusters.append([m])
+            continue
+        home[0].append(m)
+        for extra in home[1:]:      # m bridged several clusters: join them
+            home[0].extend(extra)
+            clusters.remove(extra)
+    return clusters
+
+
+def mergeable_count(mods: list) -> int:
+    """How many entries dedupe() would merge away right now."""
+    return sum(len(c) - 1 for c in _clusters(mods))
+
+
+def unmergeable_duplicates(mods: list) -> set[str]:
+    """Ids of mods that share a name with another entry but cannot be merged
+    with it, so the player needs to look at them (they may be two different
+    mods, or two versions of one)."""
+    by_name: dict[str, int] = {}
+    members: dict[str, list[str]] = {}
+    for c in _clusters(mods):
+        k = _name_key(c[0].name)
+        by_name[k] = by_name.get(k, 0) + 1
+        members.setdefault(k, []).extend(m.id for m in c)
+    return {i for k, n in by_name.items() if n > 1 and k for i in members[k]}
+
+
+def dedupe(game: str) -> dict:
+    """
+    Fold mods that share a name into one entry, without touching game files.
+
+    Duplicates arise as several records for one mod (see record_install), so
+    uninstalling the extras would delete files the surviving entry still needs.
+    Instead the extras' file lists are merged into the earliest entry and the
+    extra entries are dropped. Mods are only merged when they were installed
+    the same on/off state and came from the same download or wrote the same files (see
+    _same_content), so unrelated mods that share a name are left alone. A mod with both a patcher part and a loose-file part
+    becomes one patcher-style entry.
+    """
+    with _MANIFEST_LOCK:
+        manifest = load_manifest(game)
+        clusters = _clusters(manifest.mods)
+        drop: set[str] = set()
+        names: list[str] = []
+        for mods in clusters:
+            if len(mods) < 2:
+                continue
+            mods.sort(key=lambda x: x.load_order)
+            keeper = mods[0]
+            for other in mods[1:]:
+                disabled_loose = (keeper.deploy_kind == DeployKind.LOOSE.value
+                                  and not keeper.enabled)
+                _fold_into(keeper, other)
+                if disabled_loose:
+                    _fold_disabled_store(game, keeper.id, other.id)
+                shutil.rmtree(_backup_root(game, other.id), ignore_errors=True)
+                drop.add(other.id)
+            names.append(keeper.name)
+        if drop:
+            manifest.mods = [m for m in manifest.mods if m.id not in drop]
+            save_manifest(manifest)
+        left = [m for m in manifest.mods if m.id in unmergeable_duplicates(manifest.mods)]
+        return {"removed": len(drop), "mods": names, "remaining": len(left)}
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +502,8 @@ def record_install(
     game_type: str = "",
     source_slug: str = "",
     category: str = "",
+    source_host: str = "",
+    source_url: str = "",
 ) -> InstalledMod:
     """
     Record a completed install into the per-game manifest.
@@ -354,7 +516,6 @@ def record_install(
         manifest = load_manifest(game)
         mod_id = uuid.uuid4().hex
         load_order = manifest.next_load_order
-        manifest.next_load_order += 1
 
         deployed: list[DeployedFile] = []
         baked: list[BakedFile] = []
@@ -381,7 +542,7 @@ def record_install(
             for rel, sig in after.items():
                 if before.get(rel) == sig:
                     continue  # unchanged
-                p = game_root / rel
+                p = resolve_ci(game_root, rel)
                 if not p.is_file():
                     continue
                 baked.append(BakedFile(
@@ -404,10 +565,21 @@ def record_install(
             install_method=install_method, deploy_kind=deploy_kind,
             state=state, enabled=enabled, load_order=load_order,
             build_key=build_key, option_hint=option_hint, source_slug=source_slug,
-            category=category,
+            category=category, source_host=source_host, source_url=source_url,
             deployed_files=deployed, baked_files=baked,
             incompatibilities=parse_incompatibilities(readme_text),
         )
+        # One mod can be recorded several times: once per component of a
+        # multi-part install, and again every time a build is re-run. Fold
+        # those into the entry already there instead of listing the mod twice.
+        existing = next(
+            (m for m in manifest.mods
+             if _same_mod(m, mod) and m.enabled), None)
+        if existing is not None:
+            _fold_into(existing, mod)
+            save_manifest(manifest)
+            return existing
+        manifest.next_load_order += 1
         manifest.mods.append(mod)
         save_manifest(manifest)
         return mod
@@ -496,7 +668,9 @@ def uninstall(game: str, game_root: Path, mod_id: str, *, force: bool = False) -
                 "remain - a clean reinstall/verify of the game is recommended)."
             )
 
-        if mod.deploy_kind == DeployKind.LOOSE.value:
+        # Loose files can sit on a patcher-style entry too (a mod with both
+        # parts), so clean them up whatever the entry's kind is.
+        if mod.deploy_kind == DeployKind.LOOSE.value or mod.deployed_files:
             if mod.state == ModState.DISABLED.value:
                 shutil.rmtree(_disabled_root(game, mod_id), ignore_errors=True)
             else:
@@ -967,13 +1141,13 @@ def capture_baseline(game: str, game_root: Path, force: bool = False) -> dict:
     root.mkdir(parents=True, exist_ok=True)
     saved = []
     for name in _BASELINE_FILES:
-        src = game_root / name
+        src = resolve_ci(game_root, name)
         if src.is_file():
             shutil.copy2(src, root / name)
             saved.append(name)
 
     def _listing(sub: str) -> list[str]:
-        d = game_root / sub
+        d = resolve_ci(game_root, sub)
         return sorted(f.name for f in d.iterdir() if f.is_file()) if d.is_dir() else []
 
     data = {
@@ -1015,9 +1189,7 @@ def reset_to_vanilla(game: str, game_root: Path,
     result = {"override_removed": 0, "modules_removed": 0, "restored": []}
 
     for sub, key in (("Override", "override"), ("Modules", "modules")):
-        d = game_root / sub
-        if not d.is_dir():
-            d = game_root / sub.lower()
+        d = resolve_ci(game_root, sub)
         if not d.is_dir():
             continue
         keep = set(data.get(key, []))
@@ -1034,10 +1206,20 @@ def reset_to_vanilla(game: str, game_root: Path,
         src = root / name
         if src.is_file():
             try:
-                shutil.copy2(src, game_root / name)
+                shutil.copy2(src, resolve_ci(game_root, name))
                 result["restored"].append(name)
             except OSError as e:
                 log(f"Could not restore {name}: {e}")
+
+    # The widescreen patches keep the player's own swkotor.exe as swkotor.exe.bak;
+    # putting it back also clears the patch record.
+    try:
+        from installer import exe_setup
+        if exe_setup.restore_original(game_root, game):
+            result["restored"].append("swkotor.exe")
+            shutil.rmtree(cfg.CONFIG_DIR / "exe_patch" / f"{game}-gui-backup", ignore_errors=True)
+    except OSError as e:
+        log(f"Could not restore the original swkotor.exe: {e}")
 
     manifest = GameManifest(game=game)
     save_manifest(manifest)

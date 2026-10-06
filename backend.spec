@@ -11,6 +11,7 @@ Build:  pyinstaller backend.spec --noconfirm
 """
 
 import os
+import sys
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 datas = [
@@ -23,12 +24,13 @@ binaries = []
 hiddenimports = []
 
 # Bundle the headless HoloPatcher engine so the sidecar is fully self-contained.
-_holo = os.path.join("tools", "HoloPatcher", "HoloPatcher.exe")
+_holo = os.path.join("tools", "HoloPatcher",
+                     "HoloPatcher.exe" if sys.platform == "win32" else "HoloPatcher")
 if os.path.exists(_holo):
     datas += [(_holo, os.path.join("tools", "HoloPatcher"))]
     print(f"[backend.spec] Bundling HoloPatcher shim: {_holo}")
 else:
-    print("[backend.spec] WARNING: HoloPatcher.exe not found - run tools/setup_holopatcher.py first.")
+    print("[backend.spec] WARNING: HoloPatcher not found - run tools/setup_holopatcher.py first.")
 
 # uvicorn/fastapi pull a lot of implementations dynamically.
 for pkg in ("uvicorn", "fastapi", "starlette", "anyio"):
@@ -45,10 +47,12 @@ hiddenimports += [
 ]
 # keyring backend + project runtime deps that static analysis can miss.
 hiddenimports += collect_submodules("keyring.backends")
-hiddenimports += [
-    "win32ctypes.core", "win32timezone",
-    "py7zr", "rarfile", "lxml._elementpath", "bs4",
-]
+hiddenimports += ["py7zr", "rarfile", "lxml._elementpath", "bs4"]
+if sys.platform == "win32":
+    hiddenimports += ["win32ctypes.core", "win32timezone"]
+else:
+    # Linux keyring backend (GNOME Keyring / KWallet).
+    hiddenimports += ["secretstorage", "jeepney"]
 
 block_cipher = None
 
@@ -82,7 +86,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=(sys.platform == "win32"),  # UPX breaks Linux bundles
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,            # Tauri spawns sidecars with no window; keep stdio for uvicorn logs

@@ -79,10 +79,43 @@ def _source_folder(mod, download_dir: Optional[Path] = None) -> Optional[Path]:
         mod.source_ref, mod.source_slug or "")
 
 
+def _build_entry(build_key: Optional[str], file_id: str) -> Optional[tuple[str, str]]:
+    """(host, url) of a mod in a build list: the loaded one, else the cached one."""
+    if not build_key:
+        return None
+    for m in (getattr(_state, "loaded_mods", {}) or {}).get(build_key, []):
+        if m.file_id == file_id:
+            return m.source_host, m.url
+    try:
+        import json
+        with open(cfg.CONFIG_DIR / "cache" / "build_lists.json", encoding="utf-8") as f:
+            entry = json.load(f).get(build_key, {}).get("data", [])
+        for m in entry:
+            if m.get("file_id") == file_id:
+                return m.get("source_host", ""), m.get("url", "")
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None
+
+
+def _source_of(mod) -> tuple[str, str]:
+    """Where an installed mod came from. Mods installed before the host was
+    recorded are worked out: a numeric id is DeadlyStream, and a guide:<n> id is
+    looked up in its build list (empty when that is not available)."""
+    if mod.source_host:
+        return mod.source_host, mod.source_url
+    if mod.source_type != "build" or not mod.source_ref:
+        return "", ""
+    if str(mod.source_ref).isdigit():
+        return "deadlystream", ""
+    return _build_entry(mod.build_key, mod.source_ref) or ("", "")
+
+
 def _mod_dict(mod, conflict_count: int = 0, download_dir: Optional[Path] = None) -> dict:
     folder = _source_folder(mod, download_dir)
     exists = bool(folder and folder.exists())
-    return installed_mod_to_dict(mod, conflict_count, source_exists=exists)
+    return installed_mod_to_dict(mod, conflict_count, source_exists=exists,
+                                 source=_source_of(mod))
 
 
 # ---------------------------------------------------------------------------
@@ -97,10 +130,23 @@ def get_library(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
     counts = mod_manager.conflict_counts_by_mod(conflicts)
     mods = sorted(manifest.mods, key=lambda m: m.load_order)
     dl = _download_dir()
-    return {
-        "game": game_type, "profile": scope,
-        "mods": [_mod_dict(m, counts.get(m.id, 0), dl) for m in mods],
-    }
+    unmerge = mod_manager.unmergeable_duplicates(mods)
+    out = []
+    for m in mods:
+        d = _mod_dict(m, counts.get(m.id, 0), dl)
+        d["duplicate_unmergeable"] = m.id in unmerge
+        out.append(d)
+    return {"game": game_type, "profile": scope, "mods": out,
+            "mergeable_duplicates": mod_manager.mergeable_count(mods)}
+
+
+# Registered before /library/{mod_id}, which would otherwise match "baseline".
+@library_router.get("/library/baseline")
+def baseline_status(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """Whether a clean snapshot exists to reset back to."""
+    scope, root, _gt = _resolve(game, profile)
+    return {"has_baseline": mod_manager.has_baseline(scope),
+            "game_path": str(root) if root else ""}
 
 
 @library_router.get("/library/{mod_id}")
@@ -145,6 +191,32 @@ def _guard_not_running():
     return None
 
 
+def _clear_duplicate_textures(root: Path) -> None:
+    """
+    Remove .tga/.tpc pairs from Override after mods are switched on or off.
+
+    Enabling a mod puts its textures back next to ones from other mods, and a
+    pair of the same name in two formats can crash the game. The installer does
+    the same sweep at the end of every install.
+    """
+    from installer import texture_dedupe
+    from installer.pathcase import resolve_ci
+    try:
+        result = texture_dedupe.dedupe(resolve_ci(root, "Override"))
+    except OSError as e:
+        _publish({"type": "log", "message": f"Could not check for duplicate textures: {e}",
+                  "tag": "warning"})
+        return
+    if result.removed:
+        _publish({"type": "log", "tag": "muted",
+                  "message": f"Removed {len(result.removed)} duplicate texture file(s) "
+                             "that could crash the game."})
+    if result.failed:
+        _publish({"type": "log", "tag": "warning",
+                  "message": f"{len(result.failed)} duplicate texture file(s) could not be "
+                             "removed. Check that the game's Override folder is not read-only."})
+
+
 def _toggle(mod_id: str, game: str, profile: str, action: str):
     busy = _guard_not_running()
     if busy:
@@ -159,6 +231,7 @@ def _toggle(mod_id: str, game: str, profile: str, action: str):
         return JSONResponse(status_code=409, content={"ok": False, "error": "not_toggleable", "message": str(e)})
     except mod_manager.ModManagerError as e:
         return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
+    _clear_duplicate_textures(root)
     conflicts = mod_manager.compute_conflicts(scope)
     counts = mod_manager.conflict_counts_by_mod(conflicts)
     _publish({"type": "library", "event": "changed", "profile": scope})
@@ -239,14 +312,6 @@ def clear_cache(req: ClearCacheRequest, game: str = Query("KOTOR1"),
                          f"freeing {mb:.0f} MB.",
               "tag": "success" if result["removed"] else "muted"})
     return {"ok": True, **result}
-
-
-@library_router.get("/library/baseline")
-def baseline_status(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
-    """Whether a clean snapshot exists to reset back to."""
-    scope, root, _gt = _resolve(game, profile)
-    return {"has_baseline": mod_manager.has_baseline(scope),
-            "game_path": str(root) if root else ""}
 
 
 @library_router.post("/library/baseline/capture")
@@ -367,6 +432,22 @@ def bulk_uninstall(req: BulkModRequest,
             "requested": len(set(req.mod_ids or []))}
 
 
+@library_router.post("/library/dedupe")
+def dedupe_library(game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
+    """Merge mods listed more than once into a single entry. Game files are
+    not touched, so this is safe while the game is closed or open."""
+    scope, _root, _gt = _resolve(game, profile)
+    result = mod_manager.dedupe(scope)
+    if result["removed"]:
+        _publish({"type": "log",
+                  "message": f"Merged {result['removed']} duplicate entr"
+                             f"{'y' if result['removed'] == 1 else 'ies'} "
+                             f"across {len(result['mods'])} mod(s).",
+                  "tag": "success"})
+        _publish({"type": "library", "event": "changed", "profile": scope})
+    return {"ok": True, **result}
+
+
 @library_router.post("/library/bulk/toggle")
 def bulk_toggle(req: BulkModRequest, action: str = Query("disable"),
                 game: str = Query("KOTOR1"), profile: str = Query("")) -> dict:
@@ -403,6 +484,8 @@ def bulk_toggle(req: BulkModRequest, action: str = Query("disable"),
                           "tag": "muted"})
         except mod_manager.ModManagerError as e:
             failed.append({"mod": name, "reason": str(e)[:160]})
+    if changed:
+        _clear_duplicate_textures(root)
     _publish({"type": "library", "event": "bulk_progress", "action": action,
               "current": total, "total": total, "mod": "", "done": True})
     _publish({"type": "log",

@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import json
 import os
+import sys
 import threading
 import time
 from pathlib import Path
@@ -28,7 +29,9 @@ import config as cfg
 from backend.models import (
     ActiveProfileRequest,
     AddBuildRequest,
+    ConfirmAnswer,
     LoginRequest,
+    NxmRequest,
     SourceSiteRequest,
     OpenDownloadRequest,
     OpenPathRequest,
@@ -56,18 +59,32 @@ BUILD_LABELS = {
 def _screen_resolution() -> str:
     """The primary display's resolution, used to pick ONE variant when a mod
     ships separate multi-gigabyte packs per resolution."""
-    try:
-        import ctypes
-        user32 = ctypes.windll.user32
+    if sys.platform == "win32":
         try:
-            user32.SetProcessDPIAware()
+            import ctypes
+            user32 = ctypes.windll.user32
+            try:
+                user32.SetProcessDPIAware()
+            except Exception:
+                pass
+            w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+            if w and h:
+                return f"{w}x{h}"
         except Exception:
             pass
-        w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
-        if w and h:
-            return f"{w}x{h}"
-    except Exception:
-        pass
+    elif sys.platform.startswith("linux"):
+        # Primary output first, else the first connected one.
+        try:
+            import re
+            import subprocess
+            out = subprocess.run(["xrandr", "--query"], capture_output=True,
+                                 text=True, timeout=3).stdout
+            modes = re.findall(r"^\S+ connected( primary)? (\d+)x(\d+)\+", out, re.M)
+            modes.sort(key=lambda m: not m[0])  # primary first
+            if modes:
+                return f"{modes[0][1]}x{modes[0][2]}"
+        except Exception:
+            pass
     return "1920x1080"
 
 
@@ -117,6 +134,13 @@ class EventHub:
 
     def publish(self, event: dict) -> None:
         """Thread-safe publish from any thread."""
+        if event.get("type") == "log":
+            # Also write it to stdout (the system journal on Linux), so a problem
+            # can be read back after the window that showed it is gone.
+            try:
+                print(f"[activity] {event.get('message', '')}", flush=True)
+            except (OSError, ValueError):
+                pass
         if self._loop is None:
             return
         try:
@@ -141,6 +165,12 @@ class EventHub:
 # Application state
 # ---------------------------------------------------------------------------
 
+def _nxm_active(active: bool) -> None:
+    """Tell the UI to claim (or give back) nxm:// links while a free-account
+    Nexus download waits for its click."""
+    state.hub.publish({"type": "nxm_wait", "active": active})
+
+
 class AppState:
     def __init__(self) -> None:
         self.client = DeadlyStreamClient()
@@ -160,6 +190,10 @@ class AppState:
 
 
 state = AppState()
+
+from scraper import nexus as _nexus
+_nexus.NXM.on_active = _nxm_active
+
 app = FastAPI(title="KOTOR Mod Installer Backend", version=__version__)
 
 app.add_middleware(
@@ -205,7 +239,12 @@ def _login_safe(u: str, p: str) -> None:
 
 @app.get("/api/health")
 def health() -> dict:
-    return {"ok": True, "version": __version__}
+    return {"ok": True, "version": __version__, "platform": _platform_name()}
+
+
+def _platform_name() -> str:
+    """'windows', 'linux' or 'macos', so the UI can word things for the OS."""
+    return {"win32": "windows", "darwin": "macos"}.get(sys.platform, "linux")
 
 
 @app.get("/api/status")
@@ -282,6 +321,16 @@ def _version_tuple(v: str) -> tuple:
     return tuple(int(x) for x in re.findall(r"\d+", v or "")[:3])
 
 
+def _is_update_asset(name: str) -> bool:
+    """Whether a release file is the self-update build for this platform."""
+    low = name.lower()
+    if sys.platform == "win32":
+        return low.endswith(".exe")
+    if sys.platform.startswith("linux"):
+        return "linux" in low and not low.endswith((".sha256", ".deb", ".rpm", ".zip", ".tar.gz"))
+    return False
+
+
 @app.get("/api/update/check")
 def update_check() -> dict:
     """Compare the running version against the latest GitHub release."""
@@ -305,7 +354,7 @@ def update_check() -> dict:
     available = bool(latest) and _version_tuple(latest) > _version_tuple(__version__)
     asset_url = None
     for a in data.get("assets", []):
-        if a.get("name", "").lower().endswith(".exe"):
+        if _is_update_asset(a.get("name", "")):
             asset_url = a.get("browser_download_url")
             break
     return {
@@ -402,7 +451,8 @@ def update_download() -> dict:
 
     dest_dir = Path(tempfile.gettempdir()) / "kotor-mod-installer-update"
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / "KOTOR-Mod-Installer-new.exe"
+    dest = dest_dir / ("KOTOR-Mod-Installer-new.exe" if sys.platform == "win32"
+                        else "KOTOR-Mod-Installer-new")
 
     try:
         req = urllib.request.Request(asset, headers={"User-Agent": "kotor-mod-installer"})
@@ -422,6 +472,8 @@ def update_download() -> dict:
                         last_pct = pct
                         state.hub.publish({"type": "update_progress", "pct": pct,
                                            "downloaded": done, "total": total})
+        if sys.platform != "win32":
+            dest.chmod(0o755)
         state.hub.publish({"type": "log", "message": "Update downloaded - restarting to apply.",
                            "tag": "success"})
         return {"ok": True, "path": str(dest), "version": info.get("latest_version")}
@@ -441,6 +493,7 @@ def get_settings() -> dict:
         "language": conf.get("language", "en"),
         "custom_patcher_path": conf.get("custom_patcher_path", ""),
         "nexus_api_key": conf.get("nexus_api_key", ""),
+        "preferred_resolution": conf.get("preferred_resolution", ""),
     }
 
 
@@ -487,6 +540,27 @@ def get_profiles() -> dict:
         "profiles": [_profile_dict(p) for p in cfg.get_profiles(conf)],
         "active": conf.get("active_profile", ""),
     }
+
+
+@app.get("/api/games/detect")
+def detect_games() -> dict:
+    """Steam installs of KOTOR found on the computer."""
+    from installer.game_locator import find_game_installs
+    known = set()
+    for p in cfg.get_profiles(cfg.load()):
+        if p.get("path"):
+            try:
+                known.add(str(Path(p["path"]).resolve()))
+            except OSError:
+                known.add(p["path"])
+    found = []
+    for g in find_game_installs():
+        try:
+            resolved = str(Path(g["path"]).resolve())
+        except OSError:
+            resolved = g["path"]
+        found.append({**g, "already_added": resolved in known})
+    return {"installs": found}
 
 
 @app.post("/api/profiles")
@@ -664,6 +738,22 @@ def open_mod_download(req: OpenDownloadRequest) -> dict:
     if not reveal_path(folder):
         return JSONResponse(status_code=500, content={"ok": False, "error": "open_failed"})
     return {"ok": True, "path": str(folder), "fallback": fallback}
+
+
+@app.post("/api/nexus/nxm")
+def nexus_nxm(req: NxmRequest) -> dict:
+    """An nxm:// link from the Nexus website ("Mod manager download"). Hands it
+    to the download that is waiting for it."""
+    from scraper import nexus
+    try:
+        link = nexus.parse_nxm(req.url)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"ok": False, "error": "not_an_nxm_link"})
+    if not nexus.NXM.deliver(link):
+        return JSONResponse(status_code=400, content={"ok": False, "error": "other_game"})
+    state.hub.publish({"type": "log", "message": "Got the Nexus download link - continuing.",
+                       "tag": "success"})
+    return {"ok": True}
 
 
 @app.get("/api/nexus/validate")
@@ -930,6 +1020,10 @@ def install_start(req: StartInstallRequest) -> dict:
         hub.publish({"type": "manual", "file_id": file_id, "name": name,
                      "folder": folder, "readme": readme[:4000]})
 
+    def on_confirm(request_id: str, title: str, body: str, options: list) -> None:
+        hub.publish({"type": "confirm", "id": request_id, "title": title,
+                     "body": body, "options": options})
+
     state.pipeline = Pipeline(
         mods=mods,
         game_path=game_path,
@@ -940,6 +1034,7 @@ def install_start(req: StartInstallRequest) -> dict:
         on_progress=on_progress,
         on_install_progress=on_install_progress,
         on_manual=on_manual,
+        on_confirm=on_confirm,
         auto_unattended=req.unattended,
         game_key=scope,
         game_type=game,
@@ -963,6 +1058,15 @@ def install_start(req: StartInstallRequest) -> dict:
 
     threading.Thread(target=_watch, args=(state.pipeline,), daemon=True).start()
     return {"ok": True, "total": len(mods), "game_path": str(game_path)}
+
+
+@app.post("/api/install/confirm")
+def install_confirm(req: ConfirmAnswer) -> dict:
+    """The player's answer to a question the installer is waiting on."""
+    pl = state.pipeline
+    if not pl or not pl.answer_confirm(req.id, req.choice):
+        return JSONResponse(status_code=404, content={"ok": False, "error": "no_such_question"})
+    return {"ok": True}
 
 
 @app.post("/api/install/{action}")

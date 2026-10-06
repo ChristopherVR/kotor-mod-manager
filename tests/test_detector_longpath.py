@@ -34,7 +34,8 @@ def _deep_mod(tmp_path, depth=3, folder="A Rather Long Mod Folder Name For KOTOR
 
 def test_files_past_max_path_are_still_found(tmp_path):
     leaf = _deep_mod(tmp_path)
-    assert len(str(leaf)) > 200  # the case we care about
+    if sys.platform == "win32":  # pytest's temp dir is shorter on Linux
+        assert len(str(leaf)) > 200  # the case we care about
     found = {rel.name for _abs, rel in walk_files(tmp_path)}
     assert "PMBI55.tga" in found
     assert "g_a_jedirobe06.uti" in found
@@ -90,7 +91,7 @@ def test_plain_rglob_would_have_missed_it(tmp_path):
     assert "PMBI55.tga" in walked
 
     if _os_handles_long_paths(target):
-        pytest.skip("long path support is on for this machine, so there is no "
+        pytest.skip("long path support is already on, so there is no "
                     "blind spot for the naive traversal to fall into")
 
     plain = {p.name for p in tmp_path.rglob("*") if p.is_file()}
