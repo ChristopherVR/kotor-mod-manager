@@ -52,11 +52,32 @@ def test_ignores_non_texture_files(tmp_path):
     assert texture_dedupe.dedupe(tmp_path).removed == []
 
 
-def test_dds_is_not_touched_here(tmp_path):
-    """.dds clashes are the pipeline's own post-install sweep, not this."""
+def test_tga_and_dds_together_are_left_alone(tmp_path):
+    """Only the .tpc side is ever removed."""
     _touch(tmp_path, "b.tga")
     _touch(tmp_path, "b.dds")
     assert texture_dedupe.dedupe(tmp_path).removed == []
+
+
+def test_tpc_with_a_dds_twin_is_removed(tmp_path):
+    _touch(tmp_path, "c.dds")
+    _touch(tmp_path, "c.tpc")
+    assert texture_dedupe.dedupe(tmp_path).removed == ["c.tpc"]
+    assert (tmp_path / "c.dds").exists()
+
+
+def test_tpc_with_both_twins_goes_in_one_pass(tmp_path):
+    """The guide's script needs running twice for this case."""
+    for n in ("d.tga", "d.dds", "d.tpc"):
+        _touch(tmp_path, n)
+    assert texture_dedupe.dedupe(tmp_path).removed == ["d.tpc"]
+    assert texture_dedupe.dedupe(tmp_path).removed == []
+
+
+def test_recognises_the_guide_step_by_name_in_every_build():
+    name = "Remove Duplicate TGA/TPC , OR an .sh script for Linux users"
+    assert texture_dedupe.is_cleanup_step(name)
+    assert not texture_dedupe.is_cleanup_step("Ultimate Taris High Resolution")
 
 
 def test_missing_override_folder_is_not_an_error(tmp_path):

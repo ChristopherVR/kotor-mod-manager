@@ -26,6 +26,7 @@ from installer.build_directives import match_option_index
 from installer.detector import InstallMethod, InstallPlan, ModFileMapping, detect
 from installer.extractor import ExtractionError, extract
 from installer.installer import InstallError, install
+from installer import texture_dedupe
 from installer.pathcase import resolve_ci, rglob_ci
 from installer.patcher_strategy import run_tslpatcher_cascade
 from installer.runner import PatcherError, run_holopatcher
@@ -196,6 +197,8 @@ class Pipeline:
         self._manual_left: list[tuple[str, str]] = []
         # Mods that edit the game's program file; handled together at the end.
         self._tool_mods: list[PipelineMod] = []
+        # The guide's "Remove Duplicate TGA/TPC" entries; the app does it itself.
+        self._cleanup_mods: list[PipelineMod] = []
         self._current: Optional[PipelineMod] = None
 
     @property
@@ -384,8 +387,39 @@ class Pipeline:
             self._running = False
             self._current = None
             self._run_exe_tools()
+            self._run_texture_cleanup()
             self._log_manual_summary()
             self._log_overlap_summary()
+
+    def _run_texture_cleanup(self) -> None:
+        """
+        Remove textures that sit in Override in two formats, as the last step.
+
+        The game can crash when a .tga and a .tpc of the same name disagree, and
+        stacking texture packs creates these pairs. The build guides make clearing
+        them a mandatory final step, so it runs after every install that changed
+        something, whether or not the guide's own entry was selected.
+        """
+        steps, self._cleanup_mods = self._cleanup_mods, []
+        installed = any(pm.status == ModStatus.DONE for pm in self._mods)
+        if self._stop_event.is_set() or not (installed or steps):
+            return
+        override = resolve_ci(self._game_path, "Override")
+        if not override.is_dir():
+            return
+        self._log("\n── Duplicate textures")
+        result = texture_dedupe.dedupe(override, on_log=lambda m: self._log("  " + m, "muted"))
+        for pm in steps:
+            if result.ok:
+                self._set_status(pm, ModStatus.DONE)
+            else:
+                reason = (f"{len(result.failed)} duplicate texture(s) could not be removed. "
+                          f"Check that the game's Override folder is not read-only.")
+                self._set_status(pm, ModStatus.MANUAL, reason)
+                self._manual_left.append((pm.build_mod.name, reason))
+        if result.failed:
+            self._log("  Some duplicates could not be removed, and they can crash the game.",
+                      "warning")
 
     def _run_exe_tools(self) -> None:
         """Patch swkotor.exe once for every mod that asked for it, after asking."""
@@ -603,6 +637,13 @@ class Pipeline:
         mod = pm.build_mod
         self._dl_started.add(mod.file_id)
         self._log(f"\n── [{mod.install_order:3d}] {mod.name}")
+
+        if texture_dedupe.is_cleanup_step(mod.name):
+            self._log("  Nothing to download: the app removes duplicate textures itself "
+                      "when the install finishes.", "muted")
+            self._cleanup_mods.append(pm)
+            self._set_status(pm, ModStatus.READY, "Done when the install finishes")
+            return
 
         if mod.directives.tool_step == "laa":
             self._log("  Nothing to download: the app makes this change itself, together "
@@ -1065,6 +1106,9 @@ class Pipeline:
         """Extract downloaded archives then detect and install the mod. Called sequentially."""
         if self._stop_event.is_set():
             return
+
+        if texture_dedupe.is_cleanup_step(pm.build_mod.name):
+            return          # handled by _run_texture_cleanup at the end of the run
 
         if pm.build_mod.directives.tool_step == "laa":
             self._tool_mods.append(pm)

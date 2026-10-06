@@ -745,17 +745,10 @@ K1_SPOILERFREE: dict[str, dict] = {
 
     # -- Layer 18: cleanup, must be last -----------------------------------
 
-    # [175] Critical: duplicate .tga/.tpc pairs crash the game. Interactive .bat,
-    # so it cannot be run unattended.
-    "guide:175": {
-        "layer": LAYER_CLEANUP,
-        "manual_only": True,
-        "manual_reason": "CRITICAL final step. Put DelDuplicateTGA-TPC.bat in the "
-                         "GAME folder (not Override), run it, and choose to delete "
-                         "the TPC duplicates. If it reports no deleted files it did "
-                         "not work, and the game will crash. Run this only after "
-                         "every other mod is installed.",
-    },
+    # [175] Duplicate .tga/.tpc pairs crash the game. The app removes them itself
+    # at the end of every install (installer/texture_dedupe.py), so the guide's
+    # interactive .bat is never needed. Matched by name in the pipeline.
+    "guide:175": {"layer": LAYER_CLEANUP},
 }
 
 

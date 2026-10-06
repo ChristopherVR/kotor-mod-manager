@@ -189,6 +189,32 @@ def _guard_not_running():
     return None
 
 
+def _clear_duplicate_textures(root: Path) -> None:
+    """
+    Remove .tga/.tpc pairs from Override after mods are switched on or off.
+
+    Enabling a mod puts its textures back next to ones from other mods, and a
+    pair of the same name in two formats can crash the game. The installer does
+    the same sweep at the end of every install.
+    """
+    from installer import texture_dedupe
+    from installer.pathcase import resolve_ci
+    try:
+        result = texture_dedupe.dedupe(resolve_ci(root, "Override"))
+    except OSError as e:
+        _publish({"type": "log", "message": f"Could not check for duplicate textures: {e}",
+                  "tag": "warning"})
+        return
+    if result.removed:
+        _publish({"type": "log", "tag": "muted",
+                  "message": f"Removed {len(result.removed)} duplicate texture file(s) "
+                             "that could crash the game."})
+    if result.failed:
+        _publish({"type": "log", "tag": "warning",
+                  "message": f"{len(result.failed)} duplicate texture file(s) could not be "
+                             "removed. Check that the game's Override folder is not read-only."})
+
+
 def _toggle(mod_id: str, game: str, profile: str, action: str):
     busy = _guard_not_running()
     if busy:
@@ -203,6 +229,7 @@ def _toggle(mod_id: str, game: str, profile: str, action: str):
         return JSONResponse(status_code=409, content={"ok": False, "error": "not_toggleable", "message": str(e)})
     except mod_manager.ModManagerError as e:
         return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
+    _clear_duplicate_textures(root)
     conflicts = mod_manager.compute_conflicts(scope)
     counts = mod_manager.conflict_counts_by_mod(conflicts)
     _publish({"type": "library", "event": "changed", "profile": scope})
@@ -455,6 +482,8 @@ def bulk_toggle(req: BulkModRequest, action: str = Query("disable"),
                           "tag": "muted"})
         except mod_manager.ModManagerError as e:
             failed.append({"mod": name, "reason": str(e)[:160]})
+    if changed:
+        _clear_duplicate_textures(root)
     _publish({"type": "library", "event": "bulk_progress", "action": action,
               "current": total, "total": total, "mod": "", "done": True})
     _publish({"type": "log",
