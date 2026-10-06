@@ -23,7 +23,7 @@ on:
         default: ""
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -197,7 +197,7 @@ jobs:
   # Publish once, after both builds succeed, so the two jobs never race to
   # create the same release and a release never ships with a file missing.
   publish:
-    needs: [build, build-linux]
+    needs: [build-windows, build-linux]
     if: inputs.make_release
     runs-on: ubuntu-latest
     steps:
