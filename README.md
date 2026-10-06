@@ -5,7 +5,7 @@ Download, install, and manage the recommended community mod builds from a single
 app. Pick a build, click once, and it downloads every mod, unpacks it, works out
 how each one installs, and installs them in the right order for you.
 
-> One self-contained file for Windows (`.exe`) or Linux (see [Linux](#linux-steam-proton)).
+> One self-contained file for Windows (`.exe`) or Linux.
 > No Python, Node, or separate installer needed. It even checks for and installs its own updates.
 
 <p align="center">
@@ -38,7 +38,7 @@ this.
 
 ### 1. Download and open it
 
-Grab `KOTOR-Mod-Installer.exe` from the [latest release](../../releases/latest)
+Grab `KOTOR-Mod-Installer.exe`  from the [latest release](../../releases/latest)
 and run it. That is the whole app, one file. Nothing else to install.
 
 ### 2. Point it at your games and sign in
@@ -67,31 +67,14 @@ downloads those too, using your personal API key (get one at
 [nexusmods.com/users/myaccount?tab=api](https://www.nexusmods.com/users/myaccount?tab=api),
 under "Personal API Key", and paste it into **Settings → Nexus**).
 
-- **Premium account:** fully automatic, nothing to click.
-- **Free account:** Nexus only hands out a download link when you press its
-  button, so each Nexus mod needs one click from you. The app collects all of
-  them at the start so you are not tied to the screen afterwards:
-  1. When you press Install, the app opens the first Nexus mod's page in your
-     browser. The mod shows **Waiting for your click on Nexus**.
-  2. Click **Mod manager download** (then **Slow download** if asked), and allow
-     your browser to open the link with KOTOR Mod Installer if it asks.
-  3. The next Nexus mod's page opens straight away. Click through them all, then
-     leave it. The downloads and installs run by themselves.
+- **Premium account:** fully automatic.
+- **Free account:** one click per mod. When you press Install, the app opens
+  each Nexus mod's page in turn. Click **Mod manager download** on each one,
+  and the downloads then run by themselves.
 
-  Downloads from DeadlyStream and other sites run at the same time. If you do
-  not click within 15 minutes, the app stops asking and each remaining Nexus mod
-  asks again when its turn comes. A link that goes stale before its download
-  starts is simply asked for again.
-
-The app claims Nexus `nxm://` links only while it is waiting for one of those
-clicks, then hands them back to whichever mod manager had them before. Links for
-other Nexus games are ignored.
-
-MEGA, Google Drive, GitHub and direct-link mods download automatically. A site the
-app cannot download from (GameFront, for one; marked with a badge) needs a hand:
-download the file yourself and drop it straight into your download folder. The app
-waits for it (up to 15 minutes), files it under the right mod (by its name if
-several are waiting) and carries on.
+MEGA, Google Drive, GitHub and direct links download automatically. For sites
+the app can't download from (marked with a badge), download the file yourself
+and drop it into your download folder.
 
 ### 4. Manage your library
 
@@ -100,25 +83,6 @@ flip a switch to turn a mod on or off, spot duplicates, and import any mod archi
 you like, not just the curated ones.
 
 ![Searching and filtering the mod library by name](docs/images/library-search.gif)
-
----
-
-## Linux
-
-1. Download `KOTOR-Mod-Installer-linux-x86_64` from the
-   [latest release](../../releases/latest), run `chmod +x` on it, and open it.
-   You need WebKitGTK 4.1 (`libwebkit2gtk-4.1-0` on Debian/Ubuntu,
-   `webkit2gtk4.1` on Fedora, `webkit2gtk-4.1` on Arch).
-2. In **Settings → Game Installs**, click **Use this install** on the Steam
-   copy it finds (other drives and libraries included). If it isn't listed,
-   browse to the folder, usually
-   `~/.local/share/Steam/steamapps/common/swkotor`.
-3. Install `unar` (or `unrar`) to unpack `.rar` mods; Debian and Ubuntu's 7-Zip
-   cannot read them. Saving your DeadlyStream password needs a running keyring
-   (GNOME Keyring or KWallet).
-
-Linux file names are case-sensitive, so the app reuses the names already in your
-game folder (an existing `override` is never duplicated as `Override`).
 
 ---
 
@@ -169,10 +133,6 @@ merging is just information. Everything lives under `~/.kotor_mod_installer/`
 **Do I need a DeadlyStream account?**
 Yes. Mods are downloaded from your own authenticated account. The app bundles no
 mod content of its own.
-
-**Do I need a Nexus account?**
-Only for mods that are hosted on Nexus. A free account works (one click per mod,
-see above) and Premium is fully automatic. You do not need one for the rest.
 
 **Does it bundle anything I would otherwise have to install?**
 Yes. The Python backend and the HoloPatcher engine are embedded inside the single
@@ -301,7 +261,7 @@ scripts/build-linux.sh
 ```
 
 Requires Python 3.12 or older (via pyenv), Node 20, Rust, and the WebKitGTK 4.1
-dev packages. The script checks for them and says what is missing.
+dev packages.
 
 ### Versioning & releases
 
