@@ -3,7 +3,8 @@ name: _build (reusable)
 # Reusable workflow: builds the Python backend sidecar (PyInstaller, HoloPatcher
 # bundled), then the Tauri desktop app (React + Rust) into a self-contained NSIS
 # installer. Always uploads the installer as an artifact; optionally publishes a
-# GitHub Release. Called by build.yml (PR/manual) and release.yml (tagged).
+# GitHub Release with the Windows and Linux files together. Called by build.yml
+# (PR/manual) and release.yml (tagged).
 
 on:
   workflow_call:
@@ -144,15 +145,6 @@ jobs:
           path: ${{ steps.artifact.outputs.path }}
           retention-days: 30
 
-      - name: Publish GitHub Release
-        if: inputs.make_release
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ inputs.tag }}
-          files: ${{ steps.artifact.outputs.path }}
-          body_path: CHANGELOG.md
-          fail_on_unmatched_files: true
-
   build-linux:
     runs-on: ubuntu-22.04
     steps:
@@ -202,10 +194,30 @@ jobs:
           path: dist/KOTOR-Mod-Installer-linux-x86_64
           retention-days: 30
 
+  # Publish once, after both builds succeed, so the two jobs never race to
+  # create the same release and a release never ships with a file missing.
+  publish:
+    needs: [build, build-linux]
+    if: inputs.make_release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for the changelog)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Download builds
+        uses: actions/download-artifact@v8
+        with:
+          path: release-files
+          merge-multiple: true
+
       - name: Publish GitHub Release
-        if: inputs.make_release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ inputs.tag }}
-          files: dist/KOTOR-Mod-Installer-linux-x86_64
+          files: |
+            release-files/KOTOR-Mod-Installer.exe
+            release-files/KOTOR-Mod-Installer-linux-x86_64
+          body_path: CHANGELOG.md
           fail_on_unmatched_files: true
