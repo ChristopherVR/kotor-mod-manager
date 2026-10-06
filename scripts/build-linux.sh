@@ -49,6 +49,7 @@ need cargo "Rust, see https://rustup.rs"
 need git "git"
 "$PY" -c "import ensurepip, venv" 2>/dev/null || { echo "Missing the venv module for $PY (sudo apt install ${PY}-venv)" >&2; exit 1; }
 "$PY" -c "import tkinter" 2>/dev/null || { echo "Missing tkinter for $PY (sudo apt install ${PY}-tk; HoloPatcher imports it)" >&2; exit 1; }
+[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || command -v xvfb-run >/dev/null || { echo "No display and no xvfb-run: HoloPatcher needs one of them to be checked after building (sudo apt install xvfb)." >&2; exit 1; }
 pkg-config --exists webkit2gtk-4.1 || { echo "Missing libwebkit2gtk-4.1-dev (and libgtk-3-dev)" >&2; exit 1; }
 
 step "Python environment ($PY)"
@@ -74,7 +75,13 @@ if [ "$SKIP_HOLO" != 1 ]; then
   "$VENV/bin/python" tools/setup_holopatcher.py
 fi
 [ -x tools/HoloPatcher/HoloPatcher ] || { echo "tools/HoloPatcher/HoloPatcher missing; the app would not be able to install mods." >&2; exit 1; }
-tools/HoloPatcher/HoloPatcher --help >/dev/null || { echo "HoloPatcher does not run headlessly." >&2; exit 1; }
+# HoloPatcher's window is created even for --help, so it needs a display.
+# Players always have one; on a headless build machine borrow a virtual one.
+if [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+  tools/HoloPatcher/HoloPatcher --help >/dev/null || { echo "HoloPatcher failed to start." >&2; exit 1; }
+else
+  xvfb-run -a tools/HoloPatcher/HoloPatcher --help >/dev/null || { echo "HoloPatcher failed to start." >&2; exit 1; }
+fi
 
 step "Build backend (PyInstaller)"
 # Reuse the previous backend if nothing it is built from has changed.

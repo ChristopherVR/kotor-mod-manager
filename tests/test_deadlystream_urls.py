@@ -274,8 +274,13 @@ class _Resp:
 
 def _client(statuses, monkeypatch):
     import scraper.deadlystream as ds
-    sleeps = []
-    monkeypatch.setattr(ds.time, "sleep", sleeps.append)
+    sleeps, clock = [], [0.0]
+
+    def sleep(s):   # a fake clock, so the result doesn't hang on the OS timer
+        sleeps.append(s)
+        clock[0] += s
+    monkeypatch.setattr(ds.time, "sleep", sleep)
+    monkeypatch.setattr(ds.time, "monotonic", lambda: clock[0])
     c = ds.DeadlyStreamClient()
     seq = list(statuses)
     c._session.get = lambda url, **kw: _Resp(seq.pop(0) if len(seq) > 1 else seq[0])
@@ -285,13 +290,13 @@ def _client(statuses, monkeypatch):
 def test_a_403_burst_refusal_is_retried_after_a_pause(monkeypatch):
     c, sleeps = _client([403, 403, 200], monkeypatch)
     assert c._get("https://deadlystream.com/x").status_code == 200
-    assert [s for s in sleeps if s >= 3 and float(s).is_integer()] == [5, 15]   # then got through
+    assert [s for s in sleeps if s >= 3] == [5, 15]   # then got through
 
 
 def test_a_refusal_that_keeps_coming_is_returned_after_the_retries(monkeypatch):
     c, sleeps = _client([403], monkeypatch)
     assert c._get("https://deadlystream.com/x").status_code == 403
-    assert [s for s in sleeps if s >= 3 and float(s).is_integer()] == [5, 15, 30]
+    assert [s for s in sleeps if s >= 3] == [5, 15, 30]
 
 
 def test_retry_after_from_the_site_is_honoured(monkeypatch):
