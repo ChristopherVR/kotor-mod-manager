@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import {
   Play, Pause, Square, AlertTriangle, RotateCcw, Download, X, FolderInput, UploadCloud,
   FolderOpen, ScrollText, Plus, Trash2,
+  Search,
 } from "lucide-react";
 import { api, type BuildInfo, type BuildMod } from "@/lib/api";
 import { pickDirectory, onFilesDropped, onDragHover } from "@/lib/tauri";
@@ -12,10 +13,12 @@ import { AddBuildDialog } from "@/components/AddBuildDialog";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
 interface BuildsViewProps {
+  active: boolean;
   ready: boolean;
   loggedIn: boolean;
   builds: BuildInfo[];
@@ -54,10 +57,16 @@ export function BuildsView(props: BuildsViewProps) {
   const [loading, setLoading] = useState(false);
   const [openMod, setOpenMod] = useState<BuildMod | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const selectionScope = useRef("");
   const [dragActive, setDragActive] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; mod: BuildMod } | null>(null);
   const [showAddBuild, setShowAddBuild] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const visibleMods = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    return term ? mods.filter(m => m.name.toLowerCase().includes(term)) : mods;
+  }, [mods, query]);
 
   const selectedBuildInfo = builds.find((b) => b.key === selectedBuild);
   const buildGame = selectedBuildInfo?.game ?? mods[0]?.game ?? "";
@@ -86,8 +95,11 @@ export function BuildsView(props: BuildsViewProps) {
 
   // Select all mods by default, but skip already-installed ones.
   useEffect(() => {
+    const scope = `${selectedBuild}:${mods.map(m => `${m.file_id}:${!!m.installed}`).join(",")}`;
+    if (selectionScope.current === scope) return;
+    selectionScope.current = scope;
     setSelected(new Set(mods.filter(m => !m.installed).map((m) => m.file_id)));
-  }, [mods]);
+  }, [mods, selectedBuild]);
 
   const toggleMod = (fileId: string) => {
     setSelected((prev) => {
@@ -132,6 +144,7 @@ export function BuildsView(props: BuildsViewProps) {
 
   // Register OS drag-drop listeners (Tauri only; no-op in a browser).
   useEffect(() => {
+    if (!props.active) { setDragActive(false); return; }
     let disposed = false;
     const cleanups: Array<() => void> = [];
     onFilesDropped((paths) => {
@@ -146,7 +159,7 @@ export function BuildsView(props: BuildsViewProps) {
       .then((un) => { if (disposed) un(); else cleanups.push(un); });
     return () => { disposed = true; cleanups.forEach((c) => c()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildGame, activeProfile]);
+  }, [buildGame, activeProfile, props.active]);
 
   // Show the saved copy of a build the moment it is selected, so switching
   // builds is instant. The Load button re-fetches the guide for the latest.
@@ -261,7 +274,7 @@ export function BuildsView(props: BuildsViewProps) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <header className="flex items-center gap-3 border-b bg-card/30 px-5 py-3">
+      <header className="view-header flex flex-wrap items-center gap-3 border-b">
         <div>
           <h1 className="text-base font-semibold">{t("builds.title")}</h1>
           <p className="text-xs text-muted-foreground">
@@ -299,12 +312,13 @@ export function BuildsView(props: BuildsViewProps) {
       )}
 
       {/* Build selector */}
-      <div className="flex items-center gap-3 border-b bg-card/15 px-5 py-2.5">
+      <div className="flex flex-wrap items-center gap-2 border-b px-6 py-3">
         <Select
           value={selectedBuild}
           onChange={(e) => onSelectBuild(e.target.value)}
           disabled={running}
           className="w-64"
+          aria-label={t("builds.title")}
         >
           {builds.map((b) => (
             <option key={b.key} value={b.key}>{b.label}</option>
@@ -315,7 +329,7 @@ export function BuildsView(props: BuildsViewProps) {
           size="sm"
           onClick={() => loadBuild(true)}
           disabled={loading || running}
-          title="Fetches the latest version of this list from the mod build guide"
+          title={t("builds.refreshHint")}
         >
           <Download /> {loading ? t("builds.loading") : t("builds.loadList")}
         </Button>
@@ -348,17 +362,28 @@ export function BuildsView(props: BuildsViewProps) {
             <Trash2 />
           </Button>
         )}
-        {mods.length > 0 && !running && (
-          <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-            <span>{t("builds.selectedCount", { selected: selectedCount, total: mods.length })}</span>
-            <Button variant="ghost" size="sm" onClick={selectAll}>{t("builds.selectAll")}</Button>
-            <Button variant="ghost" size="sm" onClick={selectNone}>{t("builds.selectNone")}</Button>
-          </div>
-        )}
       </div>
 
+      {mods.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-b px-6 py-2">
+          <div className="relative mr-auto w-64 max-w-full">
+            <Search className="pointer-events-none absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+            <Input value={query} onChange={e => setQuery(e.target.value)}
+              placeholder={t("library.search")} aria-label={t("library.search")}
+              className="pl-9" />
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {t("builds.selectedCount", { selected: selectedCount, total: mods.length })}
+          </span>
+          {!running && <>
+            <Button variant="ghost" size="sm" onClick={selectAll}>{t("builds.selectAll")}</Button>
+            <Button variant="ghost" size="sm" onClick={selectNone}>{t("builds.selectNone")}</Button>
+          </>}
+        </div>
+      )}
+
       {/* Drop zone hint */}
-      <div
+      {dragActive && <div
         className={cn(
           "mx-5 mt-3 flex items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-2.5 text-xs transition-colors",
           dragActive
@@ -368,13 +393,19 @@ export function BuildsView(props: BuildsViewProps) {
       >
         <UploadCloud className="size-4 shrink-0" />
         <span>{t("builds.dropHint")}</span>
-      </div>
+      </div>}
 
       {/* Mod list */}
-      <div className="min-h-0 flex-1 p-4">
-        <div className="flex h-full flex-col rounded-lg border bg-card/30 p-2">
+      <div className="min-h-0 flex-1 px-3 py-2">
+        <div className="flex h-full flex-col">
+          {mods.length > 0 && visibleMods.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+              <p>{t("library.noMatchTitle")}</p>
+              <Button variant="outline" size="sm" onClick={() => setQuery("")}>{t("common.clear")}</Button>
+            </div>
+          ) : (
           <ModList
-            mods={mods}
+            mods={visibleMods}
             runtime={runtime}
             activeFileId={activeFileId}
             onOpenMod={setOpenMod}
@@ -385,11 +416,12 @@ export function BuildsView(props: BuildsViewProps) {
             onManualOpen={openManualFolder}
             onManualDone={markDone}
           />
+          )}
         </div>
       </div>
 
       {/* Sticky action bar */}
-      <footer className="flex items-center gap-3 border-t bg-card/40 px-5 py-3">
+      <footer className="flex flex-wrap items-center gap-3 border-t bg-card px-6 py-3">
         {!running ? (
           <Button onClick={startInstall} disabled={!ready || mods.length === 0 || selectedCount === 0}>
             <Play /> {t("builds.installSelected", { count: selectedCount })}
@@ -410,6 +442,7 @@ export function BuildsView(props: BuildsViewProps) {
             </Button>
           </>
         )}
+        {!running && <span className="hidden text-xs text-muted-foreground xl:block">{t("builds.dropHint")}</span>}
         {!running && errors > 0 && (
           <Button variant="outline" onClick={() => control("retry").then(startInstall)}>
             <RotateCcw /> {t("builds.retry")}

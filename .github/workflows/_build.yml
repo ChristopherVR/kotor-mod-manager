@@ -83,6 +83,9 @@ jobs:
       - name: Build backend sidecar (PyInstaller)
         run: pyinstaller backend.spec --noconfirm
 
+      - name: Smoke-test packaged backend
+        run: python tools/smoke_backend.py dist/kotor-backend.exe
+
       - name: Stage backend for embedding into the single exe
         shell: pwsh
         run: |
@@ -109,6 +112,14 @@ jobs:
       - name: Install frontend deps
         working-directory: frontend
         run: npm ci
+
+      - name: Install browser for UI tests
+        working-directory: frontend
+        run: npx playwright install chromium
+
+      - name: Test UI interactions
+        working-directory: frontend
+        run: npm run test:e2e
 
       - name: Build single self-contained exe (backend embedded)
         working-directory: frontend

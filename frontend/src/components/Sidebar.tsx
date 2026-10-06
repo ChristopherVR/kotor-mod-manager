@@ -1,4 +1,4 @@
-import { Zap } from "lucide-react";
+import { Gamepad2 } from "lucide-react";
 import type { AppStatus } from "@/lib/api";
 import { NAV_ITEMS, type ViewId } from "@/lib/views";
 import { NavItem } from "@/components/NavItem";
@@ -29,14 +29,14 @@ export function Sidebar({
   const settingsItem = NAV_ITEMS.find((n) => n.id === "settings")!;
 
   return (
-    <aside className="flex h-full w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="flex h-full w-48 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       {/* Brand */}
-      <div className="flex items-center gap-2.5 px-4 py-4">
-        <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15 text-primary">
-          <Zap className="size-5" />
+      <div className="flex items-center gap-3 px-4 py-6">
+        <div className="flex size-9 items-center justify-center rounded-md border border-primary/40 text-primary">
+          <Gamepad2 className="size-5" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{t("brand.title")}</p>
+          <p className="truncate font-semibold tracking-wide text-foreground">{t("brand.title")}</p>
           {status && <p className="text-xs text-muted-foreground">v{status.version}</p>}
         </div>
       </div>
@@ -63,6 +63,7 @@ export function Sidebar({
             />
           );
         })}
+        <div className="mt-auto pt-6" />
         <NavItem
           icon={settingsItem.icon}
           label={t(settingsItem.labelKey)}

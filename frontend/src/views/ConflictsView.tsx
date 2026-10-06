@@ -29,14 +29,16 @@ export function ConflictsView({
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const loadedProfile = useRef("");
 
   const load = useCallback(async () => {
     if (!activeProfile) { setConflicts([]); setLoading(false); onCountChange?.(0); return; }
-    setLoading(true);
+    setLoading(loadedProfile.current !== activeProfile);
     try {
       const r = await api.conflicts(activeProfile);
       const list = r.conflicts ?? [];
       setConflicts(list);
+      loadedProfile.current = activeProfile;
       setLoadError(false);
     } catch {
       setLoadError(true);
@@ -131,7 +133,7 @@ export function ConflictsView({
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-3 border-b bg-card/30 px-5 py-3">
+      <header className="flex items-center gap-3 view-header border-b">
         <div>
           <h1 className="text-base font-semibold">{t("conflicts.title")}</h1>
           <p className="text-xs text-muted-foreground">{subtitle}</p>

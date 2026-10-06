@@ -723,7 +723,8 @@ def open_mod_download(req: OpenDownloadRequest) -> dict:
     """
     from backend.fsutil import reveal_path
     base = cfg.download_dir()
-    folder = base / f"{req.file_id}_{req.slug[:30]}"
+    from installer.download_paths import download_folder_name
+    folder = base / download_folder_name(req.file_id, req.slug)
     fallback = False
     if not folder.exists():
         # Not downloaded yet - reveal the downloads folder so the user can see

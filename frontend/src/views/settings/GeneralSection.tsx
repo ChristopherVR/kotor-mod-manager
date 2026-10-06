@@ -83,8 +83,9 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
     setSaving(true);
     setSaved(false);
     try {
-      // Persist current language alongside other settings.
-      await api.setSettings({ ...s, language: locale });
+      // Other tabs may have saved credentials or a patcher path since we opened.
+      const latest = await api.getSettings();
+      await api.setSettings({ ...latest, download_dir: s.download_dir, language: locale });
       setSaved(true);
       addLog("Settings saved.", "success");
     } catch (e: any) {
@@ -100,8 +101,9 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
         <CardHeader><CardTitle>{t("settings.general.language")}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">
-            <Label>{t("settings.general.language")}</Label>
+            <Label htmlFor="display-language">{t("settings.general.language")}</Label>
             <Select
+              id="display-language"
               value={locale}
               onChange={(e) => setLocale(e.target.value as Locale)}
               className="max-w-[16rem]"
@@ -132,9 +134,10 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
         <CardHeader><CardTitle>{t("settings.general.downloads")}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">
-            <Label>{t("settings.general.downloadFolder")}</Label>
+            <Label htmlFor="download-folder">{t("settings.general.downloadFolder")}</Label>
             <div className="flex gap-2">
               <Input
+                id="download-folder"
                 value={s.download_dir}
                 onChange={(e) => { setSaved(false); setS({ ...s, download_dir: e.target.value }); }}
               />
@@ -173,10 +176,8 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            Mods you download are kept so installing a build again does not have
-            to fetch them a second time. A full KOTOR 1 build runs to tens of
-            gigabytes, so you may want that space back once you are happy with
-            your install.
+            Downloaded archives are kept for reinstalls. Clear unused downloads
+            to free disk space.
           </p>
 
           {cache === null ? (
@@ -189,8 +190,8 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
                 Open folder
               </Button>
               <p className="text-xs text-muted-foreground">
-                Mods the app cannot download for you can be put here by hand, in a
-                folder of their own. The installer picks them up from there.
+                For manual downloads, use the folder shown in the mod’s error
+                message. Place the archive there, then retry the installation.
               </p>
             </div>
           ) : (

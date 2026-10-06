@@ -1,6 +1,7 @@
 import * as React from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 interface DialogProps {
   open: boolean;
@@ -12,6 +13,7 @@ interface DialogProps {
 
 // Minimal modal (no Radix) with overlay + escape-to-close.
 export function Dialog({ open, onClose, title, children, className }: DialogProps) {
+  const t = useT();
   React.useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -24,6 +26,9 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 animate-fade-in" onClick={onClose} />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={cn(
           "relative z-10 w-full max-w-md animate-fade-in rounded-lg border bg-card p-5 shadow-xl",
           className
@@ -32,6 +37,7 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
         <div className="mb-4 flex items-center justify-between">
           {title && <h2 className="text-base font-semibold">{title}</h2>}
           <button
+            aria-label={t("common.close")}
             onClick={onClose}
             className="rounded-sm text-muted-foreground transition-colors hover:text-foreground"
           >

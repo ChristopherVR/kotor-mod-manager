@@ -62,11 +62,11 @@ function Row({
       onContextMenu={onContextMenu}
       onKeyDown={
         onOpen
-          ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }
+          ? (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onOpen(); } }
           : undefined
       }
       className={cn(
-        "flex flex-col gap-1 rounded-md border border-transparent px-3 py-2 transition-colors",
+        "mod-row flex flex-col gap-1 border border-transparent px-3 py-2.5 transition-colors",
         active ? "bg-accent/40 border-border" : "hover:bg-card/60",
         deemphasized && "opacity-50",
         onOpen && "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -101,7 +101,7 @@ function Row({
           <Badge
             variant="warning"
             className="shrink-0"
-            title={`The app cannot download from ${mod.source_label} itself. Download it yourself and put the file in your mod folder; the app picks it up.`}
+            title={t("builds.manualDownloadHint", { source: mod.source_label })}
           >
             {mod.source_label}
           </Badge>

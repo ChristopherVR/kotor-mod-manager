@@ -30,6 +30,7 @@ from typing import Callable, Optional
 
 import config as cfg
 from installer.pathcase import resolve_ci
+from installer.download_paths import download_folder_name
 
 MANIFEST_SCHEMA_VERSION = 1
 _MANIFEST_LOCK = threading.RLock()
@@ -1044,7 +1045,9 @@ def cache_stats(download_dir: Path, in_use_refs: "Optional[set]" = None) -> dict
         size = _dir_size(d)
         # Folders are named "<source_ref>_<slug>" by the pipeline.
         ref = d.name.split("_", 1)[0]
-        used = ref in in_use_refs or f"guide:{ref.replace('guide', '')}" in in_use_refs
+        used = any(d.name.startswith(download_folder_name(r)) for r in in_use_refs)
+        # Preserve recognition of folders created by older releases.
+        used = used or ref in in_use_refs or f"guide:{ref.replace('guide', '')}" in in_use_refs
         total += size
         if used:
             in_use_bytes += size

@@ -51,7 +51,7 @@ export const es: Dict = {
   "dialog.selectImportFolder": "Selecciona una carpeta con archivos de mods…",
   "builds.invalidGameFolder": "Esa carpeta no es una instalación de {game} (no se encontraron archivos del juego en {path}). Elige la carpeta que contiene chitin.key y swkotor.exe.",
   "builds.overall": "Total",
-  "builds.loadList": "Cargar lista de mods",
+  "builds.loadList": "Actualizar lista",
   "builds.loading": "Cargando…",
   "builds.installAll": "Descargar e instalar todo",
   "builds.installSelected": "Descargar e instalar ({count})",
@@ -75,7 +75,7 @@ export const es: Dict = {
   "builds.statusPaused": "En pausa",
   "builds.statusConnecting": "Conectando con el servidor…",
   "builds.empty": "Elige una compilación y haz clic en Cargar lista de mods para comenzar.",
-  "builds.loadMore": "Cargar lista de mods",
+  "builds.loadMore": "Actualizar lista",
   "builds.patcherBanner":
     "TSLPatcher está abierto para {mod}. La ruta del juego está en tu portapapeles - pégala, haz clic en Instalar y luego cierra la ventana del parcheador.",
 
@@ -197,7 +197,7 @@ export const es: Dict = {
   // Settings → Account
   "settings.account.title": "DeadlyStream",
   "settings.account.signedInName": "Sesión iniciada",
-  "settings.account.signedInHint": "Sesión iniciada en DeadlyStream. Las descargas premium están disponibles.",
+  "settings.account.signedInHint": "Conectado a DeadlyStream.",
   "settings.account.notSignedIn": "Sin sesión iniciada",
   "settings.account.notSignedInHint": "Inicia sesión en DeadlyStream para descargar mods que requieran una cuenta.",
 
@@ -259,6 +259,12 @@ export const es: Dict = {
   // What's New
   "whatsNew.title": "Novedades de la v{version}",
   "whatsNew.gotIt": "Entendido",
+  "builds.refreshHint": "Consultar la guía para actualizar la lista de mods.",
+  "builds.manualDownloadHint": "Descarga desde {source}, coloca el archivo en la carpeta de descarga del mod y vuelve a intentarlo.",
+  "modDetail.sourcePage": "Abrir página del mod",
+  "modDetail.guideWarnings": "Notas de compatibilidad",
+  "library.loadFailed": "No se pudieron cargar los mods instalados",
+  "library.retryLoad": "Reintentar",
 
   "settings.general.screenSize": "Tamaño de pantalla para mods panorámicos",
   "settings.general.screenSizeHint": "Déjalo vacío para usar el tamaño de tu pantalla. Se usa para elegir los archivos de menú y preparar el programa del juego.",

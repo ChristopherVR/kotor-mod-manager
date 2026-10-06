@@ -2,6 +2,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 interface SwitchProps {
+  "aria-label"?: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
@@ -10,7 +11,7 @@ interface SwitchProps {
 }
 
 // Lightweight switch (no Radix dependency) matching the shadcn look.
-export function Switch({ checked, onCheckedChange, disabled, id, className }: SwitchProps) {
+export function Switch({ checked, onCheckedChange, disabled, id, className, ...props }: SwitchProps) {
   return (
     <button
       id={id}
@@ -18,6 +19,7 @@ export function Switch({ checked, onCheckedChange, disabled, id, className }: Sw
       role="switch"
       aria-checked={checked}
       disabled={disabled}
+      {...props}
       onClick={() => onCheckedChange(!checked)}
       className={cn(
         "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",

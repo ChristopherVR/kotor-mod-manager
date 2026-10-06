@@ -1,4 +1,16 @@
 version: 2
+# Tauri ships as an npm package plus a Rust crate that must stay on the same
+# version, so their updates arrive together in one PR.
+multi-ecosystem-groups:
+  tauri:
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    commit-message:
+      prefix: "chore"
+
 updates:
   # GitHub Actions used by our workflows
   - package-ecosystem: "github-actions"
@@ -23,9 +35,14 @@ updates:
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore"
+    multi-ecosystem-group: "tauri"
+    patterns:
+      - "@tauri-apps/*"
     groups:
       # Bundle minor and patch bumps so players get fewer, tidier update PRs
       npm-minor-and-patch:
+        exclude-patterns:
+          - "@tauri-apps/*"
         update-types:
           - "minor"
           - "patch"
@@ -41,8 +58,15 @@ updates:
     open-pull-requests-limit: 10
     commit-message:
       prefix: "chore"
+    multi-ecosystem-group: "tauri"
+    patterns:
+      - "tauri"
+      - "tauri-*"
     groups:
       cargo-minor-and-patch:
+        exclude-patterns:
+          - "tauri"
+          - "tauri-*"
         update-types:
           - "minor"
           - "patch"

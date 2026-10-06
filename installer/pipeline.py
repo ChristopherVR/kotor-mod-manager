@@ -25,6 +25,7 @@ from typing import Callable, Optional
 from installer.build_directives import match_option_index
 from installer.detector import InstallMethod, InstallPlan, ModFileMapping, detect
 from installer.extractor import ExtractionError, extract
+from installer.download_paths import download_folder_name
 from installer.installer import InstallError, install
 from installer import texture_dedupe
 from installer.pathcase import resolve_ci, rglob_ci
@@ -535,7 +536,7 @@ class Pipeline:
 
     def _mod_dir(self, pm: PipelineMod) -> Path:
         mod = pm.build_mod
-        return self._download_dir / f"{mod.file_id}_{mod.slug[:30]}"
+        return self._download_dir / download_folder_name(mod.file_id, mod.slug)
 
     def _cached_for(self, pm: PipelineMod, dest_dir: Path) -> list:
         """Complete archives already on disk for this mod, or []."""

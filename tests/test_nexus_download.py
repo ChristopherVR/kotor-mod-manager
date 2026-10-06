@@ -7,6 +7,8 @@ account tier rule, so the error has to say so rather than look like a bad key.
 """
 
 import urllib.error
+import io
+import threading
 from pathlib import Path
 
 import pytest

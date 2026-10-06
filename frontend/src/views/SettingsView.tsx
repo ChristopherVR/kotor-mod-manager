@@ -1,6 +1,7 @@
 import {
   SlidersHorizontal, Gamepad2, User, Zap, RefreshCw, type LucideIcon,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { AppStatus, Profile } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { GeneralSection } from "@/views/settings/GeneralSection";
@@ -41,27 +42,32 @@ export function SettingsView({
   section, setSection,
 }: SettingsViewProps) {
   const t = useT();
+  const [visited, setVisited] = useState(() => new Set<SectionId>([section]));
+  useEffect(() => {
+    setVisited(prev => prev.has(section) ? prev : new Set([...prev, section]));
+  }, [section]);
 
   return (
     <div className="flex h-full flex-col">
-      <header className="border-b bg-card/30 px-5 py-3">
+      <header className="view-header border-b">
         <h1 className="text-base font-semibold">{t("settings.title")}</h1>
         <p className="text-xs text-muted-foreground">{t("settings.subtitle")}</p>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col">
         {/* Secondary sidebar */}
-        <nav className="w-52 shrink-0 space-y-1 overflow-y-auto border-r bg-card/20 p-3">
+        <nav aria-label={t("settings.title")} className="flex shrink-0 gap-1 overflow-x-auto border-b px-5">
           {SECTIONS.map(({ id, labelKey, icon: Icon }) => (
             <button
               key={id}
               type="button"
+              aria-current={section === id ? "page" : undefined}
               onClick={() => setSection(id)}
               className={cn(
-                "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+                "flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors",
                 section === id
-                  ? "bg-sidebar-accent text-accent-foreground"
-                  : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
               )}
             >
               <Icon className="size-4 shrink-0" />
@@ -71,10 +77,10 @@ export function SettingsView({
         </nav>
 
         {/* Content */}
-        <div className="min-h-0 flex-1 overflow-auto p-4">
-          <div className="mx-auto max-w-2xl space-y-4">
-            {section === "general" && <GeneralSection addLog={addLog} />}
-            {section === "installs" && (
+        <div className="min-h-0 flex-1 overflow-auto p-6">
+          <div className="max-w-3xl space-y-4">
+            {visited.has("general") && <div hidden={section !== "general"}><GeneralSection addLog={addLog} /></div>}
+            {visited.has("installs") && <div hidden={section !== "installs"}>
               <GameInstallsSection
                 profiles={profiles}
                 activeProfile={activeProfile}
@@ -82,8 +88,8 @@ export function SettingsView({
                 refreshProfiles={refreshProfiles}
                 addLog={addLog}
               />
-            )}
-            {section === "account" && (
+            </div>}
+            {visited.has("account") && <div hidden={section !== "account"}>
               <AccountSection
                 status={status}
                 username={username}
@@ -91,9 +97,9 @@ export function SettingsView({
                 onSignOut={onSignOut}
                 addLog={addLog}
               />
-            )}
-            {section === "patcher" && <PatcherSection status={status} addLog={addLog} />}
-            {section === "updates" && <UpdatesSection status={status} addLog={addLog} />}
+            </div>}
+            {visited.has("patcher") && <div hidden={section !== "patcher"}><PatcherSection status={status} addLog={addLog} /></div>}
+            {visited.has("updates") && <div hidden={section !== "updates"}><UpdatesSection status={status} addLog={addLog} /></div>}
           </div>
         </div>
       </div>

@@ -13,12 +13,13 @@ export function NavItem({ icon: Icon, label, active, onClick, trailing }: NavIte
   return (
     <button
       type="button"
+      aria-current={active ? "page" : undefined}
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors",
+        "flex w-full items-center gap-3 rounded-sm border-l-2 px-3 py-2.5 text-sm font-medium transition-colors",
         active
-          ? "bg-sidebar-accent text-accent-foreground"
-          : "text-sidebar-foreground hover:bg-accent/50 hover:text-accent-foreground"
+          ? "border-primary bg-sidebar-accent text-primary"
+          : "border-transparent text-sidebar-foreground hover:bg-accent/50 hover:text-accent-foreground"
       )}
     >
       <Icon className="size-4 shrink-0" />

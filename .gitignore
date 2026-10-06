@@ -54,6 +54,8 @@ tauri_build_log.txt
 frontend/node_modules/
 frontend/dist/
 frontend/package-lock.json.bak
+frontend/test-results/
+frontend/playwright-report/
 # Rust / Tauri build output
 frontend/src-tauri/target/
 frontend/src-tauri/gen/
