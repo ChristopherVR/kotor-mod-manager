@@ -544,7 +544,7 @@ def get_profiles() -> dict:
 
 @app.get("/api/games/detect")
 def detect_games() -> dict:
-    """Steam installs of KOTOR found on this machine."""
+    """Steam installs of KOTOR found on the computer."""
     from installer.game_locator import find_game_installs
     known = set()
     for p in cfg.get_profiles(cfg.load()):

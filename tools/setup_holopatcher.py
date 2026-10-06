@@ -98,7 +98,7 @@ SOURCE_PATCHES = (
 
 # PyKotor's only runtime dependency for the patcher path is ply (the nss
 # compiler lexer); the rest of what HoloPatcher imports is stdlib + tkinter.
-BUILD_REQUIREMENTS = ("pyinstaller>=6", "ply>=3.11,<4")
+BUILD_REQUIREMENTS = ("pyinstaller==6.22.3", "ply==3.11")
 
 
 def _run(cmd: "list[str]", cwd: "Path | None" = None) -> None:

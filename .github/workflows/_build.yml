@@ -40,8 +40,8 @@ jobs:
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          pip install -r requirements.txt -c constraints.txt
+          pip install -c constraints.txt pyinstaller
 
       - name: Backend sanity check
         run: python -c "import backend.server, installer.pipeline, installer.patcher_strategy; print('backend imports OK')"
@@ -190,7 +190,7 @@ jobs:
 
       - name: Run offline tests
         run: |
-          python -m pip install -r requirements.txt pytest
+          python -m pip install -r requirements.txt -c constraints.txt pytest
           python -m pytest tests -q --ignore=tests/test_build_headless.py --ignore=tests/test_install_all_build.py
 
       - name: Build

@@ -59,10 +59,10 @@ fi
 [ -d "$VENV" ] || "$PY" -m venv "$VENV"
 # Only reinstall when requirements.txt changed (saves the network round trips).
 REQ_STAMP="$VENV/.requirements.sha256"
-REQ_HASH="$(sha256sum requirements.txt | cut -d' ' -f1)"
+REQ_HASH="$(cat requirements.txt constraints.txt | sha256sum | cut -d' ' -f1)"
 if [ "$(cat "$REQ_STAMP" 2>/dev/null)" != "$REQ_HASH" ] || ! "$VENV/bin/python" -c "import PyInstaller" 2>/dev/null; then
   "$VENV/bin/python" -m pip install --quiet --upgrade pip
-  "$VENV/bin/python" -m pip install --quiet -r requirements.txt pyinstaller
+  "$VENV/bin/python" -m pip install --quiet -r requirements.txt -c constraints.txt pyinstaller
   echo "$REQ_HASH" > "$REQ_STAMP"
 fi
 

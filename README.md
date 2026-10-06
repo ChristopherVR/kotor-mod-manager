@@ -103,10 +103,7 @@ you like, not just the curated ones.
 
 ---
 
-## Linux (Steam Proton)
-
-KOTOR 1 has no native Linux version, so you play it through Steam's Proton.
-This app runs natively and edits the game folder Steam already installed.
+## Linux
 
 1. Download `KOTOR-Mod-Installer-linux-x86_64` from the
    [latest release](../../releases/latest), run `chmod +x` on it, and open it.
@@ -303,8 +300,8 @@ scripts/build-linux.sh
 # -> dist/KOTOR-Mod-Installer-linux-x86_64   (one self-contained file)
 ```
 
-Needs Python 3.12 (with venv and tk), Rust, Node and the WebKitGTK 4.1 dev
-packages. The script checks for them first and says what is missing.
+Requires Python 3.12 or older (via pyenv), Node 20, Rust, and the WebKitGTK 4.1
+dev packages. The script checks for them and says what is missing.
 
 ### Versioning & releases
 

@@ -91,7 +91,7 @@ def test_plain_rglob_would_have_missed_it(tmp_path):
     assert "PMBI55.tga" in walked
 
     if _os_handles_long_paths(target):
-        pytest.skip("long path support is on for this machine, so there is no "
+        pytest.skip("long path support is already on, so there is no "
                     "blind spot for the naive traversal to fall into")
 
     plain = {p.name for p in tmp_path.rglob("*") if p.is_file()}
