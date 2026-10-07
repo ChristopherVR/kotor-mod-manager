@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.18.0] - 2026-10-07
+
+### Features
+
+- Cleaner, simpler look for the sidebar, settings and mod lists
+
+### Bug Fixes
+
+- Use the app's own confirmation windows and plain-language messages when removing mods
 ## [0.17.0] - 2026-10-06
 
 ### Features
