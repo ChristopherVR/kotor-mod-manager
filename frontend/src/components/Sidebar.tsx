@@ -1,4 +1,3 @@
-import { Gamepad2 } from "lucide-react";
 import type { AppStatus } from "@/lib/api";
 import { NAV_ITEMS, type ViewId } from "@/lib/views";
 import { NavItem } from "@/components/NavItem";
@@ -31,14 +30,9 @@ export function Sidebar({
   return (
     <aside className="flex h-full w-48 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       {/* Brand */}
-      <div className="flex items-center gap-3 px-4 py-6">
-        <div className="flex size-9 items-center justify-center rounded-md border border-primary/40 text-primary">
-          <Gamepad2 className="size-5" />
-        </div>
-        <div className="min-w-0">
-          <p className="truncate font-semibold tracking-wide text-foreground">{t("brand.title")}</p>
-          {status && <p className="text-xs text-muted-foreground">v{status.version}</p>}
-        </div>
+      <div className="px-5 py-6">
+        <p className="truncate font-semibold text-foreground">{t("brand.title")}</p>
+        {status && <p className="text-xs text-muted-foreground">v{status.version}</p>}
       </div>
 
       {/* Nav (incl. Settings, all above the account footer) */}
@@ -55,7 +49,6 @@ export function Sidebar({
           return (
             <NavItem
               key={item.id}
-              icon={item.icon}
               label={t(item.labelKey)}
               active={active === item.id}
               onClick={() => onNavigate(item.id)}
@@ -65,7 +58,6 @@ export function Sidebar({
         })}
         <div className="mt-auto pt-6" />
         <NavItem
-          icon={settingsItem.icon}
           label={t(settingsItem.labelKey)}
           active={active === "settings"}
           onClick={() => onNavigate("settings")}

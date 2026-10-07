@@ -85,7 +85,6 @@ function Row({
         <span className="w-8 shrink-0 text-right font-mono text-xs text-muted-foreground">
           {mod.install_order}
         </span>
-        <span className={cn("size-2 shrink-0 rounded-full", meta.dot)} />
         <span className="flex-1 truncate text-sm" title={mod.name}>
           {mod.name}
         </span>
@@ -107,15 +106,15 @@ function Row({
           </Badge>
         )}
         {mod.installed && rt.status === "PENDING" && (
-          <Badge variant="success" className="shrink-0">Installed</Badge>
+          <Badge variant="success" className="shrink-0 border-0 bg-transparent px-0">Installed</Badge>
         )}
         {(!mod.installed || rt.status !== "PENDING") && (
-          <Badge variant={meta.variant} className="shrink-0">
+          <Badge variant={meta.variant} className="shrink-0 border-0 bg-transparent px-0">
             {rt.status === "DOWNLOADING" && rt.detail ? rt.detail : meta.label}
           </Badge>
         )}
       </div>
-      {showBar && <Progress value={rt.progress} className="ml-11 h-1" />}
+      {showBar && <div className="pl-11"><Progress value={rt.progress} className="h-1" /></div>}
       {rt.status === "ERROR" && (rt.error || rt.detail) && (
         <div className="ml-11 flex items-center gap-1 text-[11px] text-destructive/90">
           <span className="truncate" title={rt.error || rt.detail}>{rt.error || rt.detail}</span>

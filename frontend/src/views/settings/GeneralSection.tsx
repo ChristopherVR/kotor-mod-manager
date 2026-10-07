@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, HardDrive } from "lucide-react";
+import { FolderOpen } from "lucide-react";
 import { api, type Settings } from "@/lib/api";
 import { pickDirectory } from "@/lib/tauri";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -101,7 +101,7 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
         <CardHeader><CardTitle>{t("settings.general.language")}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="display-language">{t("settings.general.language")}</Label>
+            
             <Select
               id="display-language"
               value={locale}
@@ -138,7 +138,7 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
             <div className="flex gap-2">
               <Input
                 id="download-folder"
-                value={s.download_dir}
+                value={s.download_dir ?? ""}
                 onChange={(e) => { setSaved(false); setS({ ...s, download_dir: e.target.value }); }}
               />
               <Button variant="outline" size="icon" onClick={browse} title={t("common.browse")}>
@@ -152,7 +152,7 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
           <div className="space-y-1.5">
             <Label>{t("settings.general.screenSize")}</Label>
             <Input
-              value={s.preferred_resolution}
+              value={s.preferred_resolution ?? ""}
               placeholder="1920x1080"
               onChange={(e) => { setSaved(false); setS({ ...s, preferred_resolution: e.target.value.trim() }); }}
             />
@@ -169,10 +169,7 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HardDrive className="size-4" />
-            Downloaded mods
-          </CardTitle>
+          <CardTitle>Downloaded mods</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground">

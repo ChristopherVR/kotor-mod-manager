@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { GitMerge, CheckCircle2, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { api, type Conflict, type ConflictParticipant, type Profile } from "@/lib/api";
 import { ConflictCard, type ConflictGroup } from "@/components/ConflictCard";
 import { Select } from "@/components/ui/select";
@@ -153,12 +153,12 @@ export function ConflictsView({
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading ? (
-          <EmptyState icon={GitMerge} title={t("conflicts.checking")} />
+          <EmptyState title={t("conflicts.checking")} />
         ) : visibleCount === 0 ? (
           loadError ? (
-            <EmptyState icon={AlertTriangle} title={t("conflicts.checkFailedTitle")} subtitle={t("conflicts.checkFailedSubtitle")} />
+            <EmptyState title={t("conflicts.checkFailedTitle")} subtitle={t("conflicts.checkFailedSubtitle")} />
           ) : (
-            <EmptyState icon={CheckCircle2} title={t("conflicts.noneTitle")} subtitle={t("conflicts.noneSubtitle")} />
+            <EmptyState title={t("conflicts.noneTitle")} subtitle={t("conflicts.noneSubtitle")} />
           )
         ) : (
           <div className="mx-auto max-w-3xl space-y-6">

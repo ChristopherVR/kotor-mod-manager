@@ -1,6 +1,3 @@
-import {
-  SlidersHorizontal, Gamepad2, User, Zap, RefreshCw, type LucideIcon,
-} from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AppStatus, Profile } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -14,12 +11,12 @@ import { useT } from "@/lib/i18n";
 export type SettingsSectionId = "general" | "installs" | "account" | "patcher" | "updates";
 type SectionId = SettingsSectionId;
 
-const SECTIONS: { id: SectionId; labelKey: string; icon: LucideIcon }[] = [
-  { id: "general", labelKey: "settings.section.general", icon: SlidersHorizontal },
-  { id: "installs", labelKey: "settings.section.installs", icon: Gamepad2 },
-  { id: "account", labelKey: "settings.section.account", icon: User },
-  { id: "patcher", labelKey: "settings.section.patcher", icon: Zap },
-  { id: "updates", labelKey: "settings.section.updates", icon: RefreshCw },
+const SECTIONS: { id: SectionId; labelKey: string }[] = [
+  { id: "general", labelKey: "settings.section.general" },
+  { id: "installs", labelKey: "settings.section.installs" },
+  { id: "account", labelKey: "settings.section.account" },
+  { id: "patcher", labelKey: "settings.section.patcher" },
+  { id: "updates", labelKey: "settings.section.updates" },
 ];
 
 interface SettingsViewProps {
@@ -57,28 +54,27 @@ export function SettingsView({
       <div className="flex min-h-0 flex-1 flex-col">
         {/* Secondary sidebar */}
         <nav aria-label={t("settings.title")} className="flex shrink-0 gap-1 overflow-x-auto border-b px-5">
-          {SECTIONS.map(({ id, labelKey, icon: Icon }) => (
+          {SECTIONS.map(({ id, labelKey }) => (
             <button
               key={id}
               type="button"
               aria-current={section === id ? "page" : undefined}
               onClick={() => setSection(id)}
               className={cn(
-                "flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors",
+                "shrink-0 border-b-2 px-3 py-3 text-sm transition-colors",
                 section === id
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               )}
             >
-              <Icon className="size-4 shrink-0" />
-              <span className="flex-1 truncate text-left">{t(labelKey)}</span>
+              {t(labelKey)}
             </button>
           ))}
         </nav>
 
         {/* Content */}
         <div className="min-h-0 flex-1 overflow-auto p-6">
-          <div className="max-w-3xl space-y-4">
+          <div className="max-w-2xl space-y-6">
             {visited.has("general") && <div hidden={section !== "general"}><GeneralSection addLog={addLog} /></div>}
             {visited.has("installs") && <div hidden={section !== "installs"}>
               <GameInstallsSection
