@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/components/useConfirm";
 import { useT } from "@/lib/i18n";
 
 interface BuildsViewProps {
@@ -54,6 +55,7 @@ export function BuildsView(props: BuildsViewProps) {
   } = props;
 
   const t = useT();
+  const [confirm, confirmDialog] = useConfirm();
   const [loading, setLoading] = useState(false);
   const [openMod, setOpenMod] = useState<BuildMod | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -78,7 +80,7 @@ export function BuildsView(props: BuildsViewProps) {
 
   const deleteSelectedBuild = async () => {
     if (!selectedBuildInfo?.custom) return;
-    if (!window.confirm(t("builds.deleteBuildConfirm", { label: selectedBuildInfo.label }))) return;
+    if (!(await confirm({ message: t("builds.deleteBuildConfirm", { label: selectedBuildInfo.label }), confirmLabel: t("common.delete") }))) return;
     try {
       await api.deleteBuild(selectedBuildInfo.key);
       addLog(t("builds.deleteBuildDone", { label: selectedBuildInfo.label }), "success");
@@ -273,6 +275,7 @@ export function BuildsView(props: BuildsViewProps) {
 
   return (
     <div className="flex h-full flex-col">
+      {confirmDialog}
       {/* Header */}
       <header className="view-header flex flex-wrap items-center gap-3 border-b">
         <div>

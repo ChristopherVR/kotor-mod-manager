@@ -39,7 +39,7 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
           <button
             aria-label={t("common.close")}
             onClick={onClose}
-            className="rounded-sm text-muted-foreground transition-colors hover:text-foreground"
+            className="ml-auto rounded-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             <X className="size-4" />
           </button>

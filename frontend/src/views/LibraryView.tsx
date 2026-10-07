@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
-import { FolderOpen, Library as LibraryIcon, Power, ScrollText, Trash2 } from "lucide-react";
+import { FolderOpen, Power, ScrollText, Trash2 } from "lucide-react";
 import { api, type LibraryMod, type Profile } from "@/lib/api";
 import { LibraryRow } from "@/components/LibraryRow";
 import { ModDetail } from "@/components/ModDetail";
@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { useConfirm } from "@/components/useConfirm";
 import { useT } from "@/lib/i18n";
 
 interface LibraryViewProps {
@@ -46,6 +47,7 @@ export function LibraryView({
   profiles, activeProfile, setActiveProfile, bulkProgress,
 }: LibraryViewProps) {
   const t = useT();
+  const [confirm, confirmDialog] = useConfirm();
   const [mods, setMods] = useState<LibraryMod[]>([]);
   const [mergeable, setMergeable] = useState(0);
   const [query, setQuery] = useState("");
@@ -254,7 +256,7 @@ export function LibraryView({
   // cleanly removed without a backup, so the backend asks for confirmation
   // (409 baked_no_backup) before we force it.
   const deleteMod = async (mod: LibraryMod, force = false) => {
-    if (!force && !window.confirm(t("library.deleteConfirm", { name: mod.name }))) return;
+    if (!force && !(await confirm({ message: t("library.deleteConfirm", { name: mod.name }), confirmLabel: t("common.delete") }))) return;
     try {
       await api.libraryUninstall(activeProfile, mod.id, force);
       addLog(t("library.deleted", { name: mod.name }), "success");
@@ -262,8 +264,8 @@ export function LibraryView({
       load();
     } catch (e: any) {
       if (!force && (e?.status === 409 || e?.data?.error === "baked_no_backup")) {
-        const msg = e?.data?.message || t("library.deleteBakedMessage", { name: mod.name });
-        if (window.confirm(t("library.deleteForceConfirm", { message: msg }))) {
+        const msg = t("library.deleteBakedMessage", { name: mod.name });
+        if (await confirm({ message: t("library.deleteForceConfirm", { message: msg }), confirmLabel: t("common.delete") })) {
           deleteMod(mod, true);
         }
         return;
@@ -298,6 +300,7 @@ export function LibraryView({
 
   return (
     <div className="flex h-full flex-col">
+      {confirmDialog}
       <header className="space-y-3 view-header border-b">
         <div className="flex items-center gap-3">
           <div>
@@ -482,20 +485,20 @@ export function LibraryView({
 
       <div className="min-h-0 flex-1 overflow-auto p-4">
         {loading ? (
-          <EmptyState icon={LibraryIcon} title={t("library.loading")} />
+          <EmptyState title={t("library.loading")} />
         ) : errored ? (
-          <EmptyState icon={LibraryIcon} title={t("library.loadFailed")}
+          <EmptyState title={t("library.loadFailed")}
             action={{ label: t("library.retryLoad"), onClick: load }} />
         ) : total === 0 ? (
           <EmptyState
-            icon={LibraryIcon}
+           
             title={t("library.emptyTitle")}
             subtitle={t("library.emptySubtitle")}
             action={{ label: t("library.goToBuilds"), onClick: onGoToBuilds }}
           />
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon={LibraryIcon}
+           
             title={t("library.noMatchTitle")}
             subtitle={t("library.noMatchSubtitle")}
           />

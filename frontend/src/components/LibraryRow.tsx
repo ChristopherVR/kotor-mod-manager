@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { AlertTriangle, Copy, Package, Trash2 } from "lucide-react";
+import { AlertTriangle, Copy, Trash2 } from "lucide-react";
 import { api, type LibraryMod } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -77,9 +77,9 @@ function Thumbnail({ mod }: { mod: LibraryMod }) {
   return (
     <div
       ref={ref}
-      className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded bg-muted/40"
+      className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded"
     >
-      {url && !failed ? (
+      {url && !failed && (
         <img
           src={url}
           alt=""
@@ -87,8 +87,6 @@ function Thumbnail({ mod }: { mod: LibraryMod }) {
           onError={() => setFailed(true)}
           className="size-full object-cover"
         />
-      ) : (
-        <Package className="size-4 text-muted-foreground/50" />
       )}
     </div>
   );
@@ -111,7 +109,7 @@ export function LibraryRow({
       className="mod-row flex cursor-pointer items-center gap-3 border border-transparent px-3 py-2.5 transition-colors hover:bg-card/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="w-8 shrink-0 text-right font-mono text-xs text-muted-foreground">
-        {mod.load_order}
+        {mod.load_order + 1}
       </span>
       <Thumbnail mod={mod} />
       <div className="min-w-0 flex-1">

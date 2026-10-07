@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/components/useConfirm";
 import { useT } from "@/lib/i18n";
 
 interface GameInstallsSectionProps {
@@ -27,6 +28,7 @@ export function GameInstallsSection({
   profiles, activeProfile, setActiveProfile, refreshProfiles, addLog,
 }: GameInstallsSectionProps) {
   const t = useT();
+  const [confirm, confirmDialog] = useConfirm();
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -113,7 +115,7 @@ export function GameInstallsSection({
   };
 
   const remove = async (p: Profile) => {
-    if (!window.confirm(t("settings.installs.deleteConfirm", { name: p.name }))) return;
+    if (!(await confirm({ message: t("settings.installs.deleteConfirm", { name: p.name }), confirmLabel: t("common.delete") }))) return;
     setBusy(true);
     try {
       await api.deleteProfile(p.id);
@@ -128,6 +130,7 @@ export function GameInstallsSection({
 
   return (
     <Card>
+      {confirmDialog}
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle>{t("settings.installs.title")}</CardTitle>
         {!adding && (

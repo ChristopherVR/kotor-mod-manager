@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog } from "@/components/ui/dialog";
 import { Screenshots } from "@/components/Screenshots";
 import { cn } from "@/lib/utils";
+import { useConfirm } from "@/components/useConfirm";
 import { useT } from "@/lib/i18n";
 
 const HOST_NAMES: Record<string, string> = {
@@ -36,6 +37,7 @@ function fmtSize(bytes: number): string {
 
 export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addLog }: ModDetailProps) {
   const t = useT();
+  const [confirm, confirmDialog] = useConfirm();
   const [info, setInfo] = useState<ModInfo | null>(null);
   const [infoLoading, setInfoLoading] = useState(true);
   const [deployed, setDeployed] = useState<DeployedFile[]>([]);
@@ -87,7 +89,7 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
       // Baked (TSLPatcher/HoloPatcher) mods can't be cleanly removed without a
       // backup. The backend returns 409 baked_no_backup unless force=true.
       if (!force && (e?.status === 409 || e?.data?.error === "baked_no_backup")) {
-        setBakedPrompt(e?.data?.message || t("modDetail.bakedMessage"));
+        setBakedPrompt(t("modDetail.bakedMessage"));
         setUninstalling(false);
         return;
       }
@@ -96,8 +98,8 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
     }
   };
 
-  const uninstall = () => {
-    if (!window.confirm(t("modDetail.uninstallConfirm", { name: mod.name }))) return;
+  const uninstall = async () => {
+    if (!(await confirm({ message: t("modDetail.uninstallConfirm", { name: mod.name }), confirmLabel: t("common.delete") }))) return;
     runUninstall(false);
   };
 
@@ -117,6 +119,7 @@ export function ModDetail({ mod, profile, onClose, onToggle, onUninstalled, addL
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
+      {confirmDialog}
       <div className="absolute inset-0 bg-black/60 animate-fade-in" onClick={onClose} />
       <aside className="relative z-10 flex h-full w-full max-w-lg animate-fade-in flex-col border-l bg-card shadow-xl">
         {/* Header */}
