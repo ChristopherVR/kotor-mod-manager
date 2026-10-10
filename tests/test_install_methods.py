@@ -294,3 +294,19 @@ if __name__ == "__main__":
         print(f"{failures} test(s) FAILED")
         sys.exit(1)
     print("ALL INSTALL-METHOD TESTS PASSED")
+
+
+def test_reference_folders_are_not_installed(tmp_path):
+    """Reference normal maps shipped next to the real files must stay out of Override."""
+    real = tmp_path / "Copy contents to KotOR's Override folder"
+    ref = tmp_path / "Additional files - KotOR" / "Reference Normal Map"
+    real.mkdir()
+    ref.mkdir(parents=True)
+    (real / "N_Selkath01b.tpc").write_bytes(b"tpc")
+    (ref / "N_Selkath01b.tga").write_bytes(b"tga")
+    (ref / "N_Selkath01b.txi").write_bytes(b"isbumpmap 1")
+
+    plan = detect(tmp_path)
+
+    names = sorted(m.source.name for m in plan.file_mappings)
+    assert names == ["N_Selkath01b.tpc"]

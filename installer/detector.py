@@ -179,6 +179,21 @@ def _parse_namespaces(namespaces_ini: Path) -> list[NamespaceOption]:
     return options
 
 
+# Folders that hold material for mod authors, not files for the game: reference
+# normal maps, script source, screenshots. Copying these into Override can break
+# the game (a reference bump map as .tga beats the real .tpc and is rejected).
+_REFERENCE_DIR_PREFIXES = (
+    "additional files", "reference", "extras", "screenshots", "source",
+    "sources", "src", "_source", "script source", "script_source",
+)
+
+
+def _is_reference_dir(name: str) -> bool:
+    n = name.lower().strip()
+    return any(n == p or n.startswith(p + " ") or n.startswith(p + "_")
+               or n.startswith(p + "-") for p in _REFERENCE_DIR_PREFIXES)
+
+
 def _collect_loose_files(root: Path) -> list[ModFileMapping]:
     mappings = []
     for p, rel_path in walk_files(root):
@@ -187,6 +202,9 @@ def _collect_loose_files(root: Path) -> list[ModFileMapping]:
         # Skip files inside tslpatchdata or backup folders
         parts_lower = [x.lower() for x in rel_path.parts]
         if "tslpatchdata" in parts_lower or "backup" in parts_lower:
+            continue
+        # Skip author-only material (reference maps, script source, extras).
+        if any(_is_reference_dir(d) for d in rel_path.parts[:-1]):
             continue
 
         if ext in MODULE_EXTENSIONS:
