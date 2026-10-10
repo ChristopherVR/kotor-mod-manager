@@ -169,6 +169,39 @@ def select_keep_matches(names: list[str], keep_names: list[str]) -> list[str]:
 _RES_RE = re.compile(r"(\d{3,4})\s*[x×]\s*(\d{3,4})", re.I)
 
 
+_FPS_RE = re.compile(r"(\d{2,3})\s*fps", re.I)
+
+
+def resolution_variants(records: list[dict]) -> list[dict]:
+    """
+    The records that are the same content at different screen resolutions
+    (a WxH marker in the name), or [] when there are fewer than two of them.
+    """
+    found = [r for r in records if _RES_RE.search(unquote(r.get("name") or ""))]
+    return found if len(found) >= 2 else []
+
+
+def variant_labels(variants: list[dict]) -> list[str]:
+    """
+    A plain description of each variant for the player to pick from, e.g.
+    "1920 x 1080, 30 fps (15.43 GB)". Falls back to the file names when two
+    variants would read the same.
+    """
+    labels = []
+    for r in variants:
+        name = unquote(r.get("name") or "")
+        m = _RES_RE.search(name)
+        label = f"{m.group(1)} x {m.group(2)}"
+        fps = _FPS_RE.search(name)
+        if fps:
+            label += f", {fps.group(1)} fps"
+        labels.append(label)
+    if len(set(labels)) != len(labels):
+        labels = [unquote(r.get("name") or "") for r in variants]
+    return [f"{label} ({r['size']})" if r.get("size") else label
+            for label, r in zip(labels, variants)]
+
+
 def select_resolution_records(records: list[dict],
                               preferred: str = "1920x1080") -> list[dict]:
     """
@@ -550,8 +583,10 @@ class DeadlyStreamClient:
 
         IPS/IPB stores multi-file submissions as separate records, each with a
         `&r=<id>` parameter on the download URL. Returns a list of
-        {"name": str, "url": str, "record_id": str|None}. Always returns at
-        least one entry (the primary download) so callers can iterate uniformly.
+        {"name": str, "url": str, "record_id": str|None, "size": str}, where
+        size is the text the page shows (e.g. "15.43 GB") or "". Always returns
+        at least one entry (the primary download) so callers can iterate
+        uniformly.
         """
         page_url = self._file_page_url(file_id, slug)
         with self._lock:
@@ -585,9 +620,18 @@ class DeadlyStreamClient:
                 if "csrfKey=" not in href:
                     sep = "&" if "?" in href else "?"
                     href = f"{href}{sep}csrfKey={csrf}"
-                name = a.get_text(strip=True) or f"file_{record_id or len(records)}"
+                # Every button reads "Download"; the real file name sits in
+                # the title of the row the button belongs to.
+                row = a.find_parent("li")
+                title = row.select_one(".ipsDataItem_title") if row else None
+                name = ((title.get_text(strip=True) if title else "")
+                        or a.get_text(strip=True)
+                        or f"file_{record_id or len(records)}")
+                meta = row.select_one(".ipsDataItem_meta") if row else None
+                size = meta.get_text(strip=True) if meta else ""
                 if not any(r["record_id"] == record_id for r in records):
-                    records.append({"name": name, "url": href, "record_id": record_id})
+                    records.append({"name": name, "url": href,
+                                    "record_id": record_id, "size": size})
         except (requests.RequestException, OSError):
             pass
 
@@ -597,6 +641,7 @@ class DeadlyStreamClient:
                 "name": f"mod_{file_id}",
                 "url": f"{page_url}?do=download&csrfKey={csrf}",
                 "record_id": None,
+                "size": "",
             })
         return records
 
@@ -612,6 +657,7 @@ class DeadlyStreamClient:
         pause_event: Optional[threading.Event] = None,
         language: str = "",
         screen_resolution: str = "",
+        choose_variant: Optional[Callable[[list[dict]], Optional[dict]]] = None,
     ) -> list[Path]:
         """
         Download files in a (possibly multi-file) submission.
@@ -629,14 +675,26 @@ class DeadlyStreamClient:
         skipped so e.g. a Russian credits font never lands in an English game.
         If that would filter out every file, the filter is dropped.
 
-        screen_resolution: when the submission offers the same content at
-        several resolutions (WxH in the record names), only the variant
-        closest to this is downloaded - these packs can be 15+ GB each.
+        choose_variant: when the submission offers the same content at several
+        resolutions (WxH in the record names), this is called with those
+        records and returns the one to download - these packs can be 15+ GB
+        each, and which one is wanted is the player's call. Returning None
+        downloads nothing at all.
+
+        screen_resolution: only used when there is no choose_variant. The
+        variant closest to this is downloaded.
 
         Returns the list of downloaded local paths in page order.
         """
         records = self.list_download_records(file_id, slug)
-        if screen_resolution and not keep_names:
+        variants = [] if keep_names else resolution_variants(records)
+        if variants and choose_variant:
+            chosen = choose_variant(variants)
+            if chosen is None:
+                return []
+            records = [r for r in records
+                       if r is chosen or not any(r is v for v in variants)]
+        elif variants and screen_resolution:
             records = select_resolution_records(records, screen_resolution)
         referer = self._file_page_url(file_id, slug)
 

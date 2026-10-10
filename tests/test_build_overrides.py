@@ -89,16 +89,11 @@ def test_delete_ranges_are_expanded_in_full(file_id, expected):
     assert out.pre_install_delete == expected
 
 
-def test_cutscene_filter_names_one_archive_not_two_loose_tokens():
-    """download_only is OR-matched. A ["1920x1080", "30fps"] pair keeps every
-    30fps variant AND every 1080p variant - four archives at 8-15 GB each."""
-    from scraper.deadlystream import select_keep_matches
-    variants = ["k1rs_30fps_1920x1080.7z", "k1rs_30fps_2560x1440.7z",
-                "k1rs_60fps_1920x1080.7z", "k1rs_30fps_3840x2160.7z"]
-    assert len(select_keep_matches(variants, ["1920x1080", "30fps"])) == 4
-
-    keep = build_overrides.apply(Directives(), "k1_spoilerfree", "2380").download_only
-    assert select_keep_matches(variants, keep) == ["k1rs_30fps_1920x1080.7z"]
+def test_cutscene_pack_version_is_left_to_the_player():
+    """Which screen size and frame rate to get is asked, never pinned: a
+    download_only here would pick for the player without telling them."""
+    for build in ("k1_spoilerfree", "k1_full"):
+        assert build_overrides.apply(Directives(), build, "2380").download_only == []
 
 
 def test_kebla_yurt_deletes_the_txi_alongside_the_texture():
@@ -355,3 +350,13 @@ def test_no_overwrite_is_off_by_default(tmp_path):
 def test_full_build_does_the_program_file_patches_too():
     assert build_overrides.apply(Directives(), "k1_full", "", guide_index=186).tool_step == "laa"
     assert build_overrides.apply(Directives(), "k1_full", "1159").tool_step == "hrmenus"
+
+
+def test_full_build_shares_the_cutscene_rules_with_the_spoiler_free_build():
+    full = build_overrides.apply(Directives(), "k1_full", "2380")
+    assert full.skip_if == ["KOTOR Remastered Cutscenes"]
+    assert any("30fps" in n for n in full.manual_notes)
+    assert full == build_overrides.apply(Directives(), "k1_spoilerfree", "2380")
+
+    other = build_overrides.apply(Directives(), "k1_full", "", guide_index=197)
+    assert other.skip_if == ["K1 Cutscenes Rescaled"]

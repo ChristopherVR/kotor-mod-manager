@@ -285,6 +285,98 @@ def test_cached_archives_respect_download_only(tmp_path):
     assert [a.name for a in pm.archive_paths] == ["HQSkyboxesII_K1.7z"]
 
 
+_PACK = ("pack_30fps_1920x1080.7z", "pack_30fps_2560x1440.7z", "pack_60fps_1920x1080.7z")
+
+
+def _answering(pick):
+    """An on_confirm that answers from another thread, as the app window does."""
+    import threading
+    asked, holder = [], {}
+
+    def on_confirm(request_id, title, body, options):
+        asked.append((title, body, options))
+        threading.Timer(0.05, lambda: holder["p"].answer_confirm(
+            request_id, pick(options))).start()
+
+    return asked, holder, on_confirm
+
+
+def test_player_is_asked_which_version_of_a_movie_pack_to_download(tmp_path):
+    from installer.pipeline import ModStatus
+    asked, holder, on_confirm = _answering(lambda options: options[1])
+    p = holder["p"] = _pipeline(tmp_path, [_mod(file_id="9001", slug="test-mod")],
+                                on_confirm=on_confirm, screen_resolution="1920x1080")
+    records = [{"name": n, "url": f"https://x/{n}", "record_id": str(i), "size": "15 GB"}
+               for i, n in enumerate(_PACK)]
+    p._client.list_download_records = lambda *a, **k: records
+    fetched = []
+
+    def fake_download(url, dest_dir, file_id, **kw):
+        fetched.append(kw["fallback_name"])
+        f = Path(dest_dir) / kw["fallback_name"]
+        f.write_bytes(b"7Z")
+        return f
+
+    p._client._download_from_url = fake_download
+    pm = p.mods[0]
+    p._download_mod(pm)
+
+    title, body, options = asked[0]
+    assert "Test Mod" in title and "1920 x 1080" in body
+    assert options == ["1920 x 1080, 30 fps (15 GB)", "2560 x 1440, 30 fps (15 GB)",
+                       "1920 x 1080, 60 fps (15 GB)", "skip"]
+    # The second option was picked, not the one matching the screen.
+    assert fetched == ["pack_30fps_2560x1440.7z"]
+    assert pm.status == ModStatus.READY
+
+
+def test_skipping_the_version_question_skips_the_mod_without_downloading(tmp_path):
+    from installer.pipeline import ModStatus
+    asked, holder, on_confirm = _answering(lambda options: "skip")
+    p = holder["p"] = _pipeline(tmp_path, [_mod(file_id="9001", slug="test-mod")],
+                                on_confirm=on_confirm)
+    p._client.list_download_records = lambda *a, **k: [
+        {"name": n, "url": "https://x", "record_id": str(i), "size": ""}
+        for i, n in enumerate(_PACK)]
+    p._client._download_from_url = lambda *a, **k: pytest.fail("nothing may be downloaded")
+    pm = p.mods[0]
+    p._download_mod(pm)
+    assert pm.status == ModStatus.SKIPPED and not pm.error
+
+
+def test_no_version_is_assumed_when_there_is_nobody_to_ask(tmp_path):
+    """A run with no window must not quietly pick a 16 GB download."""
+    from installer.pipeline import ModStatus
+    p = _pipeline(tmp_path, [_mod(file_id="9001", slug="test-mod")])
+    p._client.list_download_records = lambda *a, **k: [
+        {"name": n, "url": "https://x", "record_id": str(i), "size": ""}
+        for i, n in enumerate(_PACK)]
+    p._client._download_from_url = lambda *a, **k: pytest.fail("nothing may be downloaded")
+    pm = p.mods[0]
+    p._download_mod(pm)
+    assert pm.status == ModStatus.SKIPPED
+
+
+def test_leftover_versions_in_the_cache_are_asked_about_once(tmp_path):
+    """A cache left by an older version can hold every screen size of a movie
+    pack. The player picks one; pressing Install again does not ask again."""
+    dest = tmp_path / "dl" / "9001_test-mod"
+    dest.mkdir(parents=True)
+    for n in _PACK:
+        (dest / n).write_bytes(b"7Z")
+
+    asked, holder, on_confirm = _answering(lambda options: options[2])
+    p = holder["p"] = _pipeline(tmp_path, [_mod(file_id="9001", slug="test-mod")],
+                                on_confirm=on_confirm)
+    pm = p.mods[0]
+    p._download_mod(pm)
+    assert [a.name for a in pm.archive_paths] == ["pack_60fps_1920x1080.7z"]
+
+    p._download_mod(pm)
+    assert len(asked) == 1
+    assert [a.name for a in pm.archive_paths] == ["pack_60fps_1920x1080.7z"]
+
+
 # ---------------------------------------------------------------------------
 # Guide-driven two-step installs (main option, then add-on)
 # ---------------------------------------------------------------------------

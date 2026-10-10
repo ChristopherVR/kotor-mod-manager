@@ -62,6 +62,27 @@ def _r(*pairs):
 
 
 # ---------------------------------------------------------------------------
+# Rules shared by both KOTOR 1 builds
+# ---------------------------------------------------------------------------
+# The two cutscene packs are alternatives - the guide says use one or the other.
+# Rescaled comes in eight variants (four screen sizes at 30 and 60fps), about
+# 16 GB each. Which one to get is the player's choice, so there is no
+# download_only here: the app asks before it downloads anything.
+K1_CUTSCENES_RESCALED = {
+    "layer": LAYER_CONTENT,
+    "skip_if": ["KOTOR Remastered Cutscenes"],
+    "note": "30fps strongly recommended - crashes are linked to the 60fps "
+            "versions. Files go to the movies folder, not Override.",
+}
+K1_CUTSCENES_REMASTERED = {
+    "layer": LAYER_CONTENT,
+    "skip_if": ["K1 Cutscenes Rescaled"],
+    "note": "Alternative to K1 Cutscenes Rescaled - use one cutscene pack, not "
+            "both. The title crawl movie does not play with this pack.",
+}
+
+
+# ---------------------------------------------------------------------------
 # KOTOR 1 Spoiler-Free build
 # ---------------------------------------------------------------------------
 # Each value is a dict of Directives field names -> verified value, plus the
@@ -726,22 +747,8 @@ K1_SPOILERFREE: dict[str, dict] = {
     "1173": {"layer": LAYER_WIDESCREEN},
 
     # [190]/[191] Two cutscene packs - the guide says use one or the other.
-    # download_only is OR-matched, so it must name the ONE archive wanted. A
-    # loose ["1920x1080", "30fps"] pair matches every 30fps variant, and each
-    # resolution of this pack is 8-15 GB.
-    "2380": {
-        "layer": LAYER_CONTENT,
-        "download_only": ["k1rs_30fps_1920x1080"],
-        "skip_if": ["KOTOR Remastered Cutscenes"],
-        "note": "30fps strongly recommended - crashes are linked to the 60fps "
-                "versions. Files go to the movies folder, not Override.",
-    },
-    "guide:191": {
-        "layer": LAYER_CONTENT,
-        "skip_if": ["K1 Cutscenes Rescaled"],
-        "note": "Alternative to entry 190 - use one cutscene pack, not both. "
-                "The title crawl movie does not play with this pack.",
-    },
+    "2380": K1_CUTSCENES_RESCALED,
+    "guide:191": K1_CUTSCENES_REMASTERED,
 
     # -- Layer 18: cleanup, must be last -----------------------------------
 
@@ -774,11 +781,14 @@ K1_SPOILERFREE_NOTES = {
 }
 
 
-# The full build has no curated rules yet, only the program file patches, which
-# are the same steps as in the spoiler-free build (entries 186 and 188 here).
+# The full build has few curated rules yet: the program file patches, which are
+# the same steps as in the spoiler-free build (entries 186 and 188 here), and
+# the two cutscene packs (entries 196 and 197 here).
 K1_FULL = {
     "guide:186": {"tool_step": "laa"},
     "1159": {"tool_step": "hrmenus"},
+    "2380": K1_CUTSCENES_RESCALED,
+    "guide:197": K1_CUTSCENES_REMASTERED,
 }
 
 BUILD_OVERRIDES = {

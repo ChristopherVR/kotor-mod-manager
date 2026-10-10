@@ -167,6 +167,10 @@ class Pipeline:
         self._on_confirm = on_confirm
         # Open questions for the player: request id -> (event, answer holder).
         self._confirms: dict[str, tuple[threading.Event, list[str]]] = {}
+        # Downloads run side by side, and the window shows one question at a time.
+        self._confirm_lock = threading.Lock()
+        # Mods the player chose not to download when asked which version to get.
+        self._variant_skipped: set = set()
         # When True, never fall back to a manual GUI click (fully unattended).
         self._auto_unattended = auto_unattended
         # Mod-manager recording. game_key is the manifest scope (profile id or
@@ -178,8 +182,8 @@ class Pipeline:
         # Player's game language: bundled translation patches for other
         # languages are skipped at download AND at install (stale caches).
         self._language = language or "en"
-        # Used to pick ONE variant when a mod ships per-resolution packs
-        # (some cutscene packs are 15+ GB per resolution).
+        # Used for the widescreen patches, and shown to the player when a mod
+        # ships per-resolution packs and they are asked which one to get.
         self._screen_resolution = screen_resolution
 
         self._stop_event = threading.Event()
@@ -227,17 +231,20 @@ class Pipeline:
         options = options or ["continue", "skip"]
         if not self._on_confirm:
             return ""
-        request_id = f"c{int(time.time() * 1000)}"
-        event, answer = threading.Event(), []
-        self._confirms[request_id] = (event, answer)
-        try:
-            self._on_confirm(request_id, title, body, options)
-            while not event.wait(0.25):
-                if self._stop_event.is_set():
-                    return ""
-            return answer[0] if answer else ""
-        finally:
-            self._confirms.pop(request_id, None)
+        with self._confirm_lock:
+            if self._stop_event.is_set():
+                return ""
+            request_id = f"c{int(time.time() * 1000)}"
+            event, answer = threading.Event(), []
+            self._confirms[request_id] = (event, answer)
+            try:
+                self._on_confirm(request_id, title, body, options)
+                while not event.wait(0.25):
+                    if self._stop_event.is_set():
+                        return ""
+                return answer[0] if answer else ""
+            finally:
+                self._confirms.pop(request_id, None)
 
     def answer_confirm(self, request_id: str, choice: str) -> bool:
         """Deliver the player's answer to a waiting confirm(). False if none waits."""
@@ -560,6 +567,65 @@ class Pipeline:
             cached = self._filter_cached(cached, pm.build_mod)
         return cached
 
+    def _ask_variant(self, pm: PipelineMod, variants: list[dict]) -> "dict | None":
+        """
+        A mod that comes in several screen sizes (and sometimes frame rates):
+        ask the player which one they want. The app never picks for them, as
+        each one can be 15+ GB. Returns the chosen entry of `variants`, or None
+        when the player skips the mod or nobody is there to answer.
+        """
+        from installer import build_overrides
+        from scraper.deadlystream import variant_labels
+        mod = pm.build_mod
+        labels = variant_labels(variants)
+        body = (f"{mod.name} comes in {len(variants)} versions and you only need "
+                f"one. Pick the one closest to your screen"
+                + (f" (yours is {self._screen_resolution.replace('x', ' x ')})"
+                   if self._screen_resolution else "")
+                + ". Nothing is downloaded until you choose.")
+        note = build_overrides.lookup(mod.build_key, mod.file_id,
+                                      mod.guide_index or mod.install_order).get("note")
+        if note:
+            body += f"\n\nFrom the build guide: {note}"
+        self._set_status(pm, ModStatus.DOWNLOADING, "Waiting for you to pick a version")
+        answer = self.confirm(f"Which version of {mod.name}?", body, [*labels, "skip"])
+        if answer in labels:
+            self._log(f"  You chose: {answer}")
+            self._set_status(pm, ModStatus.DOWNLOADING)
+            return variants[labels.index(answer)]
+        if self._stop_event.is_set():
+            return None
+        self._variant_skipped.add(mod.file_id)
+        if answer == "skip":
+            self._log("  Skipped: you chose not to download any version.", "muted")
+        else:
+            self._log("  Skipped: this mod comes in several versions and there was "
+                      "no window to ask which one you want.", "warning")
+        self._set_status(pm, ModStatus.SKIPPED)
+        return None
+
+    def _settle_cached_variants(self, pm: PipelineMod, cached: list, dest_dir: Path) -> list:
+        """An older version of the app could leave several screen sizes of one
+        mod in its folder. Ask which to use instead of installing all of them.
+        Returns [] when the player skips the mod."""
+        from scraper.deadlystream import resolution_variants
+        if pm.build_mod.directives.download_only:
+            return cached
+        records = [{"name": c.name, "path": c,
+                    "size": f"{c.stat().st_size / 1024 ** 3:.2f} GB"}
+                   for c in cached]
+        variants = resolution_variants(records)
+        if not variants:
+            return cached
+        chosen = self._ask_variant(pm, variants)
+        if chosen is None:
+            return []
+        kept = [r["path"] for r in records
+                if r is chosen or not any(r is v for v in variants)]
+        # Remember the answer, so pressing Install again does not ask again.
+        self._write_cache_manifest(dest_dir, kept)
+        return kept
+
     def _finish_download(self, pm: PipelineMod, archives: list, dest_dir: Path) -> None:
         pm.archive_paths = archives
         self._write_cache_manifest(dest_dir, archives)
@@ -659,6 +725,10 @@ class Pipeline:
             # This makes pressing Install again (or Retry) resumable without
             # restarting every download from zero.
             cached = self._cached_for(pm, dest_dir)
+            if len(cached) > 1:
+                cached = self._settle_cached_variants(pm, cached, dest_dir)
+                if not cached:
+                    return
             if cached:
                 pm.archive_paths = cached
                 total_kb = sum(f.stat().st_size for f in cached) // 1024
@@ -738,7 +808,7 @@ class Pipeline:
                             keep_names=keep_names,
                             ignore_names=ignore_names,
                             language=self._language,
-                            screen_resolution=self._screen_resolution,
+                            choose_variant=lambda v: self._ask_variant(pm, v),
                         )
                         break
                     except requests.HTTPError as e:
@@ -757,6 +827,9 @@ class Pipeline:
                             raise
                         self._set_status(pm, ModStatus.DOWNLOADING)
             pm.archive_paths = archives
+            if not archives and (mod.file_id in self._variant_skipped
+                                 or self._stop_event.is_set()):
+                return
             if not archives:
                 # Everything was filtered out: an over-broad "do not download"
                 # instruction. Without this check the mod would sail through

@@ -348,3 +348,89 @@ def test_one_downloads_refusal_pauses_every_other_request(monkeypatch):
     b.start()
     a.join(); b.join()
     assert times["https://deadlystream.com/second"][0] - t0 >= 0.35
+
+
+# The download picker as DeadlyStream serves it: the file name is in the row's
+# title and every button just reads "Download".
+_PICKER_ROW = (
+    "<li class='ipsDataItem'><div class='ipsDataItem_main'>"
+    "<h4 class='ipsDataItem_title'><span class='ipsType_break'>{name}</span></h4>"
+    "<p class='ipsDataItem_meta'>15.43 GB</p></div>"
+    "<div class='ipsDataItem_generic'><a href='https://deadlystream.com/files/file/"
+    "2380-k1-cutscenes-rescaled/?do=download&amp;r={rid}&amp;confirm=1&amp;t=1"
+    "&amp;csrfKey=abcd12' data-action='download'>Download</a></div></li>"
+)
+_CUTSCENE_VARIANTS = [f"k1rs_{fps}_{res}.7z" for fps in ("30fps", "60fps")
+                      for res in ("1920x1080", "2560x1440", "3440x1440", "3840x2160")]
+
+
+def _picker_client():
+    html = "<ul>" + "".join(_PICKER_ROW.format(name=n, rid=100 + i)
+                            for i, n in enumerate(_CUTSCENE_VARIANTS)) + "</ul>"
+
+    def handler(url, kw):
+        if "do=download" in url:
+            return FakeResp(text=html, headers={"Content-Type": "text/html"})
+        return FakeResp(text='{"csrfKey":"abcd12"}')
+
+    return _client_with_capture(handler)[0]
+
+
+def test_records_take_the_file_name_from_the_row_not_the_button():
+    recs = _picker_client().list_download_records("2380", "k1-cutscenes-rescaled")
+    assert [r["name"] for r in recs] == _CUTSCENE_VARIANTS
+    assert [r["record_id"] for r in recs] == [str(100 + i) for i in range(8)]
+
+
+def _fetching(c):
+    fetched = []
+
+    def fake_download(url, dest_dir, file_id, **kw):
+        fetched.append(kw["fallback_name"])
+        return Path(dest_dir) / kw["fallback_name"]
+
+    c._download_from_url = fake_download
+    return fetched
+
+
+def test_only_one_screen_size_of_a_movie_pack_is_downloaded(tmp_path):
+    """Every record used to be named "Download", so no screen size could be
+    told apart and all eight 16 GB archives were fetched."""
+    c = _picker_client()
+    fetched = _fetching(c)
+    c.download_all_files("2380", tmp_path, slug="k1-cutscenes-rescaled",
+                         language="en", screen_resolution="2560x1440")
+    assert fetched == ["k1rs_30fps_2560x1440.7z"]
+
+
+def test_the_caller_is_asked_which_version_and_only_that_one_is_downloaded(tmp_path):
+    from scraper.deadlystream import variant_labels
+    c = _picker_client()
+    fetched = _fetching(c)
+    offered = []
+
+    def choose(variants):
+        offered.extend(variant_labels(variants))
+        return variants[5]
+
+    # The answer wins even when the screen size points somewhere else.
+    c.download_all_files("2380", tmp_path, slug="k1-cutscenes-rescaled",
+                         screen_resolution="1920x1080", choose_variant=choose)
+    assert offered[0] == "1920 x 1080, 30 fps (15.43 GB)"
+    assert len(set(offered)) == 8
+    assert fetched == ["k1rs_60fps_2560x1440.7z"]
+
+
+def test_declining_every_version_downloads_nothing(tmp_path):
+    c = _picker_client()
+    fetched = _fetching(c)
+    out = c.download_all_files("2380", tmp_path, slug="k1-cutscenes-rescaled",
+                               choose_variant=lambda variants: None)
+    assert out == [] and fetched == []
+
+
+def test_records_named_only_download_are_all_kept():
+    """With no screen size in any name there is nothing to choose between."""
+    from scraper.deadlystream import select_resolution_records
+    recs = [{"name": "Download", "record_id": str(i)} for i in range(8)]
+    assert select_resolution_records(recs, "1920x1080") == recs
