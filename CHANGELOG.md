@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.19.2] - 2026-10-11
+
+### Bug Fixes
+
+- Stop texture packs installing their reference files, which caused repeated 'Invalid Bumpmap' pop-ups
 ## [0.19.1] - 2026-10-11
 
 ### Documentation
