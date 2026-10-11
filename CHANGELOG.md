@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.19.1] - 2026-10-11
+
+### Documentation
+
+- A cleaner, calmer website with smooth animations
+## [0.19.0] - 2026-10-10
+
+### Features
+
+- Ask which resolution before downloading all
 ## [0.18.0] - 2026-10-07
 
 ### Features
