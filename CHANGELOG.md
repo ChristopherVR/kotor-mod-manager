@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.19.3] - 2026-10-13
+
+### Miscellaneous
+
+- Bump the pip-minor-and-patch group with 9 updates
 ## [0.19.2] - 2026-10-11
 
 ### Bug Fixes
