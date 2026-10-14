@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.4] - 2026-10-14
+
+### Miscellaneous
+
+- Bump taiki-e/install-action from 2.87.22 to 2.87.27
+- Bump the cargo-minor-and-patch group
+- Bump the npm-minor-and-patch group in /frontend with 7 updates
 ## [0.19.3] - 2026-10-13
 
 ### Miscellaneous
