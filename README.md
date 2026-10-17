@@ -38,8 +38,15 @@ this.
 
 ### 1. Download and open it
 
-Grab `KOTOR-Mod-Installer.exe`  from the [latest release](../../releases/latest)
-and run it. That is the whole app, one file. Nothing else to install.
+Choose your download from the [latest release](../../releases/latest):
+
+- **Windows:** download `KOTOR-Mod-Installer.exe` and run it.
+- **Linux (64-bit):** download `KOTOR-Mod-Installer-linux-x86_64`. Right-click
+  the file, open **Properties**, allow it to run as a program, then open it.
+
+That is the whole app, one file. Release downloads are scanned with ClamAV before
+publication. Each new release includes a `virus-scan.txt` report with the scanner
+version, scan results, and SHA-256 checksums for both downloads.
 
 ### 2. Point it at your games and sign in
 

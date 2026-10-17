@@ -88,6 +88,7 @@
   .lead{max-width:44ch;color:var(--muted);margin:0;font-size:clamp(16px,1rem + .3vw,19px)}
   .lead b{color:var(--fg);font-weight:500}
   .cta{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
+  .download-buttons{display:flex;flex-wrap:wrap;gap:12px}
   .meta{font-size:13px;color:var(--muted)}
 
   /* ---------- hero screenshot (scroll-linked) ---------- */
@@ -184,7 +185,6 @@
   /* ---------- closing ---------- */
   .end{text-align:center;padding:clamp(110px,18vh,190px) 0}
   .end h2{font-size:clamp(40px,7vw,96px);margin:0 auto 40px;max-width:14ch}
-  .end .btn{margin:0 auto}
   .fine{color:var(--muted);font-size:13px;max-width:60ch;margin:56px auto 0}
   footer{border-top:1px solid var(--line);padding:28px 0;font-size:13px;color:var(--muted)}
   footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
@@ -232,11 +232,17 @@
       <div class="hero-foot">
         <p class="lead rv">Pick a community build, press one button, and the app <b>downloads and installs every mod in the right order</b>. TSLPatcher mods install on their own. Turn mods on and off whenever you like.</p>
         <div class="cta rv">
-          <a class="btn" href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest">
-            <span>Download for Windows</span>
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v11M2 7.5 7 12.5 12 7.5" stroke="currentColor" stroke-width="1.6"/></svg>
-          </a>
-          <span class="meta">Free · one file · nothing else to install</span>
+          <div class="download-buttons">
+            <a class="btn" href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest/download/KOTOR-Mod-Installer.exe">
+              <span>Download for Windows</span>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v11M2 7.5 7 12.5 12 7.5" stroke="currentColor" stroke-width="1.6"/></svg>
+            </a>
+            <a class="btn" href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest/download/KOTOR-Mod-Installer-linux-x86_64">
+              <span>Download for Linux</span>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v11M2 7.5 7 12.5 12 7.5" stroke="currentColor" stroke-width="1.6"/></svg>
+            </a>
+          </div>
+          <span class="meta">Free · Windows &amp; Linux (64-bit) · one file</span>
         </div>
       </div>
     </div>
@@ -283,7 +289,7 @@
       <ol class="steps">
         <li class="rv">
           <h3>Download and open it</h3>
-          <p>Get <b>KOTOR-Mod-Installer.exe</b> from the <a class="ul" href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest">latest release</a> and run it. That one file is the whole app.</p>
+          <p>Choose your download from the <a class="ul" href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest">latest release</a>. On <b>Windows</b>, open <b>KOTOR-Mod-Installer.exe</b>. On <b>Linux (64-bit)</b>, download <b>KOTOR-Mod-Installer-linux-x86_64</b>, right-click it, open Properties, allow it to run as a program, then open it. That one file is the whole app.</p>
         </li>
         <li class="rv">
           <h3>Point it at your game</h3>
@@ -335,9 +341,13 @@
   <section class="end">
     <div class="wrap">
       <h2 class="rv">Ready when <span class="serif">you are.</span></h2>
-      <div class="rv">
-        <a class="btn" href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest">
+      <div class="download-buttons rv" style="justify-content:center">
+        <a class="btn" href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest/download/KOTOR-Mod-Installer.exe">
           <span>Download for Windows</span>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v11M2 7.5 7 12.5 12 7.5" stroke="currentColor" stroke-width="1.6"/></svg>
+        </a>
+        <a class="btn" href="https://github.com/ChristopherVR/kotor-mod-manager/releases/latest/download/KOTOR-Mod-Installer-linux-x86_64">
+          <span>Download for Linux</span>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M7 1v11M2 7.5 7 12.5 12 7.5" stroke="currentColor" stroke-width="1.6"/></svg>
         </a>
       </div>

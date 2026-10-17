@@ -209,8 +209,46 @@ jobs:
       - name: Download builds
         uses: actions/download-artifact@v8
         with:
+          pattern: KOTOR-Mod-Installer*
           path: release-files
           merge-multiple: true
+
+      - name: Prepare notes for this release only
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 tools/release_notes.py "$RELEASE_TAG"
+
+      - name: Install antivirus and update signatures
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clamav clamav-freshclam
+          sudo systemctl stop clamav-freshclam
+          sudo freshclam
+
+      - name: Scan release downloads
+        run: |
+          # Explicit files prevent a missing download from silently passing.
+          test -s release-files/KOTOR-Mod-Installer.exe
+          test -s release-files/KOTOR-Mod-Installer-linux-x86_64
+          clamscan --version | tee virus-scan.txt
+          date -u '+Scanned at: %Y-%m-%d %H:%M:%S UTC' >> virus-scan.txt
+          sha256sum release-files/KOTOR-Mod-Installer.exe \
+            release-files/KOTOR-Mod-Installer-linux-x86_64 >> virus-scan.txt
+          # Large bundled apps exceed ClamAV's defaults. Treat exceeded limits
+          # as a failure too, rather than publishing files skipped by the scan.
+          clamscan --max-filesize=1024M --max-scansize=2048M \
+            --alert-exceeds-max=yes --log=virus-scan.txt \
+            release-files/KOTOR-Mod-Installer.exe \
+            release-files/KOTOR-Mod-Installer-linux-x86_64
+
+      - name: Keep antivirus report even if the scan fails
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-virus-scan
+          path: virus-scan.txt
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
@@ -219,5 +257,6 @@ jobs:
           files: |
             release-files/KOTOR-Mod-Installer.exe
             release-files/KOTOR-Mod-Installer-linux-x86_64
-          body_path: CHANGELOG.md
+            virus-scan.txt
+          body_path: release-notes.md
           fail_on_unmatched_files: true
