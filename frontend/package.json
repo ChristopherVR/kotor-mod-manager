@@ -4,7 +4,7 @@
   "engines": {
     "node": ">=20"
   },
-  "version": "0.19.4",
+  "version": "0.19.5",
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {

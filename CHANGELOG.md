@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.19.5] - 2026-10-17
+
+### Bug Fixes
+
+- Show the right release notes and Linux downloads, and scan app releases
 ## [0.19.4] - 2026-10-14
 
 ### Miscellaneous
