@@ -46,7 +46,7 @@ PyYAML==6.0.3
 rarfile==4.5
 requests==2.34.2
 SecretStorage==3.5.0
-soupsieve==2.10
+soupsieve==3.0.3
 starlette==1.7.0
 texttable==1.7.0
 typing-inspection==0.4.4
