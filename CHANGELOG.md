@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.19.8] - 2026-10-20
+
+### Bug Fixes
+
+- Keep Linux builds working with updated app components
 ## [0.19.7] - 2026-10-20
 
 ### Miscellaneous
