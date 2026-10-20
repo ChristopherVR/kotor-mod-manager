@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.6] - 2026-10-20
+
+### Miscellaneous
+
+- Keep release downloads building with updated tools
+- Keep mod downloads and installation tools up to date
+- Keep the app interface components up to date
 ## [0.19.5] - 2026-10-17
 
 ### Bug Fixes
