@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.19.7] - 2026-10-20
+
+### Miscellaneous
+
+- Keep mod page reading tools up to date
 ## [0.19.6] - 2026-10-20
 
 ### Miscellaneous
