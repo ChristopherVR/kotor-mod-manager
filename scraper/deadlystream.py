@@ -252,6 +252,41 @@ class DownloadError(Exception):
     pass
 
 
+def _login_http_problem(status: int) -> str:
+    """A plain explanation for an error status the sign-in got back."""
+    if status in (403, 429):
+        return ("DeadlyStream is refusing sign-ins right now, usually after too "
+                "many attempts. Wait a few minutes and try again.")
+    if status >= 500:
+        return "DeadlyStream is having trouble right now. Try again later."
+    return f"DeadlyStream answered with an error ({status}). Try again later."
+
+
+def _login_page_problem(html: str, form_missing: bool = False) -> str:
+    """Why a sign-in didn't go through, from the page the site sent back.
+    form_missing: the sign-in page itself came back without its form."""
+    soup = BeautifulSoup(html, "lxml")
+    msg = soup.select_one(".ipsMessage_error")
+    if msg:
+        text = " ".join(msg.get_text(" ").split())
+        if text:
+            return text[:300]
+    low = html.lower()
+    if "just a moment" in low or "cf-chl" in low or "attention required" in low:
+        return ("DeadlyStream is asking for a browser check. Open deadlystream.com "
+                "in your browser, then try again in a few minutes.")
+    if any(k in low for k in ("two-step verification", "two-factor", "_mfa", "mfa_")):
+        return ("Your DeadlyStream account uses two-step verification, which the "
+                "app can't complete. Turn it off in your DeadlyStream account "
+                "settings, or download the mods by hand.")
+    if form_missing:
+        return ("DeadlyStream's sign-in page didn't load properly. Try again in "
+                "a few minutes.")
+    return ("Sign-in failed. Check your username (or email) and password. If they "
+            "work on deadlystream.com, open the site once in your browser to "
+            "finish any steps it asks for, then try again.")
+
+
 # DeadlyStream answers a burst of requests with 403 (or 429/5xx). Requests to it
 # are paced across all downloads, and retried after a pause when it says so.
 _MIN_REQUEST_GAP = 0.4
@@ -314,51 +349,53 @@ class DeadlyStreamClient:
             return m.group(1)
         return None
 
+    def _signed_in_member(self) -> bool:
+        """Only a signed-in member gets a non-zero member id cookie. Guests
+        get session cookies too, so those prove nothing."""
+        return any("member_id" in c.name.lower() and c.value not in ("", "0")
+                   for c in self._session.cookies)
+
     def login(self, username: str, password: str) -> None:
         with self._lock:
-            # Get login page to grab CSRF
-            resp = self._session.get(LOGIN_URL, timeout=20)
-            resp.raise_for_status()
+            try:
+                resp = self._session.get(LOGIN_URL, timeout=20)
+                resp.raise_for_status()
 
-            csrf = self._extract_csrf(resp.text)
-            if not csrf:
-                raise AuthError("Could not find CSRF key on login page.")
+                csrf = self._extract_csrf(resp.text)
+                if not csrf:
+                    raise AuthError(_login_page_problem(resp.text, form_missing=True))
 
-            payload = {
-                "_processLogin": "usernamepassword",
-                "auth": username,
-                "password": password,
-                "csrfKey": csrf,
-                "remember_me": "1",
-            }
-            resp = self._session.post(LOGIN_URL, data=payload, timeout=20, allow_redirects=True)
-            resp.raise_for_status()
+                payload = {
+                    "_processLogin": "usernamepassword",
+                    "auth": username,
+                    "password": password,
+                    "csrfKey": csrf,
+                    "remember_me": "1",
+                }
+                resp = self._session.post(LOGIN_URL, data=payload, timeout=20,
+                                          allow_redirects=True)
+                resp.raise_for_status()
+            except requests.Timeout:
+                raise AuthError("DeadlyStream took too long to answer. Check your "
+                                "internet connection and try again.")
+            except requests.ConnectionError:
+                raise AuthError("Couldn't reach DeadlyStream. Check your internet "
+                                "connection and try again.")
+            except requests.HTTPError as e:
+                raise AuthError(_login_http_problem(e.response.status_code))
+            except requests.RequestException:
+                raise AuthError("Something went wrong talking to DeadlyStream. "
+                                "Try again in a few minutes.")
 
-            # A rejected login re-shows the form with the site's reason. Guests
-            # also get session cookies, so cookies alone prove nothing.
-            if "_processLogin" in resp.text:
-                m = re.search(r'ipsMessage_error[^>]*>\s*([^<]{5,200})', resp.text)
-                raise AuthError(
-                    (m.group(1).strip() if m else "") or
-                    "Login failed - check your username/password.")
-
-            # Check if login succeeded
-            if "sign_out" in resp.text.lower() or "logout" in resp.text.lower():
+            # Checked first: some accounts are signed in but land on a page
+            # that still shows a sign-in form (issue #100).
+            if self._signed_in_member():
                 self._logged_in = True
                 self._csrf_key = self._extract_csrf(resp.text)
                 return
 
-            # Only a signed-in member has a member id cookie.
-            for cookie in self._session.cookies:
-                if "member_id" in cookie.name.lower():
-                    self._logged_in = True
-                    self._csrf_key = self._extract_csrf(resp.text)
-                    return
-
-            raise AuthError(
-                "Login failed - check your username/password. "
-                "DeadlyStream may also be rate-limiting logins."
-            )
+            # A rejected login re-shows the form with the site's reason.
+            raise AuthError(_login_page_problem(resp.text))
 
     def ensure_logged_in(self, username: str = "", password: str = "") -> None:
         if self._logged_in:

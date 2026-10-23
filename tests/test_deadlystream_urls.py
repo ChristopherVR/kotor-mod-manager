@@ -434,3 +434,73 @@ def test_records_named_only_download_are_all_kept():
     from scraper.deadlystream import select_resolution_records
     recs = [{"name": "Download", "record_id": str(i)} for i in range(8)]
     assert select_resolution_records(recs, "1920x1080") == recs
+
+
+def _login_client(post_text, member_id=None, post_raises=None):
+    from scraper.deadlystream import DeadlyStreamClient
+
+    class Resp:
+        status_code = 200
+        def __init__(self, text): self.text = text
+        def raise_for_status(self): pass
+
+    c = DeadlyStreamClient()
+    c._session.get = lambda *a, **k: Resp('<input name="csrfKey" value="abc">')
+
+    def post(*a, **k):
+        if post_raises:
+            raise post_raises
+        if member_id is not None:
+            c._session.cookies.set("ips4_member_id", member_id)
+        return Resp(post_text)
+    c._session.post = post
+    c._session.cookies.set("ips4_IPSSessionFront", "guest")
+    return c
+
+
+def test_signed_in_member_on_a_page_with_a_sign_in_form_counts_as_signed_in():
+    """Issue #100: the site signed the player in (member cookie set) but the
+    page it landed on still had a sign-in form."""
+    c = _login_client('<form><input name="_processLogin"></form>', member_id="87012")
+    c.login("someone", "right")
+    assert c._logged_in is True
+
+
+def test_a_zero_member_id_is_not_a_sign_in():
+    import pytest
+    from scraper.deadlystream import AuthError
+    c = _login_client('<form><input name="_processLogin"></form>', member_id="0")
+    with pytest.raises(AuthError, match="Check your username"):
+        c.login("someone", "wrong")
+    assert c._logged_in is False
+
+
+def test_site_error_with_inline_markup_is_shown_whole():
+    import pytest
+    from scraper.deadlystream import AuthError
+    page = ('<p class="ipsMessage ipsMessage_error">Your account is <b>locked</b> '
+            'for 15 minutes.</p><input name="_processLogin">')
+    c = _login_client(page)
+    with pytest.raises(AuthError, match="Your account is locked for 15 minutes"):
+        c.login("someone", "wrong")
+
+
+def test_network_trouble_gets_a_plain_message():
+    import pytest
+    import requests
+    from scraper.deadlystream import AuthError
+    c = _login_client("", post_raises=requests.ConnectionError("boom"))
+    with pytest.raises(AuthError, match="Couldn't reach DeadlyStream"):
+        c.login("someone", "pw")
+
+
+def test_refused_sign_in_explains_waiting():
+    import pytest
+    import requests
+    from scraper.deadlystream import AuthError
+
+    class R:
+        status_code = 429
+    c = _login_client("", post_raises=requests.HTTPError(response=R()))
+    with pytest.raises(AuthError, match="Wait a few minutes"):
+        c.login("someone", "pw")
