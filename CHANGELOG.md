@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.19.9] - 2026-10-23
+
+### Bug Fixes
+
+- Stop DeadlyStream sign-in saying it failed when it actually worked
 ## [0.19.8] - 2026-10-20
 
 ### Bug Fixes
