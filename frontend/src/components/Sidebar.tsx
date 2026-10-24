@@ -4,7 +4,10 @@ import { NavItem } from "@/components/NavItem";
 import { AccountMenu } from "@/components/AccountMenu";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Moon, Sun } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 import { useT } from "@/lib/i18n";
+import { resolvedTheme, useTheme } from "@/lib/theme";
 
 interface SidebarProps {
   active: ViewId;
@@ -24,15 +27,29 @@ export function Sidebar({
   onSignIn, onSignOut, onOpenAccount,
 }: SidebarProps) {
   const t = useT();
+  const [theme, setTheme] = useTheme();
+  const isDark = resolvedTheme(theme) === "dark";
   const navItems = NAV_ITEMS.filter((n) => n.id !== "settings");
   const settingsItem = NAV_ITEMS.find((n) => n.id === "settings")!;
 
   return (
     <aside className="flex h-full w-48 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       {/* Brand */}
-      <div className="px-5 py-6">
-        <p className="truncate font-semibold text-foreground">{t("brand.title")}</p>
-        {status && <p className="text-xs text-muted-foreground">v{status.version}</p>}
+      <div className="flex items-start gap-2 px-5 py-6">
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-foreground">{t("brand.title")}</p>
+          {status && <p className="text-xs text-muted-foreground">v{status.version}</p>}
+        </div>
+        <Tooltip content={isDark ? t("theme.switchToLight") : t("theme.switchToDark")} side="bottom">
+          <button
+            type="button"
+            onClick={() => setTheme(isDark ? "light" : "dark")}
+            aria-label={isDark ? t("theme.switchToLight") : t("theme.switchToDark")}
+            className="-mr-1.5 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          >
+            {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
+          </button>
+        </Tooltip>
       </div>
 
       {/* Nav (incl. Settings, all above the account footer) */}

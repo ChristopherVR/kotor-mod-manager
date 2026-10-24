@@ -182,6 +182,8 @@ export const de: Dict = {
   "settings.general.sound": "Ton",
   "settings.general.uiSounds": "Menü-Klickgeräusche",
   "settings.general.uiSoundsHint": "Spiele den klassischen KOTOR-Klick bei Schaltflächen und Menüs ab. Standardmäßig aus.",
+  "settings.general.appearance": "Darstellung",
+  "settings.general.appearanceHint": "Dunkel, hell oder wie in Windows eingestellt. Du kannst auch mit dem Sonne/Mond-Knopf in der Seitenleiste wechseln.",
 
   // Settings → Game installs
   "settings.installs.title": "Spielinstallationen",
@@ -265,6 +267,11 @@ export const de: Dict = {
   // What's New
   "whatsNew.title": "Neu in v{version}",
   "whatsNew.gotIt": "Verstanden",
+  "theme.dark": "Dunkel",
+  "theme.light": "Hell",
+  "theme.system": "Wie Windows",
+  "theme.switchToLight": "Zum hellen Modus wechseln",
+  "theme.switchToDark": "Zum dunklen Modus wechseln",
   "builds.refreshHint": "Die Mod-Liste aus der Anleitung aktualisieren.",
   "builds.manualDownloadHint": "Von {source} herunterladen, das Archiv im Download-Ordner dieses Mods ablegen und erneut versuchen.",
   "modDetail.sourcePage": "Mod-Seite öffnen",

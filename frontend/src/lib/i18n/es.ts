@@ -182,6 +182,8 @@ export const es: Dict = {
   "settings.general.sound": "Sonido",
   "settings.general.uiSounds": "Sonidos de clic del menú",
   "settings.general.uiSoundsHint": "Reproduce el clic clásico de KOTOR al usar botones y menús. Desactivado por defecto.",
+  "settings.general.appearance": "Apariencia",
+  "settings.general.appearanceHint": "Oscuro, claro o igual que Windows. También puedes cambiarlo con el botón de sol/luna de la barra lateral.",
 
   // Settings → Game installs
   "settings.installs.title": "Instalaciones de juego",
@@ -265,6 +267,11 @@ export const es: Dict = {
   // What's New
   "whatsNew.title": "Novedades de la v{version}",
   "whatsNew.gotIt": "Entendido",
+  "theme.dark": "Oscuro",
+  "theme.light": "Claro",
+  "theme.system": "Igual que Windows",
+  "theme.switchToLight": "Cambiar a modo claro",
+  "theme.switchToDark": "Cambiar a modo oscuro",
   "builds.refreshHint": "Consultar la guía para actualizar la lista de mods.",
   "builds.manualDownloadHint": "Descarga desde {source}, coloca el archivo en la carpeta de descarga del mod y vuelve a intentarlo.",
   "modDetail.sourcePage": "Abrir página del mod",

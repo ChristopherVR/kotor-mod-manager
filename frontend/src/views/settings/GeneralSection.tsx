@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useLanguage, LOCALES, type Locale } from "@/lib/i18n";
 import { isUiSoundEnabled, setUiSoundEnabled, playClick } from "@/lib/sound";
+import { useTheme, type Theme } from "@/lib/theme";
 
 const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "", language: "en", custom_patcher_path: "", nexus_api_key: "", preferred_resolution: "" };
 
@@ -19,6 +20,7 @@ interface GeneralSectionProps {
 
 export function GeneralSection({ addLog }: GeneralSectionProps) {
   const { t, locale, setLocale } = useLanguage();
+  const [theme, setTheme] = useTheme();
   const [s, setS] = useState<Settings>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -114,6 +116,24 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
             </Select>
             <p className="text-xs text-muted-foreground">{t("settings.general.languageHint")}</p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>{t("settings.general.appearance")}</CardTitle></CardHeader>
+        <CardContent className="space-y-1.5">
+          <Select
+            id="theme"
+            value={theme}
+            onChange={(e) => setTheme(e.target.value as Theme)}
+            className="max-w-[16rem]"
+            aria-label={t("settings.general.appearance")}
+          >
+            <option value="dark">{t("theme.dark")}</option>
+            <option value="light">{t("theme.light")}</option>
+            <option value="system">{t("theme.system")}</option>
+          </Select>
+          <p className="text-xs text-muted-foreground">{t("settings.general.appearanceHint")}</p>
         </CardContent>
       </Card>
 
