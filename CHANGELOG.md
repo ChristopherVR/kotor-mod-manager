@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.20.0] - 2026-10-24
+
+### Features
+
+- Warn before big Nexus installs and pause Nexus when its download limit is hit
 ## [0.19.10] - 2026-10-24
 
 ### Bug Fixes
