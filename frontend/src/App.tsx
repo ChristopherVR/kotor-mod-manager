@@ -7,6 +7,7 @@ import { DEFAULT_RUNTIME, type ModRuntime } from "@/components/ModList";
 import { type LogLine } from "@/components/LogPanel";
 import { LoginDialog } from "@/components/LoginDialog";
 import { WhatsNew } from "@/components/WhatsNew";
+import { SetupWizard } from "@/components/SetupWizard";
 import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { AppShell } from "@/layouts/AppShell";
 import { useT } from "@/lib/i18n";
@@ -77,6 +78,7 @@ export default function App() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [activeProfile, setActiveProfile] = useState<string>("");
   const [whatsNew, setWhatsNew] = useState<{ version: string; notes: string } | null>(null);
+  const [showSetup, setShowSetup] = useState(false);
 
   const logId = useRef(0);
   const addLog = useCallback((message: string, tag = "") => {
@@ -149,6 +151,9 @@ export default function App() {
           if (u.available) addLog(`Update available: v${u.latest_version} - see Settings.`, "info");
         })
         .catch(() => {});
+      // A fresh install gets the first-run setup instead of the release notes.
+      const setup = await api.setupState().catch(() => ({ show: false }));
+      if (setup.show) { setShowSetup(true); return; }
       // Show the "What's New" dialog once per version (backend tracks "seen").
       api.whatsNew()
         .then((w) => {
@@ -157,6 +162,12 @@ export default function App() {
         .catch(() => { /* gracefully skip if unavailable */ });
     })();
   }, [addLog, refreshProfiles]);
+
+  const finishSetup = useCallback(() => {
+    setShowSetup(false);
+    api.setupDone().catch(() => {});
+    refreshStatus();
+  }, [refreshStatus]);
 
   const closeWhatsNew = useCallback(() => {
     setWhatsNew(null);
@@ -387,6 +398,7 @@ export default function App() {
           refreshProfiles={refreshProfiles}
           section={settingsSection}
           setSection={setSettingsSection}
+          onRunSetup={() => setShowSetup(true)}
         />
       </div>}
 
@@ -394,6 +406,17 @@ export default function App() {
         open={showLogin}
         onClose={() => setShowLogin(false)}
         onLoggedIn={(u) => { setUsername(u); refreshStatus(); }}
+      />
+
+      <SetupWizard
+        open={showSetup}
+        onFinish={finishSetup}
+        loggedIn={!!status?.logged_in}
+        username={username}
+        onLoggedIn={(u) => { setUsername(u); refreshStatus(); }}
+        profiles={profiles}
+        refreshProfiles={refreshProfiles}
+        addLog={addLog}
       />
 
       <ConfirmDialog

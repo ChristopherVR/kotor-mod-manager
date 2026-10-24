@@ -442,6 +442,25 @@ def whatsnew_seen() -> dict:
     return {"ok": True}
 
 
+@app.get("/api/setup")
+def setup_state() -> dict:
+    """Whether to show the first-run setup. Players who used the app before it
+    existed already have things set up, so they are not sent through it."""
+    conf = cfg.load()
+    existing_user = bool(conf.get("last_seen_version"))
+    return {"show": not conf.get("setup_done") and not existing_user}
+
+
+@app.post("/api/setup/done")
+def setup_done() -> dict:
+    conf = cfg.load()
+    conf["setup_done"] = True
+    # The first-run setup stands in for the release notes on a fresh install.
+    conf["last_seen_version"] = __version__
+    cfg.save(conf)
+    return {"ok": True}
+
+
 @app.post("/api/update/download")
 def update_download() -> dict:
     """

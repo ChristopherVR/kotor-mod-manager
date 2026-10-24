@@ -371,6 +371,8 @@ export const api = {
     req<{ ok: boolean; path?: string; version?: string }>("/api/update/download", { method: "POST" }),
   whatsNew: () => req<{ version: string; notes: string; show: boolean }>("/api/whatsnew"),
   whatsNewSeen: () => req<{ ok: boolean }>("/api/whatsnew/seen", { method: "POST" }),
+  setupState: () => req<{ show: boolean }>("/api/setup"),
+  setupDone: () => req<{ ok: boolean }>("/api/setup/done", { method: "POST" }),
 };
 
 export interface UpdateInfo {

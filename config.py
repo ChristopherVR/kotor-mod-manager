@@ -22,6 +22,8 @@ DEFAULTS = {
     "keep_archives": True,
     "language": "en",
     "last_seen_version": "",
+    # Set once the player has been through (or skipped) the first-run setup.
+    "setup_done": False,
     # Optional path to a user-supplied headless patcher exe (overrides the
     # bundled HoloPatcher). Must be HoloPatcher-CLI-compatible.
     "custom_patcher_path": "",

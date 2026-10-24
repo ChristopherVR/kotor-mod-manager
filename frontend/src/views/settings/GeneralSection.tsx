@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Wand2 } from "lucide-react";
 import { api, type Settings } from "@/lib/api";
 import { pickDirectory } from "@/lib/tauri";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,9 +16,10 @@ const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "", la
 
 interface GeneralSectionProps {
   addLog: (message: string, tag?: string) => void;
+  onRunSetup: () => void;
 }
 
-export function GeneralSection({ addLog }: GeneralSectionProps) {
+export function GeneralSection({ addLog, onRunSetup }: GeneralSectionProps) {
   const { t, locale, setLocale } = useLanguage();
   const [theme, setTheme] = useTheme();
   const [s, setS] = useState<Settings>(EMPTY);
@@ -134,6 +135,18 @@ export function GeneralSection({ addLog }: GeneralSectionProps) {
             <option value="system">{t("theme.system")}</option>
           </Select>
           <p className="text-xs text-muted-foreground">{t("settings.general.appearanceHint")}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>{t("settings.general.setup")}</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-xs text-muted-foreground">{t("settings.general.setupHint")}</p>
+            <Button variant="outline" size="sm" onClick={onRunSetup}>
+              <Wand2 /> {t("settings.general.runSetup")}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

@@ -31,12 +31,13 @@ interface SettingsViewProps {
   refreshProfiles: () => Promise<void> | void;
   section: SectionId;
   setSection: (s: SectionId) => void;
+  onRunSetup: () => void;
 }
 
 export function SettingsView({
   status, username, onSignIn, onSignOut, addLog,
   profiles, activeProfile, setActiveProfile, refreshProfiles,
-  section, setSection,
+  section, setSection, onRunSetup,
 }: SettingsViewProps) {
   const t = useT();
   const [visited, setVisited] = useState(() => new Set<SectionId>([section]));
@@ -75,7 +76,7 @@ export function SettingsView({
         {/* Content */}
         <div className="min-h-0 flex-1 overflow-auto p-6">
           <div className="max-w-2xl space-y-6">
-            {visited.has("general") && <div hidden={section !== "general"}><GeneralSection addLog={addLog} /></div>}
+            {visited.has("general") && <div hidden={section !== "general"}><GeneralSection addLog={addLog} onRunSetup={onRunSetup} /></div>}
             {visited.has("installs") && <div hidden={section !== "installs"}>
               <GameInstallsSection
                 profiles={profiles}
