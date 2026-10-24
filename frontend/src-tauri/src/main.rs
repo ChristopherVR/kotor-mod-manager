@@ -39,6 +39,8 @@ fn extract_backend() -> std::path::PathBuf {
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.join(format!("kotor-backend-{}{}", VERSION, BACKEND_SUFFIX));
 
+    remove_stale_backends(&dir, &path);
+
     // (Re)write only if missing or a different size (e.g. after an update).
     let need_write = match std::fs::metadata(&path) {
         Ok(meta) => meta.len() != BACKEND_BYTES.len() as u64,
@@ -99,7 +101,42 @@ fn stop_backend(mut child: Child) {
     }
     #[cfg(not(unix))]
     {
+        // Kill the whole tree: the PyInstaller worker is what holds the port.
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
         let _ = child.kill();
+    }
+}
+
+/// Stop backends left over from other versions (e.g. after an update) and
+/// delete their files, so a stale one cannot keep the port and answer for us.
+fn remove_stale_backends(dir: &std::path::Path, keep: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if p == keep || !name.starts_with("kotor-backend-") {
+            continue;
+        }
+        #[cfg(windows)]
+        {
+            let _ = Command::new("taskkill")
+                .args(["/IM", &name, "/T", "/F"])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status();
+        }
+        #[cfg(unix)]
+        {
+            let _ = Command::new("pkill").args(["-f", &p.display().to_string()]).status();
+        }
+        for _ in 0..5 {
+            if std::fs::remove_file(&p).is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
     }
 }
 
