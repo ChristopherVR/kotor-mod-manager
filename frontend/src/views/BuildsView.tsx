@@ -33,7 +33,6 @@ interface BuildsViewProps {
   setMods: (mods: BuildMod[]) => void;
   runtime: Record<string, ModRuntime>;
   resetRuntime: () => void;
-  activeFileId: string | null;
   running: boolean;
   paused: boolean;
   overall: number;
@@ -53,7 +52,7 @@ interface BuildsViewProps {
 export function BuildsView(props: BuildsViewProps) {
   const {
     ready, loggedIn, builds, refreshBuilds, selectedBuild, onSelectBuild, mods, setMods, runtime,
-    resetRuntime, activeFileId, running, paused, overall, done, errors, manual, markManualDone,
+    resetRuntime, running, paused, overall, done, errors, manual, markManualDone,
     patcherMod, clearPatcher, addLog, setRunning, setPaused, requestLogin, activeProfile,
   } = props;
 
@@ -421,7 +420,6 @@ export function BuildsView(props: BuildsViewProps) {
           <ModList
             mods={visibleMods}
             runtime={runtime}
-            activeFileId={activeFileId}
             onOpenMod={setOpenMod}
             onContextMenu={(e: MouseEvent, mod) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, mod }); }}
             selectable={!running}

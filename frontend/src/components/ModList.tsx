@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { FolderOpen, CheckCircle2, FileText } from "lucide-react";
 import type { BuildMod, ModStatus } from "@/lib/api";
 import { STATUS_META, ACTIVE_STATUSES } from "@/lib/status";
@@ -172,10 +172,12 @@ function Row({
   );
 }
 
+/** How long the list leaves the scroll position alone after the player scrolls it. */
+const USER_SCROLL_PAUSE_MS = 10_000;
+
 export function ModList({
   mods,
   runtime,
-  activeFileId,
   onOpenMod,
   onContextMenu,
   selectable,
@@ -186,7 +188,6 @@ export function ModList({
 }: {
   mods: BuildMod[];
   runtime: Record<string, ModRuntime>;
-  activeFileId: string | null;
   onOpenMod?: (mod: BuildMod) => void;
   onContextMenu?: (e: MouseEvent, mod: BuildMod) => void;
   selectable?: boolean;
@@ -198,12 +199,32 @@ export function ModList({
   const t = useT();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll the active mod into view.
+  const userScrolledAt = useRef(0);
+  const noteUserScroll = () => { userScrolledAt.current = Date.now(); };
+
+  // Keep the earliest mod still in progress in view. Several mods download at
+  // once, so following whichever one reported last made the list jump back and
+  // forth between them; the earliest one only ever moves down the list.
+  const followId = useMemo(
+    () => mods.find((m) => ACTIVE_STATUSES.includes(runtime[m.file_id]?.status))?.file_id ?? null,
+    [mods, runtime],
+  );
+
   useEffect(() => {
-    if (!activeFileId || !containerRef.current) return;
-    const el = containerRef.current.querySelector(`[data-fileid="${activeFileId}"]`);
-    el?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [activeFileId]);
+    const box = containerRef.current;
+    if (!followId || !box) return;
+    // Leave the list alone while the player is looking through it themselves.
+    if (Date.now() - userScrolledAt.current < USER_SCROLL_PAUSE_MS) return;
+    const el = box.querySelector<HTMLElement>(`[data-fileid="${CSS.escape(followId)}"]`);
+    if (!el) return;
+    // Scroll only this list. scrollIntoView would also scroll every container
+    // around it, shifting the whole screen.
+    const b = box.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const gap = 8;
+    if (r.top < b.top) box.scrollTo({ top: box.scrollTop + r.top - b.top - gap, behavior: "smooth" });
+    else if (r.bottom > b.bottom) box.scrollTo({ top: box.scrollTop + r.bottom - b.bottom + gap, behavior: "smooth" });
+  }, [followId]);
 
   if (mods.length === 0) {
     return (
@@ -214,7 +235,14 @@ export function ModList({
   }
 
   return (
-    <div ref={containerRef} className="h-full space-y-0.5 overflow-auto pr-1">
+    <div
+      ref={containerRef}
+      className="h-full space-y-0.5 overflow-auto pr-1"
+      onWheel={noteUserScroll}
+      onTouchMove={noteUserScroll}
+      onPointerDown={noteUserScroll}
+      onKeyDown={noteUserScroll}
+    >
       {mods.map((m) => (
         <Row
           key={m.file_id}

@@ -63,7 +63,6 @@ export default function App() {
   const [logs, setLogs] = useState<LogLine[]>([]);
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [patcherMod, setPatcherMod] = useState<string | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null);
@@ -193,7 +192,6 @@ export default function App() {
         setNxmHandler(e.active);
         break;
       case "status": {
-        setActiveFileId(e.file_id);
         if (e.status === "WAITING_PATCHER") setPatcherMod(e.file_id);
         else if (FINAL.has(e.status) && patcherRef.current === e.file_id) setPatcherMod(null);
         setRuntime((prev) => ({
@@ -231,7 +229,6 @@ export default function App() {
         setConfirmReq({ id: e.id, title: e.title, body: e.body, options: e.options });
         break;
       case "manual":
-        setActiveFileId(e.file_id);
         setRuntime((prev) => ({
           ...prev,
           [e.file_id]: {
@@ -260,7 +257,7 @@ export default function App() {
       case "pipeline":
         if (e.event === "started") { setRunning(true); setPaused(false); }
         else if (e.event === "finished") {
-          setRunning(false); setPaused(false); setActiveFileId(null); setPatcherMod(null);
+          setRunning(false); setPaused(false); setPatcherMod(null);
           addLog(
             `Finished: ${e.done}/${e.total} installed` +
               (e.manual ? `, ${e.manual} need a manual step` : "") +
@@ -334,7 +331,6 @@ export default function App() {
           setMods={setMods}
           runtime={runtime}
           resetRuntime={resetRuntime}
-          activeFileId={activeFileId}
           running={running}
           paused={paused}
           overall={overall}
