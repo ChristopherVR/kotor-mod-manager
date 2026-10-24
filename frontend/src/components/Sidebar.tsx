@@ -36,7 +36,7 @@ export function Sidebar({
       </div>
 
       {/* Nav (incl. Settings, all above the account footer) */}
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3">
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
         {navItems.map((item) => {
           let trailing: React.ReactNode = null;
           if (item.id === "conflicts" && conflictCount > 0) {
