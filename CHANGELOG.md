@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.19.10] - 2026-10-24
+
+### Bug Fixes
+
+- Make updates always launch the new version instead of the old one
 ## [0.19.9] - 2026-10-23
 
 ### Bug Fixes
