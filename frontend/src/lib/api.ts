@@ -1,7 +1,8 @@
 // REST + WebSocket client for the local FastAPI backend (the Tauri sidecar).
 
 export const BACKEND_HOST = "127.0.0.1";
-export const BACKEND_PORT = 8756;
+// VITE_BACKEND_PORT lets a dev copy run beside an installed app that holds 8756.
+export const BACKEND_PORT = Number(import.meta.env.VITE_BACKEND_PORT) || 8756;
 export const BASE = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
 const WS_URL = `ws://${BACKEND_HOST}:${BACKEND_PORT}/ws`;
 
