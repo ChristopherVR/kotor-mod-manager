@@ -18,6 +18,9 @@ import { cn } from "@/lib/utils";
 import { useConfirm } from "@/components/useConfirm";
 import { useT } from "@/lib/i18n";
 
+/** How many Nexus mods in one install before the player is warned about Nexus's limits. */
+const NEXUS_LIMIT_WARN_AT = 15;
+
 interface BuildsViewProps {
   active: boolean;
   ready: boolean;
@@ -200,6 +203,14 @@ export function BuildsView(props: BuildsViewProps) {
     if (selectedCount === 0) { addLog(t("builds.selectNoneWarn"), "warning"); return; }
     setInstallError(null);
     const fileIds = Array.from(selected);
+    // Nexus caps how much an account can fetch per hour and per day, so a big
+    // build may need a second sitting. Say so before it starts.
+    const nexusCount = mods.filter((m) => selected.has(m.file_id) && m.source_host === "nexus").length;
+    if (nexusCount >= NEXUS_LIMIT_WARN_AT && !(await confirm({
+      message: t("builds.nexusLimitWarn", { count: nexusCount }),
+      confirmLabel: t("builds.nexusLimitContinue"),
+      variant: "default",
+    }))) return;
     try {
       await api.startInstall(selectedBuild, undefined, fileIds);
       setRunning(true);

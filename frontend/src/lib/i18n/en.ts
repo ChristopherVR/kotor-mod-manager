@@ -71,6 +71,8 @@ export const en: Dict = {
   "builds.overall": "Progress",
   "builds.loadList": "Refresh list",
   "builds.loading": "Loading…",
+  "builds.nexusLimitWarn": "{count} of these mods come from Nexus Mods. Nexus limits how much each account can download per hour and per day, so this may not finish in one go.\n\nIf Nexus stops the downloads, the app pauses the Nexus mods and keeps going with everything else. Wait a few hours, then press Install again to finish the rest. Nothing already downloaded is lost.",
+  "builds.nexusLimitContinue": "Start installing",
   "builds.installAll": "Install all mods",
   "builds.installSelected": "Install {count} mods",
   "builds.importFolder": "Import folder",
@@ -265,6 +267,7 @@ export const en: Dict = {
   "settings.nexus.placeholder": "Paste your Nexus personal API key",
   "settings.nexus.saving": "Saving…",
   "settings.nexus.valid": "Key valid - signed in as {name}",
+  "settings.nexus.allowance": "Nexus allowance left: {daily} today, {hourly} this hour.",
   "settings.nexus.invalid": "Key invalid or could not be verified.",
 
   // Settings → Account: mod build source (scraping) site

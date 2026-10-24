@@ -53,6 +53,8 @@ export const es: Dict = {
   "builds.overall": "Total",
   "builds.loadList": "Actualizar lista",
   "builds.loading": "Cargando…",
+  "builds.nexusLimitWarn": "{count} de estos mods vienen de Nexus Mods. Nexus limita cuánto puede descargar cada cuenta por hora y por día, así que puede que no termine de una vez.\n\nSi Nexus detiene las descargas, la app pausa los mods de Nexus y sigue con todo lo demás. Espera unas horas y pulsa Instalar de nuevo para terminar el resto. No se pierde nada de lo ya descargado.",
+  "builds.nexusLimitContinue": "Empezar a instalar",
   "builds.installAll": "Descargar e instalar todo",
   "builds.installSelected": "Descargar e instalar ({count})",
   "builds.importFolder": "Instalar desde carpeta…",
@@ -211,6 +213,7 @@ export const es: Dict = {
   "settings.nexus.placeholder": "Pega tu clave de API personal de Nexus",
   "settings.nexus.saving": "Guardando…",
   "settings.nexus.valid": "Clave válida - sesión iniciada como {name}",
+  "settings.nexus.allowance": "Cuota de Nexus restante: {daily} hoy, {hourly} esta hora.",
   "settings.nexus.invalid": "Clave no válida o no se pudo verificar.",
 
   // Settings → Patcher

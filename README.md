@@ -79,6 +79,10 @@ under "Personal API Key", and paste it into **Settings → Nexus**).
   each Nexus mod's page in turn. Click **Mod manager download** on each one,
   and the downloads then run by themselves.
 
+Nexus also caps how much an account can download per hour and per day. If a
+large build runs into that, wait a while and press Install again to finish the
+rest (see the FAQ below).
+
 MEGA, Google Drive, GitHub and direct links download automatically. For sites
 the app can't download from (marked with a badge), download the file yourself
 and drop it into your download folder.
@@ -144,6 +148,13 @@ mod content of its own.
 **Does it bundle anything I would otherwise have to install?**
 Yes. The Python backend and the HoloPatcher engine are embedded inside the single
 `.exe`. You do not download or drop in anything extra.
+
+**Nexus stopped downloading partway through a big build. What now?**
+Nexus Mods limits how much each account can download per hour and per day, so a
+large build (the KOTOR 1 build has dozens of Nexus mods) may not finish in one
+sitting. Nothing is lost: wait a few hours, or until the next day, then press
+Install again. Mods that already downloaded are kept and the app carries on with
+the rest. A Premium account has much higher limits.
 
 **Will it mess up my game?**
 Loose-file mods can be turned off and fully restored. Patcher-based mods change

@@ -190,6 +190,9 @@ class Pipeline:
         # Free Nexus accounts: the clicks are collected ahead of the downloads.
         self._nexus_lock = threading.Lock()
         self._nexus_chosen_cache: dict = {}
+        # Set once Nexus refuses for being over its limit; the rest of the Nexus
+        # mods then wait for a later run instead of each asking and failing.
+        self._nexus_limit_msg = ""
         self._nxm_links: dict = {}            # (game, mod, file) -> link clicked ahead
         self._nxm_pending_mods: set = set()   # mods the click queue still means to ask about
         self._nxm_queue_done = threading.Event()
@@ -915,10 +918,15 @@ class Pipeline:
                         if self._stop_event.is_set():
                             return
                         mod_id = self._nexus_mod_id(mod)
+                        if self._nexus_limit_msg:
+                            return
                         if mod_id is None or pm.status in skip:
                             continue
                         try:
                             chosen = self._nexus_chosen(pm, mod_id, key)
+                        except nexus.NexusRateLimited as e:
+                            self._pause_nexus(str(e))
+                            return
                         except Exception:
                             continue  # the download reports the real problem
                         for f in chosen:
@@ -1027,6 +1035,10 @@ class Pipeline:
             self._log(f"  {msg}", "error")
             return None
 
+        if self._nexus_limit_msg:
+            pm.error = self._nexus_limit_msg
+            self._set_status(pm, ModStatus.ERROR, "Paused: Nexus limit reached, press Install later")
+            return None
         mod_id = self._nexus_mod_id(mod)
         if mod_id is None:
             return fail(f"Could not find this mod's Nexus page ({mod.url or 'no link'}).")
@@ -1078,8 +1090,21 @@ class Pipeline:
             if e.code in (401, 403):
                 return fail("Nexus rejected your API key. Check it in Settings.")
             return fail(f"Nexus returned an error (HTTP {e.code}).")
+        except nexus.NexusRateLimited as e:
+            self._pause_nexus(str(e))
+            return fail(str(e))
         except (nexus.NexusDownloadError, urllib.error.URLError, OSError) as e:
             return fail(f"Nexus download failed: {e}")
+
+    def _pause_nexus(self, msg: str) -> None:
+        """Nexus said the account is over its limit: stop asking it for more this
+        run. Other sites carry on, and the paused mods download on the next Install."""
+        with self._nexus_lock:
+            if self._nexus_limit_msg:
+                return
+            self._nexus_limit_msg = msg
+        self._log(f"Nexus: {msg} The other downloads carry on; the remaining "
+                  f"Nexus mods are paused until then.", "warning")
 
     # Cache bookkeeping for downloaded archives -------------------------------
 

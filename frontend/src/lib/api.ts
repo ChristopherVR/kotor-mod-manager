@@ -68,6 +68,8 @@ export interface NexusValidation {
   ok: boolean;
   name?: string;
   is_premium?: boolean;
+  /** What Nexus last reported about this account's allowance (absent if not sent). */
+  limits?: { hourly_remaining?: number; daily_remaining?: number };
   error?: string;
 }
 

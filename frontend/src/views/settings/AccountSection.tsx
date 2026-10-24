@@ -159,6 +159,14 @@ export function AccountSection({ status, username, onSignIn, onSignOut, addLog }
               </Button>
             </div>
           </div>
+          {validation?.ok && validation.limits?.daily_remaining !== undefined && (
+            <p className="text-xs text-muted-foreground">
+              {t("settings.nexus.allowance", {
+                daily: validation.limits.daily_remaining,
+                hourly: validation.limits.hourly_remaining ?? "?",
+              })}
+            </p>
+          )}
           {validation && (
             validation.ok ? (
               <p className="flex items-center gap-1.5 text-xs text-[hsl(var(--success))]">

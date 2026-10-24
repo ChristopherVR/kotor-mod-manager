@@ -67,6 +67,59 @@ class NexusAuthError(Exception):
 class NexusDownloadError(Exception):
     pass
 
+
+class NexusRateLimited(NexusDownloadError):
+    """Nexus answered HTTP 429: this account has used up its request allowance."""
+
+
+# Nexus reports the allowance on every API response (X-RL-Hourly-* and
+# X-RL-Daily-*: Limit, Remaining, Reset). The latest values seen are kept here.
+_limits: dict = {}
+_limits_lock = threading.Lock()
+
+
+def _note_limits(headers) -> None:
+    """Remember the rate-limit headers of a response, if Nexus sent any."""
+    if headers is None:
+        return
+    seen = {}
+    for period in ("hourly", "daily"):
+        for field in ("limit", "remaining", "reset"):
+            v = headers.get(f"X-RL-{period.capitalize()}-{field.capitalize()}")
+            if v is not None:
+                seen[f"{period}_{field}"] = v.strip()
+    if seen:
+        with _limits_lock:
+            _limits.update(seen)
+
+
+def rate_limits() -> dict:
+    """What Nexus last said about this account's allowance. Counts are ints and
+    reset times are the raw strings Nexus sent; absent keys were never reported."""
+    with _limits_lock:
+        snap = dict(_limits)
+    for k in list(snap):
+        if not k.endswith("_reset"):
+            try:
+                snap[k] = int(snap[k])
+            except ValueError:
+                del snap[k]
+    return snap
+
+
+def _rate_limited_error() -> NexusRateLimited:
+    """The error for a 429, naming the window that ran out when Nexus said so."""
+    lim = rate_limits()
+    if lim.get("hourly_remaining") == 0:
+        when = "within the hour"
+    elif lim.get("daily_remaining") == 0:
+        when = "tomorrow (the daily limit resets overnight)"
+    else:
+        when = "in a few hours"
+    return NexusRateLimited(
+        f"Nexus has hit its download limit for your account. Try again {when} "
+        "by pressing Install. Mods already downloaded are kept.")
+
 # KOTOR game identifiers on Nexus.
 GAME_ID = {"KOTOR1": 234, "KOTOR2": 198}
 GAME_DOMAIN = {"KOTOR1": "kotor", "KOTOR2": "kotor2"}
@@ -78,8 +131,15 @@ def _get_json(url: str, key: str, timeout: int = 10) -> Optional[dict | list]:
         "User-Agent": _UA,
         "Accept": "application/json",
     })
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            _note_limits(r.headers)
+            return json.loads(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        _note_limits(e.headers)
+        if e.code == 429:
+            raise _rate_limited_error() from e
+        raise
 
 
 def validate(key: str) -> dict:
@@ -90,7 +150,8 @@ def validate(key: str) -> dict:
         data = _get_json(f"{_API}/users/validate.json", key)
         if isinstance(data, dict) and data.get("name"):
             return {"ok": True, "name": data["name"],
-                    "is_premium": bool(data.get("is_premium"))}
+                    "is_premium": bool(data.get("is_premium")),
+                    "limits": rate_limits()}
         return {"ok": False, "error": "invalid"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -260,6 +321,8 @@ def download_link(game: str, mod_id: int, file_id: int, api_key: str,
             ) from e
         if e.code == 401:
             raise NexusAuthError("Nexus rejected the API key.") from e
+        if e.code == 429:
+            raise _rate_limited_error() from e
         raise NexusDownloadError(f"Nexus returned HTTP {e.code}.") from e
     if isinstance(data, list) and data:
         uri = data[0].get("URI")

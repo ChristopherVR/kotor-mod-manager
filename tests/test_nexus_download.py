@@ -59,6 +59,40 @@ def test_free_account_403_explains_the_tier_limit(monkeypatch):
     assert "premium" in msg and "mod manager download" in msg
 
 
+def test_rate_limit_tells_the_player_to_wait_and_retry(monkeypatch):
+    monkeypatch.setattr(nexus, "_get_json",
+                        lambda *a, **k: (_ for _ in ()).throw(_http_error(429)))
+    with pytest.raises(nexus.NexusDownloadError, match="download limit"):
+        nexus.download_link("KOTOR1", 1364, 2213, "apikey")
+
+
+def test_limit_headers_are_read_and_a_429_names_the_window(monkeypatch):
+    monkeypatch.setattr(nexus, "_limits", {})
+    hdrs = {"X-RL-Hourly-Remaining": "0", "X-RL-Daily-Remaining": "1800",
+            "X-RL-Hourly-Reset": "2026-10-24 12:00:00 +0000"}
+
+    def boom(*a, **k):
+        raise urllib.error.HTTPError("u", 429, "Too Many", hdrs, io.BytesIO())
+
+    monkeypatch.setattr(nexus.urllib.request, "urlopen", boom)
+    with pytest.raises(nexus.NexusRateLimited, match="within the hour"):
+        nexus._get_json("https://x", "key")
+    assert nexus.rate_limits()["daily_remaining"] == 1800
+
+
+def test_a_rate_limited_mod_pauses_nexus_for_the_rest_of_the_run():
+    from installer.pipeline import Pipeline
+    p = Pipeline.__new__(Pipeline)
+    import threading
+    p._nexus_lock = threading.Lock()
+    p._nexus_limit_msg = ""
+    logs = []
+    p._log = lambda msg, level="info": logs.append(msg)
+    p._pause_nexus("over the limit.")
+    p._pause_nexus("again")
+    assert p._nexus_limit_msg == "over the limit." and len(logs) == 1
+
+
 def test_bad_key_is_reported_as_a_rejected_key(monkeypatch):
     monkeypatch.setattr(nexus, "_get_json",
                         lambda *a, **k: (_ for _ in ()).throw(_http_error(401)))

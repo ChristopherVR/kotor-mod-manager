@@ -6,6 +6,8 @@ import { useT } from "@/lib/i18n";
 interface ConfirmOptions {
   message: string;
   confirmLabel: string;
+  /** Red button for destructive actions (the default); "default" for plain warnings. */
+  variant?: "destructive" | "default";
 }
 
 // Promise-based replacement for window.confirm that matches the rest of the app.
@@ -31,7 +33,7 @@ export function useConfirm(): [(o: ConfirmOptions) => Promise<boolean>, ReactNod
       <p className="whitespace-pre-line text-sm">{opts?.message}</p>
       <div className="mt-5 flex justify-end gap-2">
         <Button variant="outline" onClick={() => answer(false)}>{t("common.cancel")}</Button>
-        <Button variant="destructive" onClick={() => answer(true)}>{opts?.confirmLabel}</Button>
+        <Button variant={opts?.variant ?? "destructive"} onClick={() => answer(true)}>{opts?.confirmLabel}</Button>
       </div>
     </Dialog>
   );
