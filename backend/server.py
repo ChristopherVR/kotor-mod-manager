@@ -257,7 +257,14 @@ def status() -> dict:
         "shim_available": holo is not None,
         "shim_path": str(holo) if holo else None,
         "current_build": state.current_build,
+        "nexus_key_set": _nexus_key_set(),
     }
+
+
+def _nexus_key_set() -> bool:
+    """Whether a Nexus API key is saved, so the UI can warn before Nexus mods fail."""
+    from scraper import nexus
+    return bool(nexus.load_api_key(cfg.load().get("nexus_api_key", "")))
 
 
 @app.get("/api/builds")

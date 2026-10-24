@@ -52,6 +52,8 @@ export interface AppStatus {
   shim_available: boolean;
   shim_path: string | null;
   current_build: string;
+  /** Whether a Nexus API key is saved (Nexus mods fail without one). */
+  nexus_key_set?: boolean;
 }
 
 export interface Settings {

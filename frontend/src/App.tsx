@@ -344,6 +344,7 @@ export default function App() {
           setRunning={setRunning}
           setPaused={setPaused}
           requestLogin={() => setShowLogin(true)}
+          onSetupNexus={() => openSettingsSection("account")}
           activeProfile={activeProfile}
         />
       </div>}

@@ -46,6 +46,8 @@ interface BuildsViewProps {
   setRunning: (v: boolean) => void;
   setPaused: (v: boolean) => void;
   requestLogin: () => void;
+  /** Take the player to where the Nexus key is set up. */
+  onSetupNexus: () => void;
   activeProfile: string;
 }
 
@@ -53,7 +55,7 @@ export function BuildsView(props: BuildsViewProps) {
   const {
     ready, loggedIn, builds, refreshBuilds, selectedBuild, onSelectBuild, mods, setMods, runtime,
     resetRuntime, running, paused, overall, done, errors, manual, markManualDone,
-    patcherMod, clearPatcher, addLog, setRunning, setPaused, requestLogin, activeProfile,
+    patcherMod, clearPatcher, addLog, setRunning, setPaused, requestLogin, onSetupNexus, activeProfile,
   } = props;
 
   const t = useT();
@@ -202,14 +204,27 @@ export function BuildsView(props: BuildsViewProps) {
     if (selectedCount === 0) { addLog(t("builds.selectNoneWarn"), "warning"); return; }
     setInstallError(null);
     const fileIds = Array.from(selected);
-    // Nexus caps how much an account can fetch per hour and per day, so a big
-    // build may need a second sitting. Say so before it starts.
     const nexusCount = mods.filter((m) => selected.has(m.file_id) && m.source_host === "nexus").length;
-    if (nexusCount >= NEXUS_LIMIT_WARN_AT && !(await confirm({
-      message: t("builds.nexusLimitWarn", { count: nexusCount }),
-      confirmLabel: t("builds.nexusLimitContinue"),
-      variant: "default",
-    }))) return;
+    // Without a Nexus key every Nexus mod fails, so say so before starting
+    // rather than after a long run full of errors. Asked fresh each time, since
+    // the key may have been added in Settings since the app started.
+    const nexusKeySet = nexusCount === 0 || await api.status().then((s) => s.nexus_key_set !== false, () => true);
+    if (!nexusKeySet) {
+      if (!(await confirm({
+        message: t("builds.nexusNoKeyWarn", { count: nexusCount }),
+        confirmLabel: t("builds.nexusNoKeyContinue"),
+        variant: "default",
+        alt: { label: t("builds.nexusNoKeySetup"), onSelect: onSetupNexus },
+      }))) return;
+    } else if (nexusCount >= NEXUS_LIMIT_WARN_AT) {
+      // Nexus caps how much an account can fetch per hour and per day, so a big
+      // build may need a second sitting. Say so before it starts.
+      if (!(await confirm({
+        message: t("builds.nexusLimitWarn", { count: nexusCount }),
+        confirmLabel: t("builds.nexusLimitContinue"),
+        variant: "default",
+      }))) return;
+    }
     try {
       await api.startInstall(selectedBuild, undefined, fileIds);
       setRunning(true);
