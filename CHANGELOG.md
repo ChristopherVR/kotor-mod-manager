@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.21.0] - 2026-10-24
+
+### Features
+
+- Warn before installing Nexus mods when no Nexus key is set up
+- Add a light mode
+- Guide new players through a quick first-time setup
+
+### Bug Fixes
+
+- Stop the mod list jumping around while mods download
+- Make the selected sidebar item fill its whole row
+
+### Miscellaneous
+
+- Let a test copy of the app run next to the installed one
 ## [0.20.0] - 2026-10-24
 
 ### Features
