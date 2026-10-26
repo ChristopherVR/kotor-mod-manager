@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.1] - 2026-10-26
+
+### Miscellaneous
+
+- Keep mod downloads and installation up to date
+- Keep installer updates building reliably
+- Keep installer image tools up to date
+- Keep the installer interface up to date
 ## [0.21.0] - 2026-10-24
 
 ### Features
