@@ -102,6 +102,27 @@ test("saving General keeps credentials saved in Account", async ({ page }) => {
   });
 });
 
+test("Nexus key editing waits for saved settings to load", async ({ page }) => {
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  let releaseSettings!: () => void;
+  const settingsReady = new Promise<void>(resolve => { releaseSettings = resolve; });
+  await page.route("http://127.0.0.1:8756/api/settings", async route => {
+    await settingsReady;
+    await route.fallback();
+  });
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  const key = page.locator("#nexuskey");
+  const save = page.getByRole("button", { name: "Save API key", exact: true });
+  await expect(key).toBeDisabled();
+  await expect(save).toBeDisabled();
+  releaseSettings();
+  await expect(key).toBeEnabled();
+  await key.fill("test-api-key");
+  const saved = page.waitForRequest(r => r.url().endsWith("/api/settings") && r.method() === "POST");
+  await save.click();
+  expect((await saved).postDataJSON()).toMatchObject({ nexus_api_key: "test-api-key" });
+});
+
 test("mod details do not duplicate guide instructions", async ({ page }) => {
   await page.getByRole("button", { name: /1 Community Patch Pending/ }).click();
   await expect(page.getByText("Install the TPC version.", { exact: true })).toHaveCount(1);

@@ -19,12 +19,13 @@ export function NexusKeyForm({
   const [showKey, setShowKey] = useState(false);
   const [validation, setValidation] = useState<NexusValidation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     api.getSettings().then((s) => {
       setNexusKey(s.nexus_api_key || "");
       if (s.nexus_api_key) api.nexusValidate().then(setValidation).catch(() => {});
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const saveNexus = async () => {
@@ -52,6 +53,7 @@ export function NexusKeyForm({
           <div className="relative flex-1">
             <Input
               id="nexuskey"
+              disabled={loading}
               type={showKey ? "text" : "password"}
               value={nexusKey}
               placeholder={t("settings.nexus.placeholder")}
@@ -69,7 +71,7 @@ export function NexusKeyForm({
               {showKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
-          <Button onClick={saveNexus} disabled={busy} aria-label={`${t("common.save")} ${t("settings.nexus.label")}`}>
+          <Button onClick={saveNexus} disabled={busy || loading} aria-label={`${t("common.save")} ${t("settings.nexus.label")}`}>
             {busy ? t("settings.nexus.saving") : t("common.save")}
           </Button>
         </div>
