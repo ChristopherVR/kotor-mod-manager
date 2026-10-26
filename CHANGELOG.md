@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.21.2] - 2026-10-26
+
+### Bug Fixes
+
+- Keep saved settings from clearing a newly entered Nexus key
 ## [0.21.1] - 2026-10-26
 
 ### Miscellaneous
