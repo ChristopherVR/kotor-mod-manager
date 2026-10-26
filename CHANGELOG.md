@@ -8,6 +8,7 @@
 - Keep installer updates building reliably
 - Keep installer image tools up to date
 - Keep the installer interface up to date
+- Keep Linux support up to date and compatible
 ## [0.21.0] - 2026-10-24
 
 ### Features
