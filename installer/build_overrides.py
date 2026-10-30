@@ -794,7 +794,15 @@ K1_FULL = {
 BUILD_OVERRIDES = {
     "k1_spoilerfree": K1_SPOILERFREE,
     "k1_full": K1_FULL,
+    "k2_full": {"2503": {
+        "download_only": [],
+        "namespace_preferences": [],
+        "resolution_companions": ["_mods"],
+        "note": "Choose one resolution; also download its matching mods pack. "
+                "Select only the cutscenes for mods you use during installation.",
+    }},
 }
+BUILD_OVERRIDES["k2_spoilerfree"] = BUILD_OVERRIDES["k2_full"]
 
 BUILD_NOTES = {
     "k1_spoilerfree": K1_SPOILERFREE_NOTES,

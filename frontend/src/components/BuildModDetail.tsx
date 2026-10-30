@@ -56,6 +56,9 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
         ? { label: t("modDetail.viewOnNexus"), url: mod.url }
         : { label: t("modDetail.viewOnSite", { site: mod.source_label ?? "" }), url: mod.url },
   ];
+  for (const [index, url] of (mod.patch_urls ?? []).entries()) {
+    links.push({ label: `Linked patch ${index + 1}`, url });
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
@@ -91,6 +94,17 @@ export function BuildModDetail({ mod, onClose, error }: BuildModDetailProps) {
 
         {/* Body */}
         <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
+          {mod.source_host === "gamefront" && (
+            <p className="text-sm text-muted-foreground">
+              GameFront downloads open in your browser. Save the archive to your
+              configured downloads folder; the manager then continues automatically.
+            </p>
+          )}
+          {(mod.patch_urls?.length ?? 0) > 0 && (
+            <p className="text-sm text-muted-foreground">
+              The linked patches are downloaded with the main mod.
+            </p>
+          )}
           {/* Why this mod failed to install (when it did). */}
           {error && (
             <section className="rounded-md border border-destructive/40 bg-destructive/10 p-3">

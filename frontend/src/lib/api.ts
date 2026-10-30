@@ -43,6 +43,7 @@ export interface BuildMod {
   source_host?: string;
   source_label?: string;
   auto_downloadable?: boolean;
+  patch_urls?: string[];
   installed?: boolean;
 }
 

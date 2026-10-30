@@ -190,6 +190,7 @@ def build_mod_to_dict(m: BuildMod) -> dict:
         "source_host": m.source_host,
         "source_label": HOST_LABELS.get(m.source_host, m.source_host),
         "auto_downloadable": m.auto_downloadable,
+        "patch_urls": m.patch_urls,
     }
 
 

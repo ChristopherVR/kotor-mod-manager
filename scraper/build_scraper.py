@@ -4,6 +4,7 @@ Returns mods in their recommended installation order with variant hints.
 """
 import re
 import time
+from urllib.parse import urlparse
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -24,7 +25,7 @@ DS_RE = re.compile(r"deadlystream\.com/files/file/(\d+)-([^\s\"'<>#/?]+)", re.I)
 #                  on "Mod manager download" per mod, which the app then acts on
 # GameFront is not automatic: its pages and file server are behind a bot check, so
 # the player downloads the file and adds it to the mod folder.
-AUTO_HOSTS = frozenset({"deadlystream", "nexus", "mega", "github", "googledrive", "direct"})
+AUTO_HOSTS = frozenset({"deadlystream", "nexus", "mega", "github", "googledrive", "direct", "dropbox", "ntcore"})
 
 _HOST_PATTERNS = (
     ("deadlystream", "deadlystream.com"),
@@ -34,6 +35,7 @@ _HOST_PATTERNS = (
     ("gamefront", "gamefront.com"),
     ("googledrive", "drive.google.com"),
     ("github", "github.com"),
+    ("dropbox", "dropbox.com"),
 )
 
 # Human-facing names, so the UI does not have to know about our keys.
@@ -45,6 +47,8 @@ HOST_LABELS = {
     "googledrive": "Google Drive",
     "github": "GitHub",
     "direct": "Direct download",
+    "dropbox": "Dropbox",
+    "ntcore": "NTCore",
     "unknown": "Unknown",
 }
 
@@ -54,9 +58,17 @@ def host_of(url: str) -> str:
     low = (url or "").lower()
     if not low:
         return "unknown"
+    parsed = urlparse(low)
+    hostname = parsed.hostname or ""
+    if parsed.scheme not in ("http", "https"):
+        return "unknown"
     for key, needle in _HOST_PATTERNS:
-        if needle in low:
+        if hostname == needle or hostname.endswith("." + needle):
             return key
+    if hostname in ("ntcore.com", "www.ntcore.com") and (
+            parsed.path.rstrip("/") == "/4gb-patch" or
+            (parsed.path in ("", "/") and "page_id=371" in parsed.query.split("&"))):
+        return "ntcore"
     # A bare file URL from an author's own site is still fetchable directly.
     if re.search(r"\.(zip|7z|rar|exe)(\?|$)", low):
         return "direct"
@@ -109,11 +121,14 @@ class BuildMod:
     # own, so it is worth showing rather than leaving the player to find out
     # when a download silently does not happen.
     source_host: str = "deadlystream"
+    # Explicit "Patch" links are additional payloads, never mirrors of the main mod.
+    patch_urls: list[str] = field(default_factory=list)
 
     @property
     def auto_downloadable(self) -> bool:
         """Whether the app can fetch this without the player doing anything."""
-        return self.source_host in AUTO_HOSTS
+        return self.source_host in AUTO_HOSTS and all(
+            host_of(url) in AUTO_HOSTS for url in self.patch_urls)
 
     @property
     def ds_url(self) -> str:
@@ -241,8 +256,10 @@ def _gather_block(link_el) -> dict:
     every instruction. We only walk forward when the anchor really is a 'Name:'
     block so prose links (e.g. the intro Amazon fix) don't swallow neighbours.
     """
-    anchor = None
+    anchor = link_el if _is_name_p(link_el) else None
     for anc in link_el.parents:
+        if anchor is not None:
+            break
         if getattr(anc, "name", None) == "p":
             anchor = anc
             break
@@ -396,12 +413,27 @@ def scrape_build(build_key: str, session: Optional[requests.Session] = None,
     mods.extend(_scrape_other_hosts(main, game, build_key,
                                     {m.guide_index for m in mods}))
 
+    # DeadlyStream patch links already have their own entries. External patches
+    # must travel with the primary entry, including when its main host is DS.
+    blocks = [p for p in main.find_all("p") if _is_name_p(p)]
+    for idx, block in enumerate(blocks, 1):
+        entries = [m for m in mods if m.guide_index == idx]
+        if entries:
+            entries[0].patch_urls = _patch_links(block)
+
     # Page order across every host, then renumber so install_order stays a
     # dense 1..N sequence the UI can rely on.
     mods.sort(key=lambda m: m.guide_index)
     for i, m in enumerate(mods, 1):
         m.install_order = i
     return mods
+
+
+def _patch_links(name_p) -> list[str]:
+    return list(dict.fromkeys(
+        a["href"] for a in name_p.find_all("a", href=True)[1:]
+        if re.search(r"\bpatch\b", a.get_text(" ", strip=True), re.I)
+        and not DS_RE.search(a["href"])))
 
 
 def _scrape_other_hosts(main, game: str, build_key: str,
@@ -438,7 +470,9 @@ def _scrape_other_hosts(main, game: str, build_key: str,
 
         raw = el.get_text(" ", strip=True)
         name = raw.split(":", 1)[1].strip() if ":" in raw else raw
-        links = [a["href"] for a in el.find_all("a", href=True)]
+        patches = _patch_links(el)
+        links = [a["href"] for a in el.find_all("a", href=True)
+                 if a["href"] not in patches]
         # Prefer a link that needs no account: a MEGA mirror beats a Nexus page,
         # which needs an API key (and Premium, or a click per mod).
         url = next((u for u in links if host_of(u) in AUTO_HOSTS - {"nexus"}),
@@ -471,6 +505,7 @@ def _scrape_other_hosts(main, game: str, build_key: str,
             author=block["author"][:120],
             guide_index=idx,
             source_host=host_of(url),
+            patch_urls=patches,
         ))
     return out
 

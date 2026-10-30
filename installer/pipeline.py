@@ -553,7 +553,29 @@ class Pipeline:
         if not dest_dir.exists():
             return []
         self._migrate_encoded_cache_names(dest_dir)
+        if pm.build_mod.patch_urls:
+            try:
+                metadata = json.loads((dest_dir / self._CACHE_MANIFEST).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                return []
+            if metadata.get("sources") != [pm.build_mod.url, *pm.build_mod.patch_urls]:
+                return []  # old versions could cache only the patch as the whole mod
         cached = self._cached_archives(dest_dir)
+        companions = pm.build_mod.directives.resolution_companions
+        if cached and companions:
+            # Old releases could save only the add-on, or only the main pack.
+            from scraper.deadlystream import records_for_resolution
+            records = [{"name": c.name, "path": c} for c in cached]
+            mains = [r for r in records if not any(s.lower() in r["name"].lower() for s in companions)]
+            if not mains:
+                return []
+            try:
+                for main in mains:
+                    records_for_resolution(records, main, companions)
+            except DownloadError:
+                return []
+            if len(mains) == 1:
+                cached = [r["path"] for r in records_for_resolution(records, mains[0], companions)]
         # An interrupted download leaves some of a mod's files and no record of a
         # finished one. If the guide names the exact file it wants and that file is
         # not among them, these are leftovers, not the mod: download it properly.
@@ -567,7 +589,8 @@ class Pipeline:
         # may hold every variant of a submission (e.g. HQ Skyboxes' per-mod
         # editions) when the guide wants just one.
         if len(cached) > 1:
-            cached = self._filter_cached(cached, pm.build_mod)
+            patches = [c for c in cached if c.parent != dest_dir]
+            cached = self._filter_cached([c for c in cached if c not in patches], pm.build_mod) + patches
         return cached
 
     def _ask_variant(self, pm: PipelineMod, variants: list[dict]) -> "dict | None":
@@ -590,6 +613,8 @@ class Pipeline:
                                       mod.guide_index or mod.install_order).get("note")
         if note:
             body += f"\n\nFrom the build guide: {note}"
+        if mod.directives.resolution_companions:
+            body += "\n\nThe matching add-on archive will also be downloaded."
         self._set_status(pm, ModStatus.DOWNLOADING, "Waiting for you to pick a version")
         answer = self.confirm(f"Which version of {mod.name}?", body, [*labels, "skip"])
         if answer in labels:
@@ -611,27 +636,29 @@ class Pipeline:
         """An older version of the app could leave several screen sizes of one
         mod in its folder. Ask which to use instead of installing all of them.
         Returns [] when the player skips the mod."""
-        from scraper.deadlystream import resolution_variants
+        from scraper.deadlystream import resolution_variants, records_for_resolution
         if pm.build_mod.directives.download_only:
             return cached
         records = [{"name": c.name, "path": c,
                     "size": f"{c.stat().st_size / 1024 ** 3:.2f} GB"}
                    for c in cached]
-        variants = resolution_variants(records)
+        companions = pm.build_mod.directives.resolution_companions
+        variants = resolution_variants(records, companions)
         if not variants:
             return cached
         chosen = self._ask_variant(pm, variants)
         if chosen is None:
             return []
-        kept = [r["path"] for r in records
-                if r is chosen or not any(r is v for v in variants)]
+        kept = [r["path"] for r in records_for_resolution(records, chosen, companions)]
         # Remember the answer, so pressing Install again does not ask again.
-        self._write_cache_manifest(dest_dir, kept)
+        self._write_cache_manifest(dest_dir, kept,
+                                   sources=[pm.build_mod.url, *pm.build_mod.patch_urls])
         return kept
 
     def _finish_download(self, pm: PipelineMod, archives: list, dest_dir: Path) -> None:
         pm.archive_paths = archives
-        self._write_cache_manifest(dest_dir, archives)
+        self._write_cache_manifest(dest_dir, archives,
+                                   sources=[pm.build_mod.url, *pm.build_mod.patch_urls])
         if len(archives) > 1:
             self._log(f"  Downloaded {len(archives)} files.")
         for a in archives:
@@ -663,6 +690,14 @@ class Pipeline:
             return size > 0 and now - since >= _DROP_SETTLE_SECONDS
 
         cached = self._cached_for(pm, dest_dir)
+        if not cached and pm.build_mod.patch_urls and dest_dir.exists():
+            # A browser download placed in this mod's folder has no complete
+            # multi-source manifest yet. Accept new arrivals, but never promote
+            # the old patch-only cache that caused the download to be retried.
+            started = seen.setdefault("_started", time.time())
+            cached = [f for f in dest_dir.iterdir() if f.is_file()
+                      and f.suffix.lower() in _DROP_ARCHIVES
+                      and f.stat().st_mtime >= started]
         if cached and all(settled(f) for f in cached):
             return cached
         try:
@@ -687,10 +722,20 @@ class Pipeline:
     def _await_dropped_file(self, pm: PipelineMod, dest_dir: Path, why: str):
         """The app cannot fetch this mod. Wait for the player to add the file to
         the mod folder (or drop it loose in the root) and carry on with it."""
+        if pm.build_mod.source_host == "gamefront":
+            why = ("GameFront needs a browser download. Complete any browser check, "
+                   "then click Download on the mod page.")
+            if self._on_confirm:  # an interactive app session, not a headless job
+                import webbrowser
+                try:
+                    webbrowser.open(pm.build_mod.url)
+                except Exception:
+                    self._log(f"  Open {pm.build_mod.url} in your browser.", "warning")
         self._log(f"  {why} Save the file in {self._download_dir} and the app "
                   f"carries on by itself.", "warning")
         self._set_status(pm, ModStatus.DOWNLOADING, "Add the file to your Downloads folder (Settings>General)")
         seen: dict = {}
+        seen["_started"] = time.time()
         deadline = time.monotonic() + _DROP_WAIT_SECONDS
         while time.monotonic() < deadline and not self._stop_event.is_set():
             found = self._dropped_archive(pm, dest_dir, seen)
@@ -757,6 +802,7 @@ class Pipeline:
                     self._set_status(pm, ModStatus.ERROR, pm.error)
                     self._log(f"  {pm.error}", "warning")
                     return
+                archives += self._download_linked_patches(pm, dest_dir)
                 self._finish_download(pm, archives, dest_dir)
                 return
 
@@ -812,6 +858,7 @@ class Pipeline:
                             ignore_names=ignore_names,
                             language=self._language,
                             choose_variant=lambda v: self._ask_variant(pm, v),
+                            resolution_companions=mod.directives.resolution_companions,
                         )
                         break
                     except requests.HTTPError as e:
@@ -844,6 +891,7 @@ class Pipeline:
                             "guide's download filter matched nothing).")
                 self._log(f"  {pm.error}", "error")
                 return
+            archives += self._download_linked_patches(pm, dest_dir, dl_progress)
             self._finish_download(pm, archives, dest_dir)
 
         except DownloadError as e:
@@ -854,6 +902,22 @@ class Pipeline:
             self._set_status(pm, ModStatus.ERROR, str(e))
             self._log(f"  Unexpected download error: {e}", "error")
             pm.error = str(e)
+
+    def _download_linked_patches(self, pm: PipelineMod, dest_dir: Path, progress=None) -> list[Path]:
+        from scraper import hosts
+        from scraper.build_scraper import host_of
+        archives = []
+        for i, url in enumerate(pm.build_mod.patch_urls, 1):
+            if self._stop_event.is_set():
+                raise hosts.HostDownloadError("Download cancelled.")
+            self._log(f"  Downloading linked patch {i}/{len(pm.build_mod.patch_urls)}")
+            host = host_of(url)
+            if not hosts.can_download(host):
+                raise hosts.HostDownloadError(f"Download the linked patch manually: {url}")
+            # Isolate each payload: different authors can use the same filename.
+            archives += hosts.download_from_host(host, url, dest_dir / f"_linked_patch_{i}",
+                                                  progress, self._stop_event, self._pause_event)
+        return archives
 
     def _nexus_key(self) -> str:
         import config as cfg
@@ -1110,11 +1174,12 @@ class Pipeline:
 
     _CACHE_MANIFEST = ".downloads.json"
 
-    def _write_cache_manifest(self, dest_dir: Path, archives: list[Path]) -> None:
+    def _write_cache_manifest(self, dest_dir: Path, archives: list[Path], sources=None) -> None:
         """Record which files make up a completed download, in page order."""
         try:
             (dest_dir / self._CACHE_MANIFEST).write_text(
-                json.dumps({"files": [a.name for a in archives]}),
+                json.dumps({"files": [a.relative_to(dest_dir).as_posix() for a in archives],
+                            "sources": sources}),
                 encoding="utf-8",
             )
         except OSError:
@@ -1268,9 +1333,26 @@ class Pipeline:
             return
 
         # ---- Detect + install each extracted payload ----
-        for ep in pm.extracted_paths:
-            plan = detect(ep)
-            pm.plans.append(plan)
+        if pm.build_mod.file_id in ("2380", "2503") and pm.build_mod.source_host == "deadlystream":
+            from installer.cutscene_options import prepare_cutscenes
+            def ask(title, body, options):
+                self._set_status(pm, ModStatus.READY, "Waiting for your cutscene options")
+                return self.confirm(f"{pm.build_mod.name}: {title}", body, options)
+            try:
+                payloads = [(root, "_mods_" in archive.name.lower())
+                            for root, archive in zip(pm.extracted_paths, pm.archive_paths)]
+                plan = prepare_cutscenes(payloads, ask)
+            except ValueError as e:
+                self._flag_manual(pm, ManualInstallRequired(pm.extracted_paths[0], str(e)))
+                return
+            if plan is None:
+                self._set_status(pm, ModStatus.SKIPPED)
+                return
+            pm.plans = [plan]
+        else:
+            for ep in pm.extracted_paths:
+                plan = detect(ep)
+                pm.plans.append(plan)
 
         # Honour build-guide nuance: re-order so a "run the patch first" mod
         # applies its patcher before its loose files, and surface the steps we

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import requests
+from bs4 import BeautifulSoup
 
 ProgressCallback = Callable[[int, int, str], None]
 
@@ -123,6 +124,43 @@ def download_direct(url: str, dest_dir: Path, progress=None, cancel_event=None,
             rest.close()
     return _stream_to_file(resp.iter_content(512 * 1024), total, dest_dir, name,
                            progress, cancel_event, pause_event, offset=offset)
+
+
+# ---------------------------------------------------------------------------
+# Public download pages
+# ---------------------------------------------------------------------------
+
+def download_dropbox(url: str, dest_dir: Path, progress=None, cancel_event=None,
+                     pause_event=None) -> Path:
+    """Use Dropbox's download endpoint, retaining shared-link access keys."""
+    parts = urllib.parse.urlsplit(url)
+    query = [(k, v) for k, v in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
+             if k not in ("dl", "raw")]
+    query.append(("dl", "1"))
+    return download_direct(urllib.parse.urlunsplit(parts._replace(
+        query=urllib.parse.urlencode(query))), dest_dir, progress, cancel_event, pause_event)
+
+
+def download_ntcore(url: str, dest_dir: Path, progress=None, cancel_event=None,
+                    pause_event=None) -> Path:
+    """Resolve the official 4GB Patch page to its published archive."""
+    s = _session()
+    try:
+        resp = s.get(url, timeout=30)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "lxml")
+        for a in soup.find_all("a", href=True):
+            target = urllib.parse.urljoin(resp.url, a["href"])
+            parts = urllib.parse.urlsplit(target)
+            if (parts.scheme == "https" and parts.hostname in ("ntcore.com", "www.ntcore.com")
+                    and parts.path == "/files/4gb_patch.zip"):
+                return download_direct(target, dest_dir, progress, cancel_event,
+                                       pause_event, session=s)
+    except requests.RequestException as e:
+        raise HostDownloadError(f"Could not read the NTCore download page: {e}") from e
+    finally:
+        s.close()
+    raise HostDownloadError("NTCore's page no longer lists the 4GB Patch archive.")
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +319,8 @@ def download_mega(url: str, dest_dir: Path, progress=None, cancel_event=None,
 
 
 _DOWNLOADERS = {
+    "dropbox": download_dropbox,
+    "ntcore": download_ntcore,
     "direct": download_direct,
     "github": download_github,
     "googledrive": download_gdrive,

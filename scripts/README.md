@@ -12,5 +12,6 @@ One-off scripts used while building and analysing the KOTOR mod data. They are
 | `analyze_mods.py` / `deep_analyze.py` | Classify install methods across the mod set. |
 | `sample_download.py` | Download/unpack sample mods to inspect their structure. |
 | `sample_results.json` | Captured structure analysis of sample mods. |
+| `test_gamefront_assist.py` | Interactive GameFront browser handoff test; downloads only, with results in a separate Downloads subfolder. |
 
 Run from the project root, e.g. `python scripts/scrape_order.py`.

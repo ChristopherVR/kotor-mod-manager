@@ -850,6 +850,8 @@ def _cached_build_mods(build_key: str) -> "list | None":
     entry = _read_json_cache(_BUILD_LIST_CACHE).get(build_key)
     if not entry:
         return None
+    if any("patch_urls" not in m for m in entry):
+        return None  # pre-patch-link scraper could have saved the patch as the main mod
     try:
         return [BuildMod(**m) for m in entry]
     except (TypeError, ValueError):

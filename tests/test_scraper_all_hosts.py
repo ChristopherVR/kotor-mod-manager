@@ -59,15 +59,14 @@ def test_entries_are_keyed_the_way_the_curated_rules_expect():
 
 def test_the_host_is_recorded_for_each():
     out = _scrape_other_hosts(_soup(), "KOTOR1", "k1_spoilerfree", claimed={1})
-    assert [m.source_host for m in out] == ["nexus", "mega", "mega"]
+    assert [m.source_host for m in out] == ["nexus", "mega", "nexus"]
 
 
-def test_a_downloadable_mirror_wins_over_a_page_we_cannot_fetch():
-    """The last entry offers a Nexus page and a MEGA mirror. Nexus needs an API
-    key (and Premium or a click per mod), MEGA needs nothing, so prefer MEGA."""
+def test_a_patch_is_additional_content_not_a_mirror():
     out = _scrape_other_hosts(_soup(), "KOTOR1", "k1_spoilerfree", claimed={1})
     korriban = out[-1]
-    assert korriban.source_host == "mega"
+    assert korriban.source_host == "nexus"
+    assert korriban.patch_urls == ["https://mega.nz/file/xyz#key2"]
     assert korriban.auto_downloadable
 
 
@@ -87,4 +86,40 @@ def test_auto_hosts_are_the_ones_with_a_downloader():
 
 def test_a_bare_archive_url_counts_as_directly_downloadable():
     assert host_of("https://www.darthparametric.com/files/kotor/k1/x.7z") == "direct"
-    assert host_of("https://ntcore.com/?page_id=371") == "unknown"
+    assert host_of("https://ntcore.com/?page_id=371") == "ntcore"
+
+
+def test_an_explicit_mirror_still_wins_over_nexus():
+    soup = BeautifulSoup(PAGE.replace('>Patch</a>', '>Mirror</a>'), "lxml").find("main")
+    mod = _scrape_other_hosts(soup, "KOTOR1", "k1_full", {1})[-1]
+    assert mod.source_host == "mega" and mod.patch_urls == []
+
+
+def test_hosts_are_identified_by_hostname_not_query_text():
+    assert host_of("https://example.com/?url=https://mega.nz/file/abc") == "unknown"
+    assert host_of("https://notgithub.com/a/b") == "unknown"
+    assert host_of("https://www.dropbox.com/s/abc/patch.zip?dl=0") == "dropbox"
+
+
+def test_real_guide_wrapper_preserves_offsite_fields():
+    soup = BeautifulSoup('<main><div class="mod">' + PAGE.split('<main>')[1].split('</main>')[0]
+                         + '</div></main>', "lxml").find("main")
+    mod = _scrape_other_hosts(soup, "KOTOR1", "k1_full", {1})[0]
+    assert mod.install_method == "Loose-File Mod"
+    assert mod.instructions == "Installation Instructions Download the .tpc variant."
+
+
+def test_scrape_keeps_external_patch_for_a_deadlystream_main(monkeypatch):
+    from scraper.build_scraper import scrape_build
+    from tests.test_hosts import FakeResp
+    import requests
+    html = '''<main><p><strong>Name:</strong>
+        <a href="https://deadlystream.com/files/file/349-character-startup/">Character Startup</a>
+        and <a href="https://mega.nz/file/abc#key">Patch</a></p></main>'''
+    response = FakeResp(text=html)
+    response.encoding = "utf-8"
+    monkeypatch.setattr(requests.Session, "get", lambda *a, **k: response)
+    mods = scrape_build("k1_full")
+    assert len(mods) == 1
+    assert mods[0].file_id == "349"
+    assert mods[0].patch_urls == ["https://mega.nz/file/abc#key"]

@@ -172,13 +172,32 @@ _RES_RE = re.compile(r"(\d{3,4})\s*[x×]\s*(\d{3,4})", re.I)
 _FPS_RE = re.compile(r"(\d{2,3})\s*fps", re.I)
 
 
-def resolution_variants(records: list[dict]) -> list[dict]:
+def resolution_variants(records: list[dict], companions=()) -> list[dict]:
     """
     The records that are the same content at different screen resolutions
     (a WxH marker in the name), or [] when there are fewer than two of them.
     """
-    found = [r for r in records if _RES_RE.search(unquote(r.get("name") or ""))]
+    found = [r for r in records if _RES_RE.search(unquote(r.get("name") or ""))
+             and not any(c.lower() in unquote(r.get("name") or "").lower() for c in companions)]
     return found if len(found) >= 2 else []
+
+
+def records_for_resolution(records: list[dict], chosen: dict, companions=()) -> list[dict]:
+    """Keep one main pack and its explicitly requested same-size/fps add-ons."""
+    def signature(r):
+        name = unquote(r.get("name") or "")
+        res, fps = _RES_RE.search(name), _FPS_RE.search(name)
+        return (res.groups(), fps.group(1) if fps else "") if res else None
+
+    selected = [chosen]
+    for marker in companions:
+        matches = [r for r in records
+                   if marker.lower() in unquote(r.get("name") or "").lower()
+                   and signature(r) == signature(chosen)]
+        if len(matches) != 1:
+            raise DownloadError(f"Could not identify the matching {marker} add-on for {chosen['name']}.")
+        selected.extend(matches)
+    return [r for r in records if not signature(r) or any(r is s for s in selected)]
 
 
 def variant_labels(variants: list[dict]) -> list[str]:
@@ -695,6 +714,7 @@ class DeadlyStreamClient:
         language: str = "",
         screen_resolution: str = "",
         choose_variant: Optional[Callable[[list[dict]], Optional[dict]]] = None,
+        resolution_companions: Optional[list[str]] = None,
     ) -> list[Path]:
         """
         Download files in a (possibly multi-file) submission.
@@ -724,15 +744,23 @@ class DeadlyStreamClient:
         Returns the list of downloaded local paths in page order.
         """
         records = self.list_download_records(file_id, slug)
-        variants = [] if keep_names else resolution_variants(records)
+        companions = resolution_companions or []
+        variants = [] if keep_names else resolution_variants(records, companions)
         if variants and choose_variant:
             chosen = choose_variant(variants)
             if chosen is None:
                 return []
-            records = [r for r in records
-                       if r is chosen or not any(r is v for v in variants)]
+            records = records_for_resolution(records, chosen, companions)
         elif variants and screen_resolution:
-            records = select_resolution_records(records, screen_resolution)
+            chosen = select_resolution_records(variants, screen_resolution)[0]
+            records = records_for_resolution(records, chosen, companions)
+        elif companions and not keep_names:
+            mains = [r for r in records if _RES_RE.search(r.get("name", ""))
+                     and not any(c.lower() in r.get("name", "").lower() for c in companions)]
+            if len(mains) == 1:
+                records = records_for_resolution(records, mains[0], companions)
+            elif not mains:
+                raise DownloadError("The cutscene download lists add-ons but no main movie pack.")
         referer = self._file_page_url(file_id, slug)
 
         def _fetch(recs, names, excl, lang="", strict=False):

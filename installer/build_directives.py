@@ -122,6 +122,8 @@ class Directives:
     download_only: list[str] = field(default_factory=list)
     # Download record name substrings to skip.
     download_ignore: list[str] = field(default_factory=list)
+    # Additional packs paired with the player's chosen resolution and frame rate.
+    resolution_companions: list[str] = field(default_factory=list)
     # Loose-file selection: keep only files matching these substrings ...
     file_only: list[str] = field(default_factory=list)
     # ... and/or drop files matching these (explicit names / folders).

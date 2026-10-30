@@ -83,9 +83,16 @@ Nexus also caps how much an account can download per hour and per day. If a
 large build runs into that, wait a while and press Install again to finish the
 rest (see the FAQ below).
 
-MEGA, Google Drive, GitHub and direct links download automatically. For sites
-the app can't download from (marked with a badge), download the file yourself
-and drop it into your download folder.
+MEGA, Google Drive, GitHub, Dropbox, the official NTCore 4GB Patch page and direct
+links download automatically. Patch links listed beside a mod's name in the guide
+are downloaded with the main mod. GameFront opens in your browser: complete its browser check
+and save the archive to the downloads folder in Settings; the manager resumes
+when the file arrives. Other unsupported sites are marked with a manual badge.
+
+For K1/K2 Cutscenes Rescaled, choose a resolution before downloading. K2 also
+downloads the matching add-on pack. After extraction, choose between the archive's
+subtitle and legal-screen alternatives; K2's additional mod cutscenes are opt-in.
+These choices are made before any of the pack's files are installed.
 
 ### 4. Manage your library
 
@@ -189,7 +196,7 @@ app ships as one self-contained file.
 - `backend/server.py` - FastAPI wrapper exposing the pipeline + mod manager;
   streams live status/log/progress over a WebSocket.
 - `installer/`, `scraper/`, `config.py` - Python backend logic. `scraper/hosts.py`
-  downloads from MEGA, Google Drive, GitHub and direct links; `scraper/nexus.py`
+  downloads from MEGA, Google Drive, GitHub, Dropbox, NTCore and direct links; `scraper/nexus.py`
   handles Nexus and the `nxm://` handoff.
 - `scripts/` - one-off dev/analysis scripts (not part of the app).
 
