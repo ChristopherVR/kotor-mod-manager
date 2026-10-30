@@ -1836,7 +1836,7 @@ dependencies = [
 
 [[package]]
 name = "kotor-mod-installer"
-version = "0.21.0"
+version = "0.22.0"
 dependencies = [
  "libc",
  "rust-ini",
@@ -1847,6 +1847,8 @@ dependencies = [
  "tauri-plugin-deep-link",
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
+ "webview2-com",
+ "windows",
 ]
 
 [[package]]

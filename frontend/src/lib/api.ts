@@ -1,4 +1,12 @@
 // REST + WebSocket client for the local FastAPI backend (the Tauri sidecar).
+import { isTauri } from "./tauri";
+
+export interface GameFrontRequest {
+  id: string;
+  url: string;
+  destination: string;
+  name: string;
+}
 
 export const BACKEND_HOST = "127.0.0.1";
 // VITE_BACKEND_PORT lets a dev copy run beside an installed app that holds 8756.
@@ -239,8 +247,11 @@ export const api = {
   ) =>
     req<{ ok: boolean; total: number; game_path: string }>("/api/install/start", {
       method: "POST",
-      body: JSON.stringify({ build_key, unattended: true, game_path, selected_file_ids }),
+      body: JSON.stringify({ build_key, unattended: true, game_path, selected_file_ids,
+        gamefront_browser: isTauri() }),
     }),
+  gamefrontRequest: () => req<{ request: GameFrontRequest | null }>("/api/gamefront/request"),
+  gamefrontExternal: () => req<{ ok: boolean; destination: string }>("/api/gamefront/external", { method: "POST" }),
   control: (action: "pause" | "resume" | "stop" | "retry") =>
     req<{ ok: boolean; action: string }>(`/api/install/${action}`, { method: "POST" }),
   installState: () =>

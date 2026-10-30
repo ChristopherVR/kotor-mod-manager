@@ -85,9 +85,14 @@ rest (see the FAQ below).
 
 MEGA, Google Drive, GitHub, Dropbox, the official NTCore 4GB Patch page and direct
 links download automatically. Patch links listed beside a mod's name in the guide
-are downloaded with the main mod. GameFront opens in your browser: complete its browser check
-and save the archive to the downloads folder in Settings; the manager resumes
-when the file arrives. Other unsupported sites are marked with a manual badge.
+are downloaded with the main mod. In the desktop app, GameFront opens in a
+dedicated browser window. Sign in once and choose **Stay logged in**; that profile
+is retained across app restarts. Click Download when the mod page appears, and
+the manager saves the completed archive to the correct mod folder automatically.
+GameFront may occasionally require another verification or login. Reopen the
+window from **Settings > Account > GameFront**. Its **Use my regular browser**
+fallback shows where to save the archive manually. Other unsupported sites are
+marked with a manual badge.
 
 For K1/K2 Cutscenes Rescaled, choose a resolution before downloading. K2 also
 downloads the matching add-on pack. After extraction, choose between the archive's

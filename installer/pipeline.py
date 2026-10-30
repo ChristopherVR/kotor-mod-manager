@@ -154,6 +154,7 @@ class Pipeline:
         record_to_library: bool = True,
         language: str = "en",
         screen_resolution: str = "1920x1080",
+        gamefront_browser: bool = False,
     ):
         self._mods = [PipelineMod(m) for m in mods]
         self._game_path = game_path
@@ -165,6 +166,9 @@ class Pipeline:
         self._on_install_progress = on_install_progress
         self._on_manual = on_manual
         self._on_confirm = on_confirm
+        self._gamefront_browser = gamefront_browser
+        self._gamefront_lock = threading.Lock()
+        self.gamefront_request = None
         # Open questions for the player: request id -> (event, answer holder).
         self._confirms: dict[str, tuple[threading.Event, list[str]]] = {}
         # Downloads run side by side, and the window shows one question at a time.
@@ -722,6 +726,45 @@ class Pipeline:
     def _await_dropped_file(self, pm: PipelineMod, dest_dir: Path, why: str):
         """The app cannot fetch this mod. Wait for the player to add the file to
         the mod folder (or drop it loose in the root) and carry on with it."""
+        if pm.build_mod.source_host == "gamefront" and self._gamefront_browser:
+            # One persistent browser navigates one download at a time. Waiting
+            # jobs remain cancellable and cannot steal another mod's archive.
+            while not self._stop_event.is_set():
+                if self._gamefront_lock.acquire(timeout=0.25):
+                    break
+            else:
+                return None
+            try:
+                if self._stop_event.is_set():
+                    return None
+                import uuid
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                self.gamefront_request = {
+                    "id": uuid.uuid4().hex, "url": pm.build_mod.url,
+                    "destination": str(dest_dir.resolve()), "name": pm.build_mod.name,
+                }
+                self._log("  Opening your saved GameFront browser session. "
+                          "Sign in or complete verification if GameFront asks.")
+                self._set_status(pm, ModStatus.DOWNLOADING,
+                                 "GameFront browser: sign in or complete verification if asked")
+                # Only this mod's folder is eligible for this browser request.
+                seen = {"_started": time.time()}
+                deadline = time.monotonic() + _DROP_WAIT_SECONDS
+                while time.monotonic() < deadline and not self._stop_event.is_set():
+                    cached = self._cached_for(pm, dest_dir)
+                    if not cached:
+                        cached = [p for p in dest_dir.iterdir() if p.is_file()
+                                  and p.suffix.lower() in _DROP_ARCHIVES
+                                  and p.stat().st_mtime >= seen["_started"]]
+                    if cached:
+                        # Native browser promotes files only on successful
+                        # completion. Existing cache validation still applies.
+                        return cached
+                    self._stop_event.wait(_DROP_POLL_SECONDS)
+                return None
+            finally:
+                self.gamefront_request = None
+                self._gamefront_lock.release()
         if pm.build_mod.source_host == "gamefront":
             why = ("GameFront needs a browser download. Complete any browser check, "
                    "then click Download on the mod page.")

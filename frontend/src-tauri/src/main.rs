@@ -6,6 +6,7 @@ use std::process::{Child, Command};
 use std::sync::Mutex;
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
+mod gamefront;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -144,7 +145,8 @@ fn remove_stale_backends(dir: &std::path::Path, keep: &std::path::Path) {
 /// the new exe over the current one, relaunches it, and cleans up. Then kill the
 /// backend (so it releases the port) and exit so the swap can proceed.
 #[tauri::command]
-fn apply_update(app: tauri::AppHandle, new_path: String) -> Result<(), String> {
+fn apply_update(window: tauri::WebviewWindow, app: tauri::AppHandle, new_path: String) -> Result<(), String> {
+    if window.label() != "main" { return Err("Only the installer can apply updates".into()); }
     // An AppImage reports the file to replace in $APPIMAGE.
     let cur = match std::env::var_os("APPIMAGE") {
         Some(p) if cfg!(unix) => std::path::PathBuf::from(p),
@@ -350,12 +352,14 @@ fn claim_nxm(app: &tauri::AppHandle) {
 /// nxm:// links are for every game on Nexus, so the app only holds them while a
 /// free-account download is waiting for its click, then hands them back.
 #[tauri::command]
-fn set_nxm_handler(app: tauri::AppHandle, enabled: bool) {
+fn set_nxm_handler(window: tauri::WebviewWindow, app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    if window.label() != "main" { return Err("Only the installer can change download handlers".into()); }
     if enabled {
         claim_nxm(&app);
     } else {
         release_nxm(&app);
     }
+    Ok(())
 }
 
 fn main() {
@@ -384,7 +388,9 @@ fn main() {
         })
         .plugin(tauri_plugin_dialog::init())
         .manage(BackendChild(Mutex::new(spawn_backend())))
-        .invoke_handler(tauri::generate_handler![apply_update, set_nxm_handler])
+        .manage(gamefront::Session::default())
+        .invoke_handler(tauri::generate_handler![apply_update, set_nxm_handler,
+            gamefront::open_gamefront, gamefront::finish_gamefront])
         .on_window_event(|window, event| {
             // Only the main window ending means the app is over.
             if window.label() != "main" {

@@ -5,6 +5,19 @@ export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+export async function openGameFront(request: {
+  id: string; url: string; destination: string; name: string;
+} | null = null): Promise<void> {
+  if (!isTauri()) throw new Error("The saved GameFront session requires the desktop app.");
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("open_gamefront", { request });
+}
+
+export async function finishGameFront(id: string): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("finish_gamefront", { id });
+}
+
 /** Invoke the Rust apply_update command (download swap + relaunch). */
 export async function applyUpdate(newPath: string): Promise<boolean> {
   if (!isTauri()) return false;

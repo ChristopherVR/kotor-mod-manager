@@ -48,6 +48,101 @@ are not newly automated; they need dependency-aware rules before being fetched.
   integration would need a working, permitted browser download flow and a reliable
   download-completion event before it could remove the save-folder step.
 
+### Follow-up: authenticated GameFront routes
+
+GameFront's [official API](https://www.gamefront.com/api) uses personal bearer
+tokens created under [Account API Keys](https://www.gamefront.com/account/api-keys).
+Its [OpenAPI contract](https://www.gamefront.com/api-specs/graphql-v1-openapi.yaml)
+requires the `graphql:read` ability and a descriptive User-Agent. This route was
+missed in the initial browser-download investigation.
+
+Live checks using the user-provided `.env` credentials on 30 October 2026:
+
+- `GAME_FRONT_API_KEY` authenticated successfully: GraphQL returned HTTP 200,
+  no query errors, and the expected metadata for Vurt's Ebon Hawk (152846) and
+  Remote Tells Influence (72832).
+- The live schema rejected `File.download_url` as an unsupported field. Its
+  documented `downloads` field is a count; `url` points to the public mod page.
+  The exhaustive published schema lists no archive-download operation.
+- Supplying the bearer token to the ordinary mod download page still returned
+  HTTP 403 and a browser verification page. Successful metadata authentication
+  therefore does not establish unattended archive-download support.
+- A visible browser reached the login form. The initial `GAME_FRONT_USERNAME`
+  was a username, but the form requires an email address and prevented submission.
+  After the account email was supplied, the login POST returned HTTP 403 and
+  opened an embedded robot-verification check. No authenticated session was
+  confirmed by the automated probe; this is not evidence of a bad password.
+- A separate signed-out visible browser opened the mod page, but clicking
+  Download opened an embedded robot-verification check that remained loading.
+  No archive was received during these probes.
+- The user subsequently confirmed that signing in and waiting completed the
+  browser download. The resulting `vurt_k1_eh_retexture_v10.rar` was found in
+  the user's Downloads folder. A copy was placed in the isolated browser-assist
+  test folder; the running production download stage detected and filed it,
+  then parsed all 11 archive entries (94,724,263 bytes). The smoke test passed;
+  no game files were installed and the original download was retained.
+- The browser-issued archive URL uses `osiris.gamefront.com` and an AWS SigV4
+  query with `X-Amz-Expires=3600` (one hour). A fresh request using the manager's
+  direct downloader, without browser cookies, returned HTTP 403 and GameFront's
+  HTML Security Check while the link was still within that period. Possessing
+  a current signed URL alone did not enable unattended HTTP downloads in this
+  test. The URL and its signature are deliberately not stored in this report.
+
+An eventual account integration should use an OS-keyring-backed API token for
+documented metadata operations, and clearly distinguish token validity from
+download capability. User-driven browser login/download and manager ingestion
+are now verified for Vurt's archive; unattended login/download is not verified.
+No credentials, cookies or tokens are recorded in this report or committed.
+
+### Implemented: reusable GameFront browser sessions
+
+The desktop app now opens GameFront in a dedicated WebView2 profile at the app's
+local data directory, under `gamefront-profile`. Sign in on GameFront and choose
+**Stay logged in**. The browser retains authentication and verification state
+across app restarts. Settings → Account → GameFront reopens that session; Logout
+on GameFront signs it out. The regular-browser fallback remains available.
+
+Downloads stay in that authenticated browser. The Python pipeline publishes one
+active GameFront job at a time; the frontend opens or reopens it by stable ID.
+The native download callback accepts GameFront's archive host, stages the file
+inside the matching mod folder, checks successful completion and archive magic,
+then moves it into the folder watched by the installer. Cancelled/stale jobs do
+not promote files. Cookies, passwords and signed URLs never cross the app's
+frontend/backend bridge. The remote window has no main-window IPC privileges.
+
+Live Windows verification on 2026-10-30 used the Rust example, which imports the
+production browser module with the same persistent profile:
+
+- The user signed in once with **Stay logged in**. The app was closed and
+  restarted between downloads; no further credentials were entered.
+- **Remote Tells Influence:** `remote_influence.zip`, 10,088 bytes, three entries,
+  full ZIP CRC check passed.
+- **Vurt's Ebon Hawk:** RAR, 94,724,263 bytes, eleven entries. SHA-256 matched the
+  original successful regular-Chrome download byte for byte.
+- Both completed archives reached their final test folders through the native
+  download callback. Nothing was installed into a game.
+- Testing found and fixed Windows path normalization at both download start and
+  completion: WebView2 rejects mixed separators and strips the extended-path
+  prefix when reporting completion. A regression test also covers failed
+  transfers whose partial file has already been removed.
+
+There are separate lifetimes for account authentication, browser verification
+and the signed archive URL. The observed archive URL expires after one hour;
+that is not the login lifetime. Cookie metadata showed a two-hour session cookie
+plus persistent remember-login and verification cookies. Server invalidation
+and future verification requirements remain under GameFront's control. Session
+reuse is verified across immediate restarts, not guaranteed for a fixed number
+of days. Cookie replay into Python is not needed or claimed.
+
+The earlier API-key test succeeded for metadata but did not provide an archive
+endpoint. Direct HTTP password/archive requests did not pass the access check.
+Those results are separate from this successful native-browser route.
+
+Sources: [Tauri browser profile and download APIs](https://docs.rs/tauri/2.12.2/tauri/webview/struct.WebviewWindowBuilder.html),
+[Tauri cookie API](https://docs.rs/tauri/2.12.2/tauri/webview/struct.WebviewWindow.html#method.cookies_for_url),
+and [WebView2 profile persistence](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/overview-features-apis).
+See `scripts/README.md` for the repeatable download-only test procedure.
+
 ## Cutscene choices implemented
 
 [K1 Cutscenes Rescaled](https://deadlystream.com/files/file/2380-k1-cutscenes-rescaled/)
@@ -100,11 +195,17 @@ namespace as a free choice.
 - Fresh HTTP scrape of all four guides and live DeadlyStream download-record lists.
 - Live downloads of NTCore's 21,464-byte ZIP and the Dropbox patch's 10,766-byte
   ZIP; both parsed successfully as archives. Nothing was executed or installed.
-- Full Python suite: 365 passed, 13 skipped. TypeScript: `npx tsc --noEmit` passed.
+- Full Python suite: 367 passed, 13 skipped. Native Rust: four tests passed.
+  Frontend: `npm run build` passed, including TypeScript checking.
 - Follow-up cache tests cover mismatched K2 add-ons and newly arrived browser
   downloads for a mod with linked patches.
 - Full-size cutscene archives were not downloaded or installed into a real game.
   The option planner is tested with synthetic layouts based on the authors'
   published alternatives and reads the actual folder choices at install time.
-- GameFront's real archive download remains unverified because its access check
-  blocked both probes; browser opening and file ingestion are regression-tested.
+- GameFront's user-driven signed-in download and real-archive ingestion passed
+  the isolated smoke test. API authentication passed for metadata; automatic
+  password login and direct HTTP archive download did not pass the access check.
+- The production native browser module passed live downloads of both GameFront
+  archives across process restarts after one login. The complete packaged
+  installer was not run against a game; pipeline handoff/cancellation were
+  checked by automated tests.

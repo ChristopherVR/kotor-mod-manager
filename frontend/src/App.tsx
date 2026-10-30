@@ -12,6 +12,7 @@ import { ConfirmDialog, type ConfirmRequest } from "@/components/ConfirmDialog";
 import { AppShell } from "@/layouts/AppShell";
 import { useT } from "@/lib/i18n";
 import { setNxmHandler } from "@/lib/tauri";
+import { useGameFront } from "@/lib/useGameFront";
 import { BuildsView } from "@/views/BuildsView";
 import { LibraryView } from "@/views/LibraryView";
 import { ConflictsView } from "@/views/ConflictsView";
@@ -89,6 +90,7 @@ export default function App() {
   }, []);
 
   const resetRuntime = useCallback(() => setRuntime({}), []);
+  useGameFront(ready, addLog);
 
   const refreshStatus = useCallback(async () => {
     try {

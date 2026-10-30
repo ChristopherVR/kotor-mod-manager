@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar } from "@/components/ui/avatar";
 import { useT } from "@/lib/i18n";
+import { GameFrontSession } from "@/components/GameFrontSession";
 
 interface AccountSectionProps {
   status: AppStatus | null;
@@ -55,6 +56,7 @@ export function AccountSection({ status, username, onSignIn, onSignOut, addLog }
 
   return (
     <div className="space-y-4">
+      <GameFrontSession />
       {/* DeadlyStream account */}
       <Card>
         <CardHeader><CardTitle>{t("settings.account.title")}</CardTitle></CardHeader>

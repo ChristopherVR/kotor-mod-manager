@@ -27,6 +27,7 @@ class SettingsModel(BaseModel):
 
 class StartInstallRequest(BaseModel):
     build_key: str
+    gamefront_browser: bool = False
     unattended: bool = False
     game_path: Optional[str] = None   # override; otherwise resolved from settings
     profile: str = ""                 # target install profile id (optional)

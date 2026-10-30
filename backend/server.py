@@ -1068,6 +1068,7 @@ def install_start(req: StartInstallRequest) -> dict:
         game_type=game,
         language=conf.get("language", "en"),
         screen_resolution=conf.get("preferred_resolution") or _screen_resolution(),
+        gamefront_browser=req.gamefront_browser,
     )
     state.pipeline.start()
     hub.publish({"type": "pipeline", "event": "started",
@@ -1086,6 +1087,21 @@ def install_start(req: StartInstallRequest) -> dict:
 
     threading.Thread(target=_watch, args=(state.pipeline,), daemon=True).start()
     return {"ok": True, "total": len(mods), "game_path": str(game_path)}
+
+
+@app.get("/api/gamefront/request")
+def gamefront_request() -> dict:
+    """Replayable browser request: reconnecting the desktop UI loses no job."""
+    pl = state.pipeline
+    return {"request": pl.gamefront_request if pl and not pl._stop_event.is_set() else None}
+
+
+@app.post("/api/gamefront/external")
+def gamefront_external() -> dict:
+    import webbrowser
+    request = gamefront_request()["request"]
+    webbrowser.open(request["url"] if request else "https://www.gamefront.com/account")
+    return {"ok": True, "destination": request["destination"] if request else str(cfg.download_dir())}
 
 
 @app.post("/api/install/confirm")
