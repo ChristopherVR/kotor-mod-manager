@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.22.0] - 2026-10-30
+
+### Features
+
+- Support linked downloads and cutscene installation choices
 ## [0.21.2] - 2026-10-26
 
 ### Bug Fixes
