@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.23.0] - 2026-10-30
+
+### Features
+
+- Retain GameFront browser sessions for mod downloads
 ## [0.22.0] - 2026-10-30
 
 ### Features
