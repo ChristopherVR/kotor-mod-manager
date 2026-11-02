@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.2] - 2026-11-02
+
+### Miscellaneous
+
+- Bump the cargo-minor-and-patch group (#110)
+- Bump taiki-e/install-action from 2.87.31 to 2.88.1 (#108)
+- Bump the npm-minor-and-patch group in /frontend with 4 updates (#109)
 ## [0.23.1] - 2026-11-02
 
 ### Miscellaneous
