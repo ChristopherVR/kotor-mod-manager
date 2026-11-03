@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.24.0] - 2026-11-03
+
+### Features
+
+- Offer Windows and Linux downloads on Nexus Mods
 ## [0.23.4] - 2026-11-03
 
 ### Bug Fixes
