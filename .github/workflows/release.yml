@@ -136,10 +136,12 @@ jobs:
         include:
           - platform: windows
             label: Windows
+            nexus_name: KOTOR Mod Installer (Windows)
             file_id_variable: NEXUS_FILE_ID
             suffix: ''
           - platform: linux
             label: Linux x86_64
+            nexus_name: KOTOR Mod Installer (Linux x86_64)
             file_id_variable: NEXUS_LINUX_FILE_ID
             suffix: '-linux'
     env:
@@ -150,6 +152,8 @@ jobs:
       PUBLISHED_MARKER: nexus-published${{ matrix.suffix }}.json
       DESCRIPTION_FILE: description${{ matrix.suffix }}.txt
       PACKAGE_SUFFIX: ${{ matrix.suffix }}
+      # Nexus limits file display names to 50 characters. Version has its own field.
+      NEXUS_DISPLAY_NAME: ${{ matrix.nexus_name }}
     steps:
       - name: Check whether this release already reached Nexus
         id: published
@@ -172,6 +176,10 @@ jobs:
           fi
           if [ "$WINDOWS_FILE_ID" = "$LINUX_FILE_ID" ]; then
             echo '::error::Windows and Linux need different Nexus file groups so one platform does not archive the other.'
+            exit 1
+          fi
+          if [ -z "$NEXUS_DISPLAY_NAME" ] || [ "${#NEXUS_DISPLAY_NAME}" -gt 50 ]; then
+            echo '::error::Nexus file display names must contain 1 to 50 characters.'
             exit 1
           fi
 
@@ -203,7 +211,7 @@ jobs:
           file_id: ${{ vars[matrix.file_id_variable] }}
           filename: nexus/kotor-mod-installer-${{ env.version }}${{ matrix.suffix }}-nexus.zip
           version: ${{ env.version }}
-          display_name: KOTOR Mod Installer ${{ env.version }} (${{ matrix.label }} standalone app)
+          display_name: ${{ env.NEXUS_DISPLAY_NAME }}
           description: ${{ steps.description.outputs.body }}
           category: main
           allow_mod_manager_download: false

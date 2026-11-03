@@ -79,6 +79,9 @@ The existing versioning and build triggers are unchanged:
    from that exact GitHub release, then uses
    `Nexus-Mods/upload-action@v1.0.0-beta.11` to create a **Main** file version,
    archive the previous version of that platform and update the mod page version.
+   File display names stay short and platform-specific; the release version is
+   sent in Nexus's separate version field. A preflight check enforces Nexus's
+   50-character display-name limit before transferring the ZIP.
    Uploads run sequentially, with fail-fast disabled so a failure on one platform
    does not prevent the other from publishing.
 6. Each platform attaches its own marker (`nexus-published.json` for Windows,
@@ -113,6 +116,7 @@ Run the packaging and release-notes tests without building the desktop app:
 
 ```powershell
 python -m pytest tests/test_package_nexus.py tests/test_release_notes.py -q
+python -m pytest tests/test_nexus_workflow.py -q
 ```
 
 After preparing real release downloads, notes and a successful scan report:
