@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.23.3] - 2026-11-03
+
+### Bug Fixes
+
+- Find 7-Zip automatically and let players choose its location
 ## [0.23.2] - 2026-11-02
 
 ### Miscellaneous
