@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.23.4] - 2026-11-03
+
+### Bug Fixes
+
+- Keep download folder edits while settings finish loading
 ## [0.23.3] - 2026-11-03
 
 ### Bug Fixes
