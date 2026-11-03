@@ -250,6 +250,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
+      - name: Package the scanned Windows and Linux apps for Nexus Mods
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python3 tools/package_nexus.py "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY"
+          python3 tools/package_nexus.py "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY" --platform linux
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -258,5 +265,7 @@ jobs:
             release-files/KOTOR-Mod-Installer.exe
             release-files/KOTOR-Mod-Installer-linux-x86_64
             virus-scan.txt
+            nexus-files/*.zip
+            nexus-files/description*.txt
           body_path: release-notes.md
           fail_on_unmatched_files: true

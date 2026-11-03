@@ -4,6 +4,7 @@ name: Release
 # (git-cliff), regenerate CHANGELOG.md, bump installer/_version.py, tag it, and
 # build + publish the release. One workflow run does bump → build → release, so
 # it does not depend on a token-pushed tag re-triggering CI.
+# Nexus publication follows the successful GitHub release. See nexus/README.md.
 
 on:
   push:
@@ -120,3 +121,104 @@ jobs:
       tag: ${{ needs.version.outputs.tag }}
     permissions:
       contents: write
+
+  nexus:
+    name: Nexus (${{ matrix.label }})
+    needs: [version, build-release]
+    if: needs.version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Keep page-version updates sequential, while allowing the other platform
+      # to publish even if one platform's upload fails.
+      max-parallel: 1
+      matrix:
+        include:
+          - platform: windows
+            label: Windows
+            file_id_variable: NEXUS_FILE_ID
+            suffix: ''
+          - platform: linux
+            label: Linux x86_64
+            file_id_variable: NEXUS_LINUX_FILE_ID
+            suffix: '-linux'
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.version.outputs.tag }}
+      PLATFORM: ${{ matrix.platform }}
+      PUBLISHED_MARKER: nexus-published${{ matrix.suffix }}.json
+      DESCRIPTION_FILE: description${{ matrix.suffix }}.txt
+      PACKAGE_SUFFIX: ${{ matrix.suffix }}
+    steps:
+      - name: Check whether this release already reached Nexus
+        id: published
+        run: |
+          published=$(gh release view "$RELEASE_TAG" --json assets | jq -r --arg marker "$PUBLISHED_MARKER" 'any(.assets[]; .name == $marker)')
+          echo "done=$published" >> "$GITHUB_OUTPUT"
+
+      - name: Check Nexus Mods configuration
+        if: steps.published.outputs.done != 'true'
+        env:
+          NEXUSMODS_API_KEY: ${{ secrets.NEXUSMODS_API_KEY }}
+          FILE_ID: ${{ vars[matrix.file_id_variable] }}
+          FILE_ID_VARIABLE: ${{ matrix.file_id_variable }}
+          WINDOWS_FILE_ID: ${{ vars.NEXUS_FILE_ID }}
+          LINUX_FILE_ID: ${{ vars.NEXUS_LINUX_FILE_ID }}
+        run: |
+          if [ -z "$NEXUSMODS_API_KEY" ] || ! [[ "$FILE_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Set secret NEXUSMODS_API_KEY and variable $FILE_ID_VARIABLE (the $PLATFORM manager file group, not the co-op file or mod ID). See nexus/README.md."
+            exit 1
+          fi
+          if [ "$WINDOWS_FILE_ID" = "$LINUX_FILE_ID" ]; then
+            echo '::error::Windows and Linux need different Nexus file groups so one platform does not archive the other.'
+            exit 1
+          fi
+
+      # Download the exact release assets so retrying this job needs no rebuild.
+      - name: Download the published Nexus package
+        if: steps.published.outputs.done != 'true'
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          gh release download "$RELEASE_TAG" --pattern "kotor-mod-installer-$VERSION$PACKAGE_SUFFIX-nexus.zip" --pattern "$DESCRIPTION_FILE" --dir nexus
+          echo "version=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Read the file description
+        if: steps.published.outputs.done != 'true'
+        id: description
+        run: |
+          delimiter="NEXUS_$(cat /proc/sys/kernel/random/uuid)"
+          {
+            echo "body<<$delimiter"
+            cat "nexus/$DESCRIPTION_FILE"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload the standalone manager to Nexus Mods
+        if: steps.published.outputs.done != 'true'
+        id: upload
+        uses: Nexus-Mods/upload-action@v1.0.0-beta.11
+        with:
+          api_key: ${{ secrets.NEXUSMODS_API_KEY }}
+          file_id: ${{ vars[matrix.file_id_variable] }}
+          filename: nexus/kotor-mod-installer-${{ env.version }}${{ matrix.suffix }}-nexus.zip
+          version: ${{ env.version }}
+          display_name: KOTOR Mod Installer ${{ env.version }} (${{ matrix.label }} standalone app)
+          description: ${{ steps.description.outputs.body }}
+          category: main
+          allow_mod_manager_download: false
+          primary_mod_manager_download: false
+          archive_existing_version: true
+          update_mod_version: true
+
+      - name: Record the Nexus publication for retries
+        if: steps.published.outputs.done != 'true'
+        env:
+          NEXUS_VERSION_ID: ${{ steps.upload.outputs.version_id }}
+          FILE_ID: ${{ vars[matrix.file_id_variable] }}
+        run: |
+          test -n "$NEXUS_VERSION_ID" || { echo '::error::Nexus returned no version ID'; exit 1; }
+          jq -n --arg version "$version" --arg file "$FILE_ID" --arg id "$NEXUS_VERSION_ID" --arg platform "$PLATFORM" \
+            '{version: $version, platform: $platform, nexusFileId: $file, nexusVersionId: $id}' > "$PUBLISHED_MARKER"
+          gh release upload "$RELEASE_TAG" "$PUBLISHED_MARKER" --clobber
+          echo "Published KOTOR Mod Installer $version ($PLATFORM) to Nexus file group $FILE_ID." >> "$GITHUB_STEP_SUMMARY"

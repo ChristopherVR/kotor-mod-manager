@@ -191,6 +191,9 @@ just how TSLPatcher mods work everywhere.
 
 ## For developers
 
+Nexus Mods listing text and automated release upload setup are in
+[`nexus/README.md`](nexus/README.md).
+
 <details>
 <summary>Architecture, running from source, and building the .exe</summary>
 

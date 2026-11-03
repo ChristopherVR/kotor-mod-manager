@@ -1,0 +1,68 @@
+[center][size=6][b]Mod KOTOR without the busywork.[/b][/size]
+[size=4]One app. Recommended builds. Downloads and installs in the right order.[/size]
+
+[img]https://raw.githubusercontent.com/ChristopherVR/kotor-mod-manager/main/docs/images/01-builds.png[/img]
+
+[url=https://github.com/ChristopherVR/kotor-mod-manager/releases/latest]GitHub releases[/url] | [url=https://christophervr.github.io/kotor-mod-manager/]Project site[/url] | [url=https://github.com/ChristopherVR/kotor-mod-manager/issues]Support[/url][/center]
+
+[b]KOTOR Mod Installer[/b] is a free, open-source standalone app for [b]Star Wars: Knights of the Old Republic[/b] and [b]Knights of the Old Republic II: The Sith Lords[/b]. Choose a recommended community build, load its mod list, and let the app download, unpack and install the mods in order.
+
+[b]This download is the manager, not a mod pack.[/b] It bundles no game files or community mod archives. Mods come from their original hosts using your own accounts.
+
+[size=5][b]See it in action[/b][/size]
+[center][img]https://raw.githubusercontent.com/ChristopherVR/kotor-mod-manager/main/docs/images/tour.gif[/img][/center]
+
+[size=5][b]What you get[/b][/size]
+[list]
+[*][b]Guided community builds:[/b] load a recommended list for KOTOR 1 or KOTOR 2 and install in its intended order.
+[*][b]Automatic patching:[/b] a bundled HoloPatcher engine applies supported TSLPatcher mods without clicking through separate installers.
+[*][b]A searchable library:[/b] browse installed mods, filter them and import your own archives or folders.
+[*][b]Loose-file mod switches:[/b] turn supported loose-file mods off and on while keeping their files tracked.
+[*][b]Conflict checks:[/b] see overlapping files and declared incompatibilities before they become surprises.
+[*][b]Built-in updates:[/b] check GitHub for new app releases and update from inside the app.
+[/list]
+
+[center][img]https://raw.githubusercontent.com/ChristopherVR/kotor-mod-manager/main/docs/images/library-search.gif[/img][/center]
+
+[size=5][b]Get started[/b][/size]
+[list=1]
+[*]Choose the [b]Windows[/b] or [b]Linux x86_64[/b] Main file, use [b]Manual download[/b], and extract the ZIP into its own folder. [b]Do not install this app through Vortex or extract it into your game folder.[/b]
+[*][b]Windows:[/b] run [b]KOTOR-Mod-Installer.exe[/b]. [b]Linux:[/b] run [b]KOTOR-Mod-Installer-linux-x86_64[/b]. If needed, allow it to run in Properties > Permissions, or run [b]chmod +x KOTOR-Mod-Installer-linux-x86_64[/b] first. No separate Python or Node installation is needed.
+[*]Open [b]Settings > Game Installs[/b] and choose your KOTOR 1 and/or KOTOR 2 installation folders.
+[*]Sign in to [b]DeadlyStream[/b] under Account. For builds containing Nexus mods, add your personal Nexus API key under [b]Settings > Nexus[/b].
+[*]In [b]Mod Builds[/b], choose a build, click [b]Load Mod List[/b], then [b]Download & Install[/b]. Follow any download or installation choices the app shows.
+[/list]
+
+[b]Back up your saves before modding.[/b] For a new build, start with a clean game installation and follow that build's requirements. The app does not make every combination of mods compatible.
+
+[size=5][b]Accounts and downloads[/b][/size]
+A DeadlyStream account is needed for mods hosted there. Nexus-hosted mods use [url=https://www.nexusmods.com/users/myaccount?tab=api]your personal Nexus API key[/url]. Keep it private.
+
+[list]
+[*][b]Nexus Premium:[/b] automatic Nexus downloads.
+[*][b]Free Nexus account:[/b] the app opens each mod page for you. Click [b]Mod manager download[/b] on that mod's page to continue. This is for downloading mods inside the app, not for installing this manager through Vortex.
+[*][b]Download limits:[/b] if Nexus limits interrupt a build, wait and retry. Completed downloads are kept.
+[*][b]Other hosts:[/b] many links download automatically. Some sites need a browser login or a manual download; the app shows when your help is needed.
+[/list]
+
+[size=5][b]Know what can be undone[/b][/size]
+Loose-file mods can be disabled and restored from the library. TSLPatcher and HoloPatcher mods change shared files in place. These are recorded as [b]baked[/b] and are [b]not cleanly reversible by switching them off[/b]. Keep backups and plan your build before installing patcher-based mods.
+
+[size=5][b]Requirements and safety[/b][/size]
+[list]
+[*]Your own copy of KOTOR 1 and/or KOTOR 2 and enough disk space for the build's downloads and backups.
+[*][b]64-bit Windows or an x86_64 Linux desktop.[/b] Both downloads are on the Files tab and on [url=https://github.com/ChristopherVR/kotor-mod-manager/releases/latest]GitHub Releases[/url]. Linux needs GTK 3 and WebKitGTK 4.1 runtime libraries from your distribution; if launch fails, run the app from a terminal to see missing-library messages.
+[*]Internet access and accounts for the hosts used by your selected build.
+[*]ZIP extraction works without extra tools. For some other archives or installer formats, you may need [url=https://www.7-zip.org/]7-Zip[/url]. A custom 7-Zip path can be set in Settings.
+[/list]
+
+Release downloads are scanned with ClamAV before publication. The ZIP includes the release scan report and SHA-256 checksums. Scanning is not a guarantee of safety. Windows may warn about an unsigned application; report antivirus detections rather than disabling protection.
+
+[size=5][b]Help, source and credits[/b][/size]
+For a bug report, include the app version, your game, the selected build or mod, and what happened. The Activity screen can export logs; review them for private information before sharing. Never post API keys or passwords.
+
+[url=https://github.com/ChristopherVR/kotor-mod-manager#readme]Full guide and FAQ[/url] | [url=https://github.com/ChristopherVR/kotor-mod-manager/issues]Report a problem[/url] | [url=https://github.com/ChristopherVR/kotor-mod-manager]Source code[/url]
+
+The app is licensed under [b]GPL-3.0-only[/b]. It bundles the HoloPatcher engine from the PyKotor project. Community mod authors retain their own permissions and credits: downloading a mod through this app does not change its license or grant redistribution rights.
+
+This is an unofficial fan tool, not affiliated with Nexus Mods or the game's rights holders. No game files, mod packs or DRM bypass are supplied.
