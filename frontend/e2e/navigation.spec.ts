@@ -106,6 +106,41 @@ test("saving General keeps credentials saved in Account", async ({ page }) => {
   });
 });
 
+test("General editing waits for saved settings to load", async ({ page }) => {
+  let releaseSettings!: () => void;
+  const settingsReady = new Promise<void>(resolve => { releaseSettings = resolve; });
+  await page.route("http://127.0.0.1:8756/api/settings", async route => {
+    if (route.request().method() === "GET") await settingsReady;
+    await route.fallback();
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const folder = page.getByRole("textbox", { name: "Download folder", exact: true });
+  const save = page.getByRole("button", { name: "Save", exact: true });
+  try {
+    await expect(folder).toBeDisabled();
+    await expect(folder.locator("..").getByRole("button")).toBeDisabled();
+    await expect(page.getByPlaceholder("1920x1080", { exact: true })).toBeDisabled();
+    await expect(save).toBeDisabled();
+  } finally {
+    releaseSettings();
+  }
+  await expect(folder).toBeEnabled();
+  await expect(folder).toHaveValue("C:\\Downloads");
+  await folder.fill("D:\\My mods");
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  await page.locator("#nexuskey").fill("test-api-key");
+  const accountSaved = page.waitForResponse(r => r.url().endsWith("/api/settings") && r.request().method() === "POST");
+  await page.getByRole("button", { name: "Save API key", exact: true }).click();
+  await accountSaved;
+  await page.getByRole("button", { name: "General", exact: true }).click();
+  await expect(folder).toHaveValue("D:\\My mods");
+  const saved = page.waitForRequest(r => r.url().endsWith("/api/settings") && r.method() === "POST");
+  await save.click();
+  expect((await saved).postDataJSON()).toMatchObject({
+    download_dir: "D:\\My mods", nexus_api_key: "test-api-key",
+  });
+});
+
 test("Nexus key editing waits for saved settings to load", async ({ page }) => {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   let releaseSettings!: () => void;

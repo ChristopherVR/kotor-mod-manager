@@ -24,6 +24,7 @@ export function GeneralSection({ addLog, onRunSetup }: GeneralSectionProps) {
   const { t, locale, setLocale } = useLanguage();
   const [theme, setTheme] = useTheme();
   const [s, setS] = useState<Settings>(EMPTY);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [soundOn, setSoundOn] = useState(isUiSoundEnabled());
@@ -75,7 +76,8 @@ export function GeneralSection({ addLog, onRunSetup }: GeneralSectionProps) {
   };
 
   useEffect(() => {
-    api.getSettings().then(setS).catch(() => {});
+    // Do not allow edits until this response can no longer overwrite them.
+    api.getSettings().then(setS).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   const browse = async () => {
@@ -172,10 +174,11 @@ export function GeneralSection({ addLog, onRunSetup }: GeneralSectionProps) {
             <div className="flex gap-2">
               <Input
                 id="download-folder"
+                disabled={loading || saving}
                 value={s.download_dir ?? ""}
                 onChange={(e) => { setSaved(false); setS({ ...s, download_dir: e.target.value }); }}
               />
-              <Button variant="outline" size="icon" onClick={browse} title={t("common.browse")}>
+              <Button variant="outline" size="icon" onClick={browse} disabled={loading || saving} title={t("common.browse")}>
                 <FolderOpen />
               </Button>
             </div>
@@ -187,13 +190,14 @@ export function GeneralSection({ addLog, onRunSetup }: GeneralSectionProps) {
             <Label>{t("settings.general.screenSize")}</Label>
             <Input
               value={s.preferred_resolution ?? ""}
+              disabled={loading || saving}
               placeholder="1920x1080"
               onChange={(e) => { setSaved(false); setS({ ...s, preferred_resolution: e.target.value.trim() }); }}
             />
             <p className="text-xs text-muted-foreground">{t("settings.general.screenSizeHint")}</p>
           </div>
           <div className="flex items-center gap-3">
-            <Button onClick={save} disabled={saving}>
+            <Button onClick={save} disabled={loading || saving}>
               {saving ? t("common.saving") : t("common.save")}
             </Button>
             {saved && <span className="text-xs text-[hsl(var(--success))]">{t("common.saved")}</span>}
