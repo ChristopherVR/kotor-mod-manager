@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.24.1] - 2026-11-03
+
+### Bug Fixes
+
+- Keep Nexus download names short enough to publish
 ## [0.24.0] - 2026-11-03
 
 ### Features
