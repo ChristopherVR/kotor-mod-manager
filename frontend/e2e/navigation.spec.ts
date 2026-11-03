@@ -10,9 +10,13 @@ const mods = Array.from({ length: 60 }, (_, i) => ({
 }));
 
 async function mockBackend(page: Page) {
-  let settings = { language: "en", download_dir: "C:\\Downloads", nexus_api_key: "" };
+  let settings = { language: "en", download_dir: "C:\\Downloads", nexus_api_key: "", seven_zip_path: "" };
   await page.route("http://127.0.0.1:8756/**", async route => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/extractor/status") {
+      await route.fulfill({ json: { seven_zip_path: settings.seven_zip_path || null } });
+      return;
+    }
     if (path === "/api/settings") {
       if (route.request().method() === "POST") {
         settings = route.request().postDataJSON();
@@ -121,6 +125,31 @@ test("Nexus key editing waits for saved settings to load", async ({ page }) => {
   const saved = page.waitForRequest(r => r.url().endsWith("/api/settings") && r.method() === "POST");
   await save.click();
   expect((await saved).postDataJSON()).toMatchObject({ nexus_api_key: "test-api-key" });
+});
+
+test("7-Zip path can be saved and cleared without overwriting other settings", async ({ page }) => {
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const path = page.getByLabel("7-Zip executable (optional)", { exact: true });
+  await expect(path).toBeEnabled();
+  await path.fill("D:\\Portable Tools\\7z.exe");
+  const saved = page.waitForRequest(r => r.url().endsWith("/api/settings") && r.method() === "POST");
+  await page.getByRole("button", { name: "Save 7-Zip path", exact: true }).click();
+  expect((await saved).postDataJSON()).toMatchObject({
+    seven_zip_path: "D:\\Portable Tools\\7z.exe", download_dir: "C:\\Downloads",
+  });
+  await expect(page.getByRole("status")).toContainText("D:\\Portable Tools\\7z.exe");
+
+  // Saving another General field must retain the executable override.
+  await page.getByLabel("Download folder", { exact: true }).fill("D:\\Mods");
+  const generalSaved = page.waitForRequest(r => r.url().endsWith("/api/settings") && r.method() === "POST");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  expect((await generalSaved).postDataJSON()).toMatchObject({ seven_zip_path: "D:\\Portable Tools\\7z.exe" });
+
+  const cleared = page.waitForRequest(r => r.url().endsWith("/api/settings") && r.method() === "POST");
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  expect((await cleared).postDataJSON()).toMatchObject({ seven_zip_path: "", download_dir: "D:\\Mods" });
+  await expect(path).toHaveValue("");
+  await expect(page.getByRole("status")).toContainText("7-Zip was not found");
 });
 
 test("mod details do not duplicate guide instructions", async ({ page }) => {

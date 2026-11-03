@@ -11,8 +11,9 @@ import { Switch } from "@/components/ui/switch";
 import { useLanguage, LOCALES, type Locale } from "@/lib/i18n";
 import { isUiSoundEnabled, setUiSoundEnabled, playClick } from "@/lib/sound";
 import { useTheme, type Theme } from "@/lib/theme";
+import { ArchiveSection } from "./ArchiveSection";
 
-const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "", language: "en", custom_patcher_path: "", nexus_api_key: "", preferred_resolution: "" };
+const EMPTY: Settings = { kotor1_path: "", kotor2_path: "", download_dir: "", language: "en", custom_patcher_path: "", seven_zip_path: "", nexus_api_key: "", preferred_resolution: "" };
 
 interface GeneralSectionProps {
   addLog: (message: string, tag?: string) => void;
@@ -298,6 +299,8 @@ export function GeneralSection({ addLog, onRunSetup }: GeneralSectionProps) {
           )}
         </CardContent>
       </Card>
+
+      <ArchiveSection addLog={addLog} />
     </>
   );
 }

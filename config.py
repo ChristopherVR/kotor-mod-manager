@@ -27,6 +27,8 @@ DEFAULTS = {
     # Optional path to a user-supplied headless patcher exe (overrides the
     # bundled HoloPatcher). Must be HoloPatcher-CLI-compatible.
     "custom_patcher_path": "",
+    # Optional 7-Zip executable. Blank uses automatic detection.
+    "seven_zip_path": "",
     # Nexus Mods personal API key (https://www.nexusmods.com/users/myaccount?tab=api).
     # Empty by default; each user sets their own in Settings. Never commit a key.
     "nexus_api_key": "",

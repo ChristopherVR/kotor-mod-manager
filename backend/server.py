@@ -518,9 +518,16 @@ def get_settings() -> dict:
         "download_dir": conf.get("download_dir", ""),
         "language": conf.get("language", "en"),
         "custom_patcher_path": conf.get("custom_patcher_path", ""),
+        "seven_zip_path": conf.get("seven_zip_path", ""),
         "nexus_api_key": conf.get("nexus_api_key", ""),
         "preferred_resolution": conf.get("preferred_resolution", ""),
     }
+
+
+@app.get("/api/extractor/status")
+def extractor_status() -> dict:
+    from installer.extractor import _find_7z
+    return {"seven_zip_path": _find_7z()}
 
 
 @app.get("/api/patcher/status")

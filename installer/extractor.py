@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
+import config as cfg
 from installer.fs_retry import with_lock_retry
 
 try:
@@ -44,7 +45,42 @@ def _extract_zip(archive: Path, dest: Path) -> None:
     def _open_and_extract() -> None:
         with zipfile.ZipFile(archive, "r") as z:
             z.extractall(dest)
-    with_lock_retry(_open_and_extract)
+    try:
+        with_lock_retry(_open_and_extract)
+    except (zipfile.BadZipFile, NotImplementedError, RuntimeError):
+        # The OS tools may support a ZIP compression method Python does not.
+        if not _extract_system_archive(archive, dest, is_zip=True):
+            raise
+
+
+def _run_extractor(args: list[str]) -> bool:
+    """A missing, inaccessible or incompatible tool must not block fallbacks."""
+    try:
+        return subprocess.run(args, capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+def _extract_system_archive(archive: Path, dest: Path, *, is_zip: bool = False) -> bool:
+    """Try available OS tools, without ever launching a downloaded installer.
+
+    Windows ships libarchive-based tar. On Linux use bsdtar if installed, since
+    GNU tar cannot read ZIP/7z/RAR. Support depends on the local libarchive build.
+    """
+    tar = shutil.which("bsdtar")
+    if not tar and sys.platform == "win32":
+        tar = shutil.which("tar")
+        if not tar:
+            system_tar = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "tar.exe"
+            if system_tar.is_file():
+                tar = str(system_tar)
+    if tar and _run_extractor([tar, "-xf", str(archive.resolve()), "-C", str(dest.resolve())]):
+        return True
+    if is_zip:
+        unzip = shutil.which("unzip")
+        if unzip and _run_extractor([unzip, "-o", str(archive.resolve()), "-d", str(dest.resolve())]):
+            return True
+    return False
 
 
 def _extract_7z(archive: Path, dest: Path) -> None:
@@ -52,16 +88,16 @@ def _extract_7z(archive: Path, dest: Path) -> None:
     # and handles long Windows paths better than py7zr.
     cmd_7z = _find_7z()
     if cmd_7z:
-        result = subprocess.run(
-            [cmd_7z, "x", str(archive), f"-o{dest}", "-y"],
-            capture_output=True
-        )
-        if result.returncode == 0:
+        if _run_extractor([cmd_7z, "x", str(archive), f"-o{dest}", "-y"]):
             return
+
+    if _extract_system_archive(archive, dest):
+        return
 
     if not HAS_7Z:
         raise ExtractionError(
-            "py7zr is not installed and system 7z not found - cannot extract .7z files."
+            "Cannot extract .7z files with the available tools. Install 7-Zip "
+            "and select its executable in Settings > General > Archive extraction."
         )
 
     def _open_and_extract() -> None:
@@ -72,7 +108,8 @@ def _extract_7z(archive: Path, dest: Path) -> None:
     except Exception as e:
         raise ExtractionError(
             f"Cannot extract '{archive.name}': {e}. "
-            "Install 7-Zip (https://www.7-zip.org/) to handle all archive types."
+            "Install 7-Zip (https://www.7-zip.org/) and select its executable "
+            "in Settings > General > Archive extraction."
         ) from e
 
 
@@ -93,9 +130,35 @@ _WINRAR_UNRAR = [
 
 
 def _find_7z() -> str | None:
-    for cmd in _7Z_CANDIDATES:
-        if shutil.which(cmd) or Path(cmd).exists():
-            return cmd
+    custom = cfg.load().get("seven_zip_path", "").strip().strip('"')
+    candidates = [custom] if custom else []
+    candidates.extend(_7Z_CANDIDATES)
+    if sys.platform == "win32":
+        # Windows may live on a drive other than C:, or use a per-user install.
+        for variable in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
+            base = os.environ.get(variable)
+            if base:
+                candidates.append(str(Path(base) / "7-Zip" / "7z.exe"))
+                if variable == "LOCALAPPDATA":
+                    candidates.append(str(Path(base) / "Programs" / "7-Zip" / "7z.exe"))
+        # The installer records custom installation directories in the registry.
+        import winreg
+        for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            for view in (winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY):
+                try:
+                    with winreg.OpenKey(hive, r"SOFTWARE\7-Zip", 0, winreg.KEY_READ | view) as key:
+                        for name in ("Path", "Path64", "Path32"):
+                            try:
+                                base, _ = winreg.QueryValueEx(key, name)
+                                candidates.append(str(Path(base) / "7z.exe"))
+                            except OSError:
+                                pass
+                except OSError:
+                    pass
+    for cmd in candidates:
+        resolved = shutil.which(cmd)
+        if resolved:
+            return resolved
     return None
 
 
@@ -110,21 +173,13 @@ def _extract_rar(archive: Path, dest: Path) -> None:
     # Try 7-Zip first (handles most RAR files)
     cmd_7z = _find_7z()
     if cmd_7z:
-        result = subprocess.run(
-            [cmd_7z, "x", str(archive), f"-o{dest}", "-y"],
-            capture_output=True
-        )
-        if result.returncode == 0:
+        if _run_extractor([cmd_7z, "x", str(archive), f"-o{dest}", "-y"]):
             return
 
     # Try WinRAR/unrar
     unrar = _find_unrar()
     if unrar:
-        result = subprocess.run(
-            [unrar, "x", "-y", str(archive), str(dest) + os.sep],
-            capture_output=True
-        )
-        if result.returncode == 0:
+        if _run_extractor([unrar, "x", "-y", str(archive), str(dest) + os.sep]):
             return
 
     # Linux: unar and bsdtar (libarchive) read RAR, including RAR5. Distro builds
@@ -132,21 +187,13 @@ def _extract_rar(archive: Path, dest: Path) -> None:
     # not enough there.
     unar = shutil.which("unar")
     if unar:
-        result = subprocess.run(
+        if _run_extractor(
             [unar, "-quiet", "-force-overwrite", "-no-directory", "-output-directory",
-             str(dest), str(archive)],
-            capture_output=True
-        )
-        if result.returncode == 0:
+             str(dest), str(archive)]
+        ):
             return
-    bsdtar = shutil.which("bsdtar")
-    if bsdtar:
-        result = subprocess.run(
-            [bsdtar, "-xf", str(archive), "-C", str(dest)],
-            capture_output=True
-        )
-        if result.returncode == 0:
-            return
+    if _extract_system_archive(archive, dest):
+        return
 
     # Try rarfile library
     if HAS_RAR:
@@ -176,23 +223,26 @@ def _extract_rar(archive: Path, dest: Path) -> None:
                  "https://www.7-zip.org/ (the 7z in Debian and Ubuntu cannot read RAR)")
     raise ExtractionError(
         f"Cannot extract RAR archive '{archive.name}'. "
-        f"Please install one of the following tools: {tools}."
+        f"Please install one of the following tools: {tools}. "
+        "You can select 7-Zip in Settings > General > Archive extraction."
     )
 
 
 def _extract_self_extracting_exe(archive: Path, dest: Path) -> None:
-    """Try to unpack a self-extracting .exe with 7z."""
+    """Unpack a self-extracting .exe without executing it."""
     # Use the same lookup as .7z/.rar extraction: a standard 7-Zip install
     # lives in Program Files and is NOT on PATH, so a which()-only check
     # would fail on most player machines.
     cmd_7z = _find_7z()
     if cmd_7z:
-        result = subprocess.run(
-            [cmd_7z, "x", str(archive), f"-o{dest}", "-y"],
-            capture_output=True
-        )
-        if result.returncode == 0:
+        if _run_extractor([cmd_7z, "x", str(archive), f"-o{dest}", "-y"]):
             return
+    # ZIP-based SFX files are readable by Python on both Windows and Linux.
+    if zipfile.is_zipfile(archive):
+        _extract_zip(archive, _unc(dest))
+        return
+    if _extract_system_archive(archive, dest):
+        return
     if HAS_7Z:
         try:
             with py7zr.SevenZipFile(archive, mode="r") as z:
@@ -202,7 +252,9 @@ def _extract_self_extracting_exe(archive: Path, dest: Path) -> None:
             pass
     raise ExtractionError(
         f"Cannot extract self-extracting EXE '{archive.name}'. "
-        "Install 7-Zip and ensure 7z.exe is on your PATH."
+        "Install 7-Zip (https://www.7-zip.org/), then select 7z.exe (Windows) "
+        "or 7zz/7z (Linux) in Settings > General > Archive extraction. "
+        "You do not need to change PATH. Built-in extraction cannot read every installer format."
     )
 
 
@@ -292,15 +344,12 @@ def extract(archive: Path, dest: Optional[Path] = None) -> Path:
         try:
             _extract_zip(archive, _unc(dest))
         except zipfile.BadZipFile:
-            if HAS_7Z:
-                try:
-                    _extract_7z(archive, dest)
-                except Exception as e:
-                    raise ExtractionError(
-                        f"Cannot extract '{archive.name}': {e}"
-                    ) from e
-            else:
-                raise ExtractionError(f"Unsupported archive format: {suffix}")
+            try:
+                _extract_7z(archive, dest)
+            except Exception as e:
+                raise ExtractionError(
+                    f"Cannot extract '{archive.name}': {e}"
+                ) from e
 
     # A wrapper archive yields no installable files; unpack what is inside it.
     _extract_nested(dest)

@@ -98,7 +98,7 @@ export async function onDragHover(
   }
 }
 
-/** Pick a single executable file (used for the custom patcher path). */
+/** Pick a single executable file. Pass [] to include extensionless Linux tools. */
 export async function pickFile(
   extensions: string[] = ["exe"],
 ): Promise<string | null> {
@@ -111,7 +111,7 @@ export async function pickFile(
     const result = await open({
       multiple: false,
       directory: false,
-      filters: [{ name: "Executable", extensions }],
+      filters: extensions.length ? [{ name: "Executable", extensions }] : undefined,
     });
     return typeof result === "string" ? result : null;
   } catch {

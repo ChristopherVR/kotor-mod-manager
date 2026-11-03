@@ -99,6 +99,20 @@ downloads the matching add-on pack. After extraction, choose between the archive
 subtitle and legal-screen alternatives; K2's additional mod cutscenes are opt-in.
 These choices are made before any of the pack's files are installed.
 
+### Archive extraction and 7-Zip
+
+ZIP files extract without installing anything extra on Windows and Linux. For
+other formats, the app tries 7-Zip, available system tools (Windows tar or Linux
+bsdtar/unar/unrar), and bundled libraries. Not every tool supports every format.
+
+If an installer such as TSLRCM's `tslrcm2022.exe` cannot be unpacked, install
+[7-Zip](https://www.7-zip.org/). Standard installations are detected automatically,
+including Windows installations that are not on PATH. For a portable or custom
+installation, open **Settings > General > Archive extraction**, browse to the
+command-line executable (`7z.exe` on Windows, `7zz` or `7z` on Linux), and click
+**Save 7-Zip path**. The detected executable is shown there. No PATH changes are
+needed. Clear the field to return to automatic detection, then retry the mod.
+
 ### 4. Manage your library
 
 The **Library** lists every installed mod with a thumbnail. Search and filter,
