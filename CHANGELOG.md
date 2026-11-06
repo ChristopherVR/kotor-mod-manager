@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.24.2] - 2026-11-06
+
+### Bug Fixes
+
+- Stop the GameFront window freezing on a blank white screen
 ## [0.24.1] - 2026-11-03
 
 ### Bug Fixes
