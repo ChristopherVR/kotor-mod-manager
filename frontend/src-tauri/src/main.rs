@@ -35,6 +35,18 @@ const BACKEND_PORT: &str = "8756";
 
 struct BackendChild(Mutex<Option<Child>>);
 
+/// Marker file the Nexus Mods download ships next to the app. Nexus does not
+/// allow apps that replace themselves, so its build only announces new versions.
+const NO_SELF_UPDATE_MARKER: &str = "nexus-build.flag";
+
+fn self_update_disabled() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join(NO_SELF_UPDATE_MARKER)))
+        .map(|p| p.is_file())
+        .unwrap_or(false)
+}
+
 fn extract_backend() -> std::path::PathBuf {
     let dir = std::env::temp_dir().join("kotor-mod-installer");
     let _ = std::fs::create_dir_all(&dir);
@@ -63,6 +75,9 @@ fn spawn_backend() -> Option<Child> {
     let path = extract_backend();
     let mut cmd = Command::new(&path);
     cmd.args(["--host", "127.0.0.1", "--port", BACKEND_PORT]);
+    if self_update_disabled() {
+        cmd.env("KMI_NO_SELF_UPDATE", "1");
+    }
     #[cfg(windows)]
     cmd.creation_flags(CREATE_NO_WINDOW);
     // Own process group, so stopping it also stops the PyInstaller worker.
@@ -147,6 +162,7 @@ fn remove_stale_backends(dir: &std::path::Path, keep: &std::path::Path) {
 #[tauri::command]
 fn apply_update(window: tauri::WebviewWindow, app: tauri::AppHandle, new_path: String) -> Result<(), String> {
     if window.label() != "main" { return Err("Only the installer can apply updates".into()); }
+    if self_update_disabled() { return Err("Self-update is disabled in this build".into()); }
     // An AppImage reports the file to replace in $APPIMAGE.
     let cur = match std::env::var_os("APPIMAGE") {
         Some(p) if cfg!(unix) => std::path::PathBuf::from(p),

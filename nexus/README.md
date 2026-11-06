@@ -91,7 +91,15 @@ The existing versioning and build triggers are unchanged:
 
 Both platforms are published on Nexus and GitHub. Pull-request and manual
 **CI Build** runs never publish to Nexus and do not receive Nexus credentials.
-The app's existing GitHub updater is unchanged.
+The Nexus ZIP includes an empty `nexus-build.flag` file next to the app. When
+the app finds it, self-update is disabled in the app shell, the backend and the
+UI: the app only tells the player a new version exists and links to the release
+page, and the player downloads it from Nexus or GitHub. The GitHub-only download
+keeps its one-click updater.
+
+Every Nexus API request sends `Application-Name` (always `KOTOR Mod Installer`)
+and `Application-Version` (the running release), as the Nexus API acceptable use
+policy requires.
 
 ## Failures and retries
 

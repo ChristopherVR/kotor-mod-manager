@@ -95,11 +95,21 @@ export function UpdatesSection({ status, addLog }: UpdatesSectionProps) {
                         onClick={() => api.updateOpen(update.url ?? undefined).catch(() => {})}>
                   <ExternalLink /> {t("settings.updates.releaseNotes")}
                 </Button>
-                <Button size="sm" onClick={installUpdate} disabled={installing}>
-                  <Download /> {installing ? t("settings.updates.installing") : t("settings.updates.install")}
-                </Button>
+                {update.can_self_update === false ? (
+                  <Button size="sm"
+                          onClick={() => api.updateOpen(update.nexus_url ?? update.url ?? undefined).catch(() => {})}>
+                    <ExternalLink /> {t("settings.updates.getIt")}
+                  </Button>
+                ) : (
+                  <Button size="sm" onClick={installUpdate} disabled={installing}>
+                    <Download /> {installing ? t("settings.updates.installing") : t("settings.updates.install")}
+                  </Button>
+                )}
               </div>
             </div>
+            {update.can_self_update === false && (
+              <p className="mt-2 text-xs text-muted-foreground">{t("settings.updates.manual")}</p>
+            )}
             {installing && (
               <div className="mt-2">
                 <Progress value={progress} />

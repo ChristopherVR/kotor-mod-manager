@@ -321,6 +321,12 @@ def logout() -> dict:
 # ---------------------------------------------------------------------------
 
 UPDATE_REPO = "ChristopherVR/kotor-mod-manager"
+from scraper.nexus import NEXUS_PAGE_URL  # noqa: E402
+
+
+def _self_update_allowed() -> bool:
+    """False for the Nexus Mods build, which may only announce new versions."""
+    return os.environ.get("KMI_NO_SELF_UPDATE") != "1"
 
 
 def _version_tuple(v: str) -> tuple:
@@ -372,6 +378,8 @@ def update_check() -> dict:
         "asset_url": asset_url,
         "notes": (data.get("body") or "")[:2000],
         "repo": UPDATE_REPO,
+        "can_self_update": _self_update_allowed(),
+        "nexus_url": NEXUS_PAGE_URL,
     }
 
 
@@ -469,6 +477,9 @@ def update_download() -> dict:
     """
     import tempfile
     import urllib.request
+
+    if not _self_update_allowed():
+        return JSONResponse(status_code=403, content={"ok": False, "error": "self_update_disabled"})
 
     info = update_check()
     asset = info.get("asset_url")

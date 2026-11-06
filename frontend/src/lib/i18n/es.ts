@@ -263,6 +263,8 @@ export const es: Dict = {
   "settings.updates.checking": "Buscando…",
   "settings.updates.available": "La versión {version} está disponible",
   "settings.updates.releaseNotes": "Notas de la versión",
+  "settings.updates.getIt": "Obtener la actualización",
+  "settings.updates.manual": "Esta versión no se actualiza sola. Descarga la nueva versión desde Nexus Mods o GitHub y reemplaza la anterior.",
   "settings.updates.install": "Descargar e instalar",
   "settings.updates.installing": "Instalando…",
   "settings.updates.downloading": "Descargando actualización… {pct}%",

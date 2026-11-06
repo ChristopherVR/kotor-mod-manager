@@ -398,6 +398,9 @@ export interface UpdateInfo {
   asset_url?: string | null;
   notes?: string;
   repo?: string;
+  /** False in the Nexus Mods build: it only announces updates. */
+  can_self_update?: boolean;
+  nexus_url?: string;
   error?: string;
 }
 

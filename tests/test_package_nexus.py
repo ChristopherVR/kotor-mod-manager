@@ -26,6 +26,26 @@ def inputs(tmp_path, request):
     )
 
 
+def test_nexus_api_requests_name_the_app_and_version(monkeypatch):
+    from scraper import nexus
+    seen = {}
+
+    class R:
+        headers = {}
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b"{}"
+
+    def fake(req, timeout=0):
+        seen.update({k.lower(): v for k, v in req.header_items()})
+        return R()
+
+    monkeypatch.setattr(nexus.urllib.request, "urlopen", fake)
+    nexus._get_json("https://api.nexusmods.com/v1/users/validate.json", "k")
+    assert seen["application-name"] == "KOTOR Mod Installer"
+    assert seen["application-version"] == nexus._app_version() != "0.0.0"
+
+
 def test_package_contains_exact_app_instructions_license_report_and_checksums(inputs):
     archive = package_nexus(**inputs)
     is_linux = inputs["platform"] == "linux"
@@ -35,8 +55,9 @@ def test_package_contains_exact_app_instructions_license_report_and_checksums(in
     with ZipFile(archive) as zipped:
         assert set(zipped.namelist()) == {
             executable_name, "READ-ME-FIRST.txt", "virus-scan.txt",
-            "LICENSE", "SHA256SUMS.txt",
+            "LICENSE", "SHA256SUMS.txt", "nexus-build.flag",
         }
+        assert "never updates itself" in zipped.read("READ-ME-FIRST.txt").decode()
         assert zipped.read(executable_name) == inputs["executable"].read_bytes()
         assert zipped.read("virus-scan.txt") == inputs["scan_report"].read_bytes()
         assert zipped.read("LICENSE") == inputs["license_file"].read_bytes()

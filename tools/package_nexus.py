@@ -7,6 +7,9 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 
+NO_SELF_UPDATE_MARKER = "nexus-build.flag"
+
+
 def package_nexus(
     tag: str,
     repository: str,
@@ -66,8 +69,9 @@ Patcher-based mod changes are not cleanly reversible by switching a mod off.
 the release antivirus report and SHA-256 checksums. Report antivirus detections
 rather than disabling protection. The report is not a guarantee of safety.
 
-The app can check GitHub for updates. Windows and Linux downloads are on Nexus
-and GitHub. Choose the download for your operating system.
+The app can tell you when a new version is out, but it never updates itself.
+Download new versions from Nexus or GitHub and replace the old files. Windows
+and Linux downloads are on both. Choose the download for your operating system.
 Guide and support: https://github.com/{repository}
 Exact release, corresponding source and scan report: {release_url}
 License: GPL-3.0-only, see LICENSE.
@@ -96,6 +100,8 @@ License: GPL-3.0-only, see LICENSE.
             info.create_system = 3
             info.external_attr = 0o100755 << 16
         zipped.writestr("READ-ME-FIRST.txt", readme)
+        # Tells the app this is the Nexus build, which must not update itself.
+        zipped.writestr(NO_SELF_UPDATE_MARKER, "")
         zipped.write(scan_report, "virus-scan.txt")
         zipped.write(license_file, "LICENSE")
         checksums = []
