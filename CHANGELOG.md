@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.25.1] - 2026-11-06
+
+### Miscellaneous
+
+- Added AGENTS.md and cargo.lock sync
 ## [0.25.0] - 2026-11-06
 
 ### Features
