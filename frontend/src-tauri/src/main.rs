@@ -390,13 +390,17 @@ fn main() {
         .manage(BackendChild(Mutex::new(spawn_backend())))
         .manage(gamefront::Session::default())
         .invoke_handler(tauri::generate_handler![apply_update, set_nxm_handler,
-            gamefront::open_gamefront, gamefront::finish_gamefront])
+            gamefront::open_gamefront, gamefront::finish_gamefront,
+            gamefront::close_gamefront])
         .on_window_event(|window, event| {
             // Only the main window ending means the app is over.
             if window.label() != "main" {
                 return;
             }
             if let tauri::WindowEvent::Destroyed = event {
+                // A leftover GameFront window would keep the app running
+                // in the background after the player closed it.
+                gamefront::close(window.app_handle());
                 if let Some(child) = window
                     .app_handle()
                     .state::<BackendChild>()

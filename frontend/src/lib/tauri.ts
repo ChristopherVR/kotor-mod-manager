@@ -5,12 +5,34 @@ export function isTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+const GAMEFRONT_OPEN_TIMEOUT_MS = 20_000;
+
 export async function openGameFront(request: {
   id: string; url: string; destination: string; name: string;
 } | null = null): Promise<void> {
   if (!isTauri()) throw new Error("The saved GameFront session requires the desktop app.");
   const { invoke } = await import("@tauri-apps/api/core");
-  await invoke("open_gamefront", { request });
+  // A browser window that never answers must not freeze the installer. Give up
+  // waiting so the caller can fall back to the player's regular browser.
+  let timer: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(
+      () => reject(new Error("The GameFront window did not respond.")),
+      GAMEFRONT_OPEN_TIMEOUT_MS,
+    );
+  });
+  try {
+    await Promise.race([invoke("open_gamefront", { request }), timeout]);
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+/** Force the GameFront window closed, even if its page is stuck. */
+export async function closeGameFront(): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("close_gamefront");
 }
 
 export async function finishGameFront(id: string): Promise<void> {

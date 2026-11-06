@@ -678,21 +678,23 @@ class Pipeline:
         words = {w for w in re.split(r"[^a-z0-9]+", name.lower()) if len(w) > 2}
         return sum(1 for w in words if w in filename.lower())
 
+    @staticmethod
+    def _settled(p: Path, seen: dict) -> bool:
+        """True once a file has existed with an unchanging size for a while."""
+        try:
+            size = p.stat().st_size
+        except OSError:
+            return False
+        now = time.monotonic()
+        last, since = seen.get(p, (None, now))
+        if size != last:
+            since = now
+        seen[p] = (size, since)
+        return size > 0 and now - since >= _DROP_SETTLE_SECONDS
+
     def _dropped_archive(self, pm: PipelineMod, dest_dir: Path, seen: dict) -> "list[Path] | None":
         """An archive the player put in this mod's folder, or loose in the mod
         folder root. Only finished files count: one must stop growing first."""
-        def settled(p: Path) -> bool:
-            try:
-                size = p.stat().st_size
-            except OSError:
-                return False
-            now = time.monotonic()
-            last, since = seen.get(p, (None, now))
-            if size != last:
-                since = now
-            seen[p] = (size, since)
-            return size > 0 and now - since >= _DROP_SETTLE_SECONDS
-
         cached = self._cached_for(pm, dest_dir)
         if not cached and pm.build_mod.patch_urls and dest_dir.exists():
             # A browser download placed in this mod's folder has no complete
@@ -702,15 +704,19 @@ class Pipeline:
             cached = [f for f in dest_dir.iterdir() if f.is_file()
                       and f.suffix.lower() in _DROP_ARCHIVES
                       and f.stat().st_mtime >= started]
-        if cached and all(settled(f) for f in cached):
+        if cached and all(self._settled(f, seen) for f in cached):
             return cached
+        return self._loose_download(pm, dest_dir, seen)
+
+    def _loose_download(self, pm: PipelineMod, dest_dir: Path, seen: dict) -> "list[Path] | None":
+        """A finished archive named like this mod, loose in the Downloads folder."""
         try:
             loose = [p for p in self._download_dir.iterdir()
                      if p.is_file() and not p.name.startswith(".")
                      and p.suffix.lower() in _DROP_ARCHIVES]
         except OSError:
             return None
-        ready = [p for p in loose if settled(p)]
+        ready = [p for p in loose if self._settled(p, seen)]
         if not ready:
             return None
         # Take only a file named like this mod. Taking a lone unrelated file
@@ -760,6 +766,14 @@ class Pipeline:
                         # Native browser promotes files only on successful
                         # completion. Existing cache validation still applies.
                         return cached
+                    # Fallback for when the built-in window fails: a matching
+                    # archive the player saved with their regular browser.
+                    try:
+                        found = self._loose_download(pm, dest_dir, seen)
+                    except OSError:
+                        found = None
+                    if found:
+                        return found
                     self._stop_event.wait(_DROP_POLL_SECONDS)
                 return None
             finally:

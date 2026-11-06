@@ -49,7 +49,7 @@ def test_hq_blasters_renames_the_rifle_model_instead_of_deleting_it():
     # misreading this rule exists to correct.
     raw = parse_directives(
         "Extract the mod, navigate to the 'TSLPatchdata' folder, and delete the "
-        "file 'keblastore.utm'. Run the installer—it will give you a single "
+        "file 'keblastore.utm'. Run the installer - it will give you a single "
         "error, this is intended. After the install has completed, rename the "
         "files 'w_ionrfl_04.mdl' and 'w_ionrfl_04.mdx' to 'w_ionrfl_004.mdl' and "
         "'w_ionrfl_004.mdx'. Delete the following files from your override "

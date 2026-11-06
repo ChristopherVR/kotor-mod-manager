@@ -1107,7 +1107,12 @@ def gamefront_request() -> dict:
 def gamefront_external() -> dict:
     import webbrowser
     request = gamefront_request()["request"]
-    webbrowser.open(request["url"] if request else "https://www.gamefront.com/account")
+    try:
+        webbrowser.open(request["url"] if request else "https://www.gamefront.com/account")
+    except Exception:
+        # No usable default browser. The destination below still tells the
+        # player where to put the file, so the install can carry on.
+        pass
     return {"ok": True, "destination": request["destination"] if request else str(cfg.download_dir())}
 
 

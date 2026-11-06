@@ -6,12 +6,19 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex, MutexGuard,
+    },
+    time::Duration,
 };
-use tauri::webview::{DownloadEvent, NewWindowResponse};
+use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
 use tauri::{Emitter, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 const LABEL: &str = "gamefront-browser";
+/// How long a GameFront page may stay blank before the player is told how to
+/// get out of it. Slow verification pages usually finish well inside this.
+const LOAD_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Request {
@@ -25,6 +32,16 @@ pub struct Request {
 pub struct Session {
     active: Mutex<Option<Request>>,
     transfers: Mutex<HashMap<PathBuf, (String, PathBuf, String)>>,
+    /// Bumped on every navigation; a page-load watchdog only reports when no
+    /// newer navigation or finished load has happened since it started.
+    load_generation: AtomicU64,
+    loaded_generation: AtomicU64,
+}
+
+/// A panic while a lock was held must not take every later download with it.
+/// The guarded data is plain bookkeeping, so reusing it is always safe.
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn site_url(url: &Url) -> bool {
@@ -117,29 +134,29 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
         // the path. Canonicalization also resolves the actual directory once.
         req.destination =
             fs::canonicalize(&req.destination).map_err(|_| "Cannot resolve mod download folder")?;
-        let mut active = state
-            .active
-            .lock()
-            .map_err(|_| "GameFront session unavailable")?;
+        let mut active = lock(&state.active);
         navigate = active.as_ref().map(|r| &r.id) != Some(&req.id);
         *active = Some(req);
-    } else if let Some(req) = state
-        .active
-        .lock()
-        .map_err(|_| "GameFront session unavailable")?
-        .as_ref()
-    {
+    } else if let Some(req) = lock(&state.active).as_ref() {
         target = request_url(req)?;
     }
     if let Some(window) = app.get_webview_window(LABEL) {
         if navigate {
-            window
-                .navigate(target)
-                .map_err(|_| "Could not open GameFront download")?;
+            // Start the watchdog before navigating so a very fast page load
+            // can never finish ahead of it and trigger a false warning.
+            watch_page_load(app);
         }
-        window.show().map_err(|_| "Could not show GameFront")?;
-        let _ = window.set_focus();
-        return Ok(());
+        let reused = (!navigate || window.navigate(target.clone()).is_ok())
+            && window.show().is_ok();
+        if reused {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+            return Ok(());
+        }
+        // The old window is broken (crashed browser process, lost handle).
+        // Throw it away and build a fresh one instead of failing the download.
+        eprintln!("[GameFront] Replacing an unresponsive GameFront window");
+        let _ = window.destroy();
     }
     let profile = app
         .path()
@@ -147,19 +164,27 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
         .map_err(|_| "Profile folder unavailable")?
         .join("gamefront-profile");
     fs::create_dir_all(&profile).map_err(|_| "Cannot create GameFront profile")?;
+    watch_page_load(app);
     WebviewWindowBuilder::new(app, LABEL, WebviewUrl::External(target))
-        .title("GameFront — saved browser session")
+        .title("GameFront - saved browser session")
         .inner_size(1100.0, 780.0)
         .center()
         .data_directory(profile)
         .on_navigation(site_url)
         .on_new_window(|_, _| NewWindowResponse::Deny)
+        .on_page_load(|window, payload| {
+            if payload.event() == PageLoadEvent::Finished {
+                let state = window.app_handle().state::<Session>();
+                let current = state.load_generation.load(Ordering::SeqCst);
+                state.loaded_generation.store(current, Ordering::SeqCst);
+            }
+        })
         .on_download(|webview, event| {
             let app = webview.app_handle();
             let state = app.state::<Session>();
             match event {
                 DownloadEvent::Requested { url, destination } => {
-                    let active = state.active.lock().unwrap();
+                    let active = lock(&state.active);
                     let Some(req) = active.as_ref() else {
                         report(app, "Start a mod download from the installer first.");
                         return false;
@@ -173,7 +198,10 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
                         return false;
                     };
                     let staging = req.destination.join(format!(".gamefront-{}", req.id));
-                    if fs::create_dir_all(&staging).is_err() { return false; }
+                    if fs::create_dir_all(&staging).is_err() {
+                        report(app, "Could not prepare the mod folder for this download. Check the disk has free space.");
+                        return false;
+                    }
                     // Keep the archive extension for the browser's download
                     // handling. The nested staging folder is invisible to the
                     // installer's top-level archive watcher until promotion.
@@ -181,7 +209,7 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
                     let final_path = req.destination.join(&name);
                     // Never overwrite a completed file
                     // or a second download that is already in progress.
-                    let mut transfers = state.transfers.lock().unwrap();
+                    let mut transfers = lock(&state.transfers);
                     if final_path.exists() || part.exists() || transfers.contains_key(&part) {
                         report(app, "This archive is already downloaded or downloading.");
                         return false;
@@ -194,7 +222,7 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
                     let Some(path) = path else {
                         // Failed downloads may omit their path. Only one job
                         // can be active; clear its incomplete files for retry.
-                        let mut transfers = state.transfers.lock().unwrap();
+                        let mut transfers = lock(&state.transfers);
                         transfers.retain(|part, (_, _, source)| {
                             if source == url.as_str() {
                                 let _ = fs::remove_file(part);
@@ -205,9 +233,9 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
                         return true;
                     };
                     let path = download_path(&path);
-                    let transfer = state.transfers.lock().unwrap().remove(&path);
+                    let transfer = lock(&state.transfers).remove(&path);
                     if let Some((id, final_path, _)) = transfer {
-                        let active = state.active.lock().unwrap();
+                        let active = lock(&state.active);
                         let current = active.as_ref().is_some_and(|r| r.id == id);
                         if !success || !current {
                             let _ = fs::remove_file(&path);
@@ -226,12 +254,46 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
                 _ => true,
             }
         })
-        .build().map_err(|_| "Could not create the GameFront browser")?;
+        .build()
+        .map_err(|_| "Could not create the GameFront browser")?;
     Ok(())
 }
 
+/// Tell the player what to do if GameFront never finishes loading, so a blank
+/// window is never a dead end.
+fn watch_page_load(app: &tauri::AppHandle) {
+    let state = app.state::<Session>();
+    let generation = state.load_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(LOAD_TIMEOUT);
+        let state = app.state::<Session>();
+        let still_current = state.load_generation.load(Ordering::SeqCst) == generation;
+        let loaded = state.loaded_generation.load(Ordering::SeqCst) >= generation;
+        if still_current && !loaded && app.get_webview_window(LABEL).is_some() {
+            report(
+                &app,
+                "GameFront is taking a long time to load. If its window stays blank, close it and choose \"Use my regular browser\" in Settings > Account.",
+            );
+        }
+    });
+}
+
+/// Close the GameFront window for good. Used by the installer's own close
+/// button and when the main window goes away, so it can never be left behind.
+pub fn close(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window(LABEL) {
+        if window.destroy().is_err() {
+            let _ = window.close();
+        }
+    }
+}
+
+// These commands must stay async. A synchronous command runs on the main
+// thread, and creating a browser window from there deadlocks WebView2 on
+// Windows: the window appears but stays white and cannot be closed (#114).
 #[tauri::command]
-pub fn open_gamefront(
+pub async fn open_gamefront(
     window: WebviewWindow,
     app: tauri::AppHandle,
     request: Option<Request>,
@@ -243,7 +305,7 @@ pub fn open_gamefront(
 }
 
 #[tauri::command]
-pub fn finish_gamefront(
+pub async fn finish_gamefront(
     window: WebviewWindow,
     app: tauri::AppHandle,
     id: String,
@@ -252,19 +314,37 @@ pub fn finish_gamefront(
         return Err("Only the installer can finish downloads".into());
     }
     let state = app.state::<Session>();
-    let mut active = state
-        .active
-        .lock()
-        .map_err(|_| "GameFront session unavailable")?;
+    let mut active = lock(&state.active);
     if active.as_ref().is_some_and(|r| r.id == id) {
         *active = None;
     }
     Ok(())
 }
 
+#[tauri::command]
+pub async fn close_gamefront(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("Only the installer can close GameFront".into());
+    }
+    close(&app);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn poisoned_locks_are_recovered() {
+        let mutex = std::sync::Arc::new(Mutex::new(1));
+        let poisoner = mutex.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = poisoner.lock().unwrap();
+            panic!("simulated crash while holding the lock");
+        })
+        .join();
+        assert!(mutex.is_poisoned());
+        assert_eq!(*lock(&mutex), 1);
+    }
     #[test]
     fn completed_and_failed_paths_match_the_transfer_key() {
         let root = std::env::temp_dir().join(format!("gamefront-path-test-{}", std::process::id()));

@@ -72,3 +72,30 @@ def test_stop_clears_request_and_cancels_queued_browser_job(tmp_path, monkeypatc
         worker.join(2)
     assert outputs == [None, None]
     assert p.gamefront_request is None
+
+
+def test_browser_job_accepts_a_regular_browser_download_when_the_window_fails(tmp_path, monkeypatch):
+    """If the built-in GameFront window cannot load (issue #114), the player can
+    save the archive with their normal browser into Downloads and still finish."""
+    import installer.pipeline as module
+    monkeypatch.setattr(module, "_DROP_POLL_SECONDS", .01)
+    monkeypatch.setattr(module, "_DROP_SETTLE_SECONDS", 0)
+    mod = _mod(source_host="gamefront", url="https://www.gamefront.com/games/k/file/test-mod")
+    p = _pipeline(tmp_path, [mod], gamefront_browser=True)
+    outputs = []
+    worker = threading.Thread(target=lambda: outputs.append(
+        p._await_dropped_file(p.mods[0], p._mod_dir(p.mods[0]), "")))
+    worker.start()
+    wait_for(lambda: p.gamefront_request is not None)
+    downloads = tmp_path / "dl"
+    downloads.mkdir(exist_ok=True)
+    # Someone else's archive must never be taken for this mod.
+    archive(downloads / "unrelated.zip")
+    time.sleep(.05)
+    assert not outputs
+    archive(downloads / "Test_Mod_v1.zip")
+    worker.join(3)
+    assert outputs and outputs[0][0].name == "Test_Mod_v1.zip"
+    assert outputs[0][0].parent == p._mod_dir(p.mods[0])
+    assert (downloads / "unrelated.zip").exists()
+    assert p.gamefront_request is None
