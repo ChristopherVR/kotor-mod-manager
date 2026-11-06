@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.25.0] - 2026-11-06
+
+### Features
+
+- The Nexus Mods download no longer updates itself, it points you to the new version instead
+
+### Bug Fixes
+
+- Identify the app to Nexus Mods as its rules require
 ## [0.24.2] - 2026-11-06
 
 ### Bug Fixes
