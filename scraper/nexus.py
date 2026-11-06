@@ -50,6 +50,18 @@ except ImportError:  # keyring is optional for library use
 _API = "https://api.nexusmods.com/v1"
 _SEARCH = "https://search.nexusmods.com/mods"
 _UA = "kotor-mod-installer"
+# Nexus's API acceptable use policy asks every client to name itself and give its
+# current version. The name must stay the same across releases.
+APP_NAME = "KOTOR Mod Installer"
+NEXUS_PAGE_URL = "https://www.nexusmods.com/kotor2/mods/1417"
+
+
+def _app_version() -> str:
+    try:
+        from installer._version import __version__
+        return __version__
+    except Exception:
+        return "0.0.0"
 
 SERVICE_NAME = "kotor_mod_installer_nexus"
 _KEY_ENTRY = "__api_key__"
@@ -128,7 +140,9 @@ GAME_DOMAIN = {"KOTOR1": "kotor", "KOTOR2": "kotor2"}
 def _get_json(url: str, key: str, timeout: int = 10) -> Optional[dict | list]:
     req = urllib.request.Request(url, headers={
         "apikey": key,
-        "User-Agent": _UA,
+        "User-Agent": f"{_UA}/{_app_version()}",
+        "Application-Name": APP_NAME,
+        "Application-Version": _app_version(),
         "Accept": "application/json",
     })
     try:
