@@ -3,11 +3,10 @@ Nexus Mods integration.
 
 Authentication
 --------------
-Nexus authenticates API callers with a **personal API key**, not a username and
-password. There is no password-based API login to implement: the key from
-https://www.nexusmods.com/users/myaccount?tab=api is the credential. It is
-stored in the OS keyring (same as the DeadlyStream password) rather than in
-config.json, so it does not sit in plain text on disk.
+Players sign in with their Nexus Mods account (OAuth 2.0 + PKCE, see
+`scraper.nexus_oauth`). Callers get the sign-in from `current_auth()` and pass
+it to the API functions below as `auth`; requests then carry
+`Authorization: Bearer <access token>`.
 
 Downloading, and why a free account cannot be fully automated
 -------------------------------------------------------------
@@ -42,11 +41,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-try:
-    import keyring
-except ImportError:  # keyring is optional for library use
-    keyring = None
-
 _API = "https://api.nexusmods.com/v1"
 _SEARCH = "https://search.nexusmods.com/mods"
 _UA = "kotor-mod-installer"
@@ -63,12 +57,9 @@ def _app_version() -> str:
     except Exception:
         return "0.0.0"
 
-SERVICE_NAME = "kotor_mod_installer_nexus"
-_KEY_ENTRY = "__api_key__"
-
 
 class NexusAuthError(Exception):
-    """The API key is missing, invalid, or lacks rights for this download."""
+    """Not signed in, the sign-in was refused, or it lacks rights for this download."""
 
     def __init__(self, message: str, free_account: bool = False):
         super().__init__(message)
@@ -137,9 +128,55 @@ GAME_ID = {"KOTOR1": 234, "KOTOR2": 198}
 GAME_DOMAIN = {"KOTOR1": "kotor", "KOTOR2": "kotor2"}
 
 
-def _get_json(url: str, key: str, timeout: int = 10) -> Optional[dict | list]:
+class OAuthCredential:
+    """The player's "Sign in with Nexus Mods" sign-in, passed to the API
+    functions below as `auth`.
+
+    The token is looked up on every request, so one refreshed in the middle of a
+    long install is picked up straight away."""
+
+    def __bool__(self) -> bool:
+        from scraper import nexus_oauth
+        return nexus_oauth.available() and nexus_oauth.signed_in()
+
+    def headers(self) -> dict:
+        from scraper import nexus_oauth
+        try:
+            return {"Authorization": f"Bearer {nexus_oauth.access_token()}"}
+        except nexus_oauth.NexusOAuthError as e:
+            raise NexusAuthError(str(e)) from e
+
+    def renew(self) -> bool:
+        """Force a token refresh after a 401. False if that is not possible."""
+        from scraper import nexus_oauth
+        try:
+            nexus_oauth.refresh(force=True)
+            return True
+        except nexus_oauth.NexusOAuthError:
+            return False
+
+    def __repr__(self) -> str:  # never print tokens
+        return "OAuthCredential()"
+
+
+OAUTH = OAuthCredential()
+
+
+def current_auth() -> Optional[OAuthCredential]:
+    """The sign-in to use for Nexus requests, or None when not signed in."""
+    return OAUTH if OAUTH else None
+
+
+def _auth_headers(auth) -> dict:
+    """Request headers for `auth`: the sign-in, or a raw access token string."""
+    if isinstance(auth, OAuthCredential):
+        return auth.headers()
+    return {"Authorization": f"Bearer {auth}"} if auth else {}
+
+
+def _get_json(url: str, auth, timeout: int = 10, _retry: bool = True) -> Optional[dict | list]:
     req = urllib.request.Request(url, headers={
-        "apikey": key,
+        **_auth_headers(auth),
         "User-Agent": f"{_UA}/{_app_version()}",
         "Application-Name": APP_NAME,
         "Application-Version": _app_version(),
@@ -153,15 +190,18 @@ def _get_json(url: str, key: str, timeout: int = 10) -> Optional[dict | list]:
         _note_limits(e.headers)
         if e.code == 429:
             raise _rate_limited_error() from e
+        # An access token can be revoked or expire early: refresh once and retry.
+        if e.code == 401 and _retry and isinstance(auth, OAuthCredential) and auth.renew():
+            return _get_json(url, auth, timeout, _retry=False)
         raise
 
 
-def validate(key: str) -> dict:
-    """Validate an API key. Returns {ok, name?, error?}."""
-    if not key:
-        return {"ok": False, "error": "no_key"}
+def validate(auth) -> dict:
+    """Check the sign-in against Nexus. Returns {ok, name?, is_premium?, error?}."""
+    if not auth:
+        return {"ok": False, "error": "not_signed_in"}
     try:
-        data = _get_json(f"{_API}/users/validate.json", key)
+        data = _get_json(f"{_API}/users/validate.json", auth)
         if isinstance(data, dict) and data.get("name"):
             return {"ok": True, "name": data["name"],
                     "is_premium": bool(data.get("is_premium")),
@@ -169,48 +209,6 @@ def validate(key: str) -> dict:
         return {"ok": False, "error": "invalid"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
-
-
-# ---------------------------------------------------------------------------
-# Credential storage
-# ---------------------------------------------------------------------------
-
-def save_api_key(key: str) -> None:
-    """Store the personal API key in the OS keyring."""
-    if keyring is None:
-        raise NexusAuthError("keyring is not available on this system.")
-    keyring.set_password(SERVICE_NAME, _KEY_ENTRY, key)
-
-
-def load_api_key(fallback: str = "") -> str:
-    """
-    Read the API key, preferring the keyring over the plain-text config value.
-
-    fallback lets callers pass config['nexus_api_key'] so existing installs keep
-    working; the keyring copy wins once one has been saved.
-    """
-    if keyring is not None:
-        try:
-            stored = keyring.get_password(SERVICE_NAME, _KEY_ENTRY)
-            if stored:
-                return stored
-        except Exception:
-            pass
-    return fallback
-
-
-def sign_in(key: str, persist: bool = True) -> dict:
-    """
-    Validate an API key and remember it. Returns the same shape as validate(),
-    with is_premium telling the caller whether unattended downloads are possible.
-    """
-    result = validate(key)
-    if result.get("ok") and persist:
-        try:
-            save_api_key(key)
-        except NexusAuthError:
-            pass
-    return result
 
 
 # ---------------------------------------------------------------------------
@@ -307,7 +305,7 @@ def pick_files(files: list[dict], keep_names: Optional[list[str]] = None,
     return [newest(pool)] if pool else []
 
 
-def download_link(game: str, mod_id: int, file_id: int, api_key: str,
+def download_link(game: str, mod_id: int, file_id: int, auth,
                   nxm_key: str = "", nxm_expires: str = "") -> str:
     """
     Resolve a CDN download URL.
@@ -323,7 +321,7 @@ def download_link(game: str, mod_id: int, file_id: int, api_key: str,
         url += "?" + urllib.parse.urlencode({"key": nxm_key,
                                              "expires": nxm_expires})
     try:
-        data = _get_json(url, api_key, timeout=30)
+        data = _get_json(url, auth, timeout=30)
     except urllib.error.HTTPError as e:
         if e.code == 403:
             raise NexusAuthError(
@@ -334,7 +332,8 @@ def download_link(game: str, mod_id: int, file_id: int, api_key: str,
                 free_account=True,
             ) from e
         if e.code == 401:
-            raise NexusAuthError("Nexus rejected the API key.") from e
+            raise NexusAuthError(
+                "Nexus did not accept your sign-in. Sign in again in Settings.") from e
         if e.code == 429:
             raise _rate_limited_error() from e
         raise NexusDownloadError(f"Nexus returned HTTP {e.code}.") from e
@@ -356,18 +355,18 @@ def _escape_url(url: str) -> str:
 
 
 def download_file(game: str, mod_id: int, file_id: int, dest_dir: Path,
-                  api_key: str, nxm_key: str = "", nxm_expires: str = "",
+                  auth, nxm_key: str = "", nxm_expires: str = "",
                   progress_callback: Optional[Callable[[int, int, str], None]] = None,
                   cancel_event=None, pause_event=None) -> Path:
     """Fetch one Nexus file into dest_dir and return its path.
 
     pause_event: a cleared event holds the download until it is set again.
     """
-    info = file_info(game, mod_id, file_id, api_key)
+    info = file_info(game, mod_id, file_id, auth)
     filename = re.sub(r'[<>:"/\\|?*]', "_",
                       info.get("file_name") or f"nexus_{mod_id}_{file_id}.zip")
 
-    url = download_link(game, mod_id, file_id, api_key, nxm_key, nxm_expires)
+    url = download_link(game, mod_id, file_id, auth, nxm_key, nxm_expires)
 
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / filename
@@ -521,11 +520,11 @@ def nxm_page_url(game: str, mod_id: int, file_id: int) -> str:
             f"?tab=files&file_id={file_id}&nmm=1")
 
 
-def download_from_nxm(url: str, dest_dir: Path, api_key: str,
+def download_from_nxm(url: str, dest_dir: Path, auth,
                       game: str = "KOTOR1", **kw) -> Path:
     """Handle an nxm:// link end to end (what an nxm handler calls)."""
     link = parse_nxm(url)
-    return download_file(game, link.mod_id, link.file_id, dest_dir, api_key,
+    return download_file(game, link.mod_id, link.file_id, dest_dir, auth,
                          nxm_key=link.key, nxm_expires=link.expires, **kw)
 
 

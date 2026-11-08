@@ -474,7 +474,7 @@ def _scrape_other_hosts(main, game: str, build_key: str,
         links = [a["href"] for a in el.find_all("a", href=True)
                  if a["href"] not in patches]
         # Prefer a link that needs no account: a MEGA mirror beats a Nexus page,
-        # which needs an API key (and Premium, or a click per mod).
+        # which needs a Nexus sign-in (and Premium, or a click per mod).
         url = next((u for u in links if host_of(u) in AUTO_HOSTS - {"nexus"}),
                    next((u for u in links if host_of(u) == "nexus"),
                         links[0] if links else ""))

@@ -62,8 +62,10 @@ export interface AppStatus {
   shim_available: boolean;
   shim_path: string | null;
   current_build: string;
-  /** Whether a Nexus API key is saved (Nexus mods fail without one). */
+  /** Whether the player is signed in to Nexus (Nexus mods fail without it). */
   nexus_key_set?: boolean;
+  /** Whether "Sign in with Nexus Mods" is offered in this build. */
+  nexus_oauth_available?: boolean;
 }
 
 export interface Settings {
@@ -73,7 +75,6 @@ export interface Settings {
   language: string;
   custom_patcher_path: string;
   seven_zip_path: string;
-  nexus_api_key: string;
   preferred_resolution: string;
 }
 
@@ -84,6 +85,19 @@ export interface NexusValidation {
   /** What Nexus last reported about this account's allowance (absent if not sent). */
   limits?: { hourly_remaining?: number; daily_remaining?: number };
   error?: string;
+}
+
+export interface NexusOAuthState {
+  /** Sign-in is set up in this build (it has a Nexus client ID). */
+  available: boolean;
+  signed_in: boolean;
+  name: string;
+  is_premium: boolean;
+  flow: {
+    status: "idle" | "waiting" | "done" | "error" | "cancelled";
+    error?: string;
+    name?: string;
+  };
 }
 
 export interface PatcherStatus {
@@ -228,6 +242,10 @@ export const api = {
     }),
   logout: () => req<{ ok: boolean }>("/api/logout", { method: "POST" }),
   nexusValidate: () => req<NexusValidation>("/api/nexus/validate"),
+  nexusOAuth: () => req<NexusOAuthState>("/api/nexus/oauth"),
+  nexusOAuthStart: () => req<{ ok: boolean; url: string }>("/api/nexus/oauth/start", { method: "POST" }),
+  nexusOAuthCancel: () => req<{ ok: boolean }>("/api/nexus/oauth/cancel", { method: "POST" }),
+  nexusSignOut: () => req<{ ok: boolean }>("/api/nexus/oauth/signout", { method: "POST" }),
   getSettings: () => req<Settings>("/api/settings"),
   extractorStatus: () => req<{ seven_zip_path: string | null }>("/api/extractor/status"),
   setSettings: (s: Settings) =>

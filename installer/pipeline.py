@@ -979,7 +979,7 @@ class Pipeline:
     def _nexus_key(self) -> str:
         import config as cfg
         from scraper import nexus
-        return nexus.load_api_key(cfg.load().get("nexus_api_key", ""))
+        return nexus.current_auth()
 
     @staticmethod
     def _nexus_mod_id(mod) -> "int | None":
@@ -1165,7 +1165,7 @@ class Pipeline:
             return fail(f"Could not find this mod's Nexus page ({mod.url or 'no link'}).")
         key = self._nexus_key()
         if not key:
-            return fail("This mod is on Nexus Mods. Add your Nexus API key in "
+            return fail("This mod is on Nexus Mods. Sign in to Nexus Mods in "
                         "Settings so the app can download it.")
         try:
             chosen = self._nexus_chosen(pm, mod_id, key)
@@ -1209,7 +1209,7 @@ class Pipeline:
             return fail(str(e))
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
-                return fail("Nexus rejected your API key. Check it in Settings.")
+                return fail("Nexus did not accept your sign-in. Sign in again in Settings.")
             return fail(f"Nexus returned an error (HTTP {e.code}).")
         except nexus.NexusRateLimited as e:
             self._pause_nexus(str(e))

@@ -53,7 +53,7 @@ version, scan results, and SHA-256 checksums for both downloads.
 Open **Settings → Game Installs** and tell it where KOTOR 1 and/or KOTOR 2 are
 installed, then sign in to your DeadlyStream account under **Account** (mods are
 downloaded from your own account). If your build includes mods from Nexus Mods,
-also paste your Nexus API key under **Settings → Nexus** (see
+also press **Sign in with Nexus Mods** under **Account** (see
 [Mods hosted on Nexus Mods](#mods-hosted-on-nexus-mods)).
 
 <a href="docs/images/05-game-installs.png"><img src="docs/images/05-game-installs.png" alt="Settings screen showing where to add your KOTOR 1 and KOTOR 2 game folders" width="100%"></a>
@@ -70,9 +70,9 @@ automatically, with no clicking through each one.
 ### Mods hosted on Nexus Mods
 
 Some mods in the builds live on Nexus Mods rather than DeadlyStream. The app
-downloads those too, using your personal API key (get one at
-[nexusmods.com/users/myaccount?tab=api](https://www.nexusmods.com/users/myaccount?tab=api),
-under "Personal API Key", and paste it into **Settings → Nexus**).
+downloads those too once you sign in with your Nexus Mods account: press
+**Sign in with Nexus Mods** under **Settings → Account** and approve the app on
+the Nexus page that opens. The app never sees your Nexus password.
 
 - **Premium account:** fully automatic.
 - **Free account:** one click per mod. When you press Install, the app opens

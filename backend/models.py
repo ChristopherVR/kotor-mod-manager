@@ -22,7 +22,6 @@ class SettingsModel(BaseModel):
     language: str = "en"
     custom_patcher_path: str = ""
     seven_zip_path: str = ""
-    nexus_api_key: str = ""
     preferred_resolution: str = ""    # e.g. 1920x1080; empty = detect the screen
 
 

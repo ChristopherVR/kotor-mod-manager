@@ -54,7 +54,7 @@ def test_free_account_403_explains_the_tier_limit(monkeypatch):
     monkeypatch.setattr(nexus, "_get_json",
                         lambda *a, **k: (_ for _ in ()).throw(_http_error(403)))
     with pytest.raises(nexus.NexusAuthError) as e:
-        nexus.download_link("KOTOR1", 1364, 2213, "apikey")
+        nexus.download_link("KOTOR1", 1364, 2213, "token")
     msg = str(e.value).lower()
     assert "premium" in msg and "mod manager download" in msg
 
@@ -63,7 +63,7 @@ def test_rate_limit_tells_the_player_to_wait_and_retry(monkeypatch):
     monkeypatch.setattr(nexus, "_get_json",
                         lambda *a, **k: (_ for _ in ()).throw(_http_error(429)))
     with pytest.raises(nexus.NexusDownloadError, match="download limit"):
-        nexus.download_link("KOTOR1", 1364, 2213, "apikey")
+        nexus.download_link("KOTOR1", 1364, 2213, "token")
 
 
 def test_limit_headers_are_read_and_a_429_names_the_window(monkeypatch):
@@ -96,8 +96,8 @@ def test_a_rate_limited_mod_pauses_nexus_for_the_rest_of_the_run():
 def test_bad_key_is_reported_as_a_rejected_key(monkeypatch):
     monkeypatch.setattr(nexus, "_get_json",
                         lambda *a, **k: (_ for _ in ()).throw(_http_error(401)))
-    with pytest.raises(nexus.NexusAuthError, match="rejected the API key"):
-        nexus.download_link("KOTOR1", 1364, 2213, "apikey")
+    with pytest.raises(nexus.NexusAuthError, match="did not accept your sign-in"):
+        nexus.download_link("KOTOR1", 1364, 2213, "token")
 
 
 def test_nxm_credentials_are_sent_as_query_parameters(monkeypatch):
@@ -108,7 +108,7 @@ def test_nxm_credentials_are_sent_as_query_parameters(monkeypatch):
         return [{"URI": "https://cdn.example/file.rar"}]
 
     monkeypatch.setattr(nexus, "_get_json", fake)
-    uri = nexus.download_link("KOTOR1", 1364, 2213, "apikey",
+    uri = nexus.download_link("KOTOR1", 1364, 2213, "token",
                               nxm_key="k1", nxm_expires="999")
     assert uri == "https://cdn.example/file.rar"
     assert "key=k1" in seen["url"] and "expires=999" in seen["url"]
@@ -122,50 +122,14 @@ def test_premium_request_carries_no_query_parameters(monkeypatch):
         return [{"URI": "https://cdn.example/file.rar"}]
 
     monkeypatch.setattr(nexus, "_get_json", fake)
-    nexus.download_link("KOTOR1", 1364, 2213, "apikey")
+    nexus.download_link("KOTOR1", 1364, 2213, "token")
     assert "?" not in seen["url"]
 
 
 def test_empty_response_is_a_download_error(monkeypatch):
     monkeypatch.setattr(nexus, "_get_json", lambda *a, **k: [])
     with pytest.raises(nexus.NexusDownloadError):
-        nexus.download_link("KOTOR1", 1364, 2213, "apikey")
-
-
-# ---------------------------------------------------------------------------
-# Credential storage
-# ---------------------------------------------------------------------------
-
-def test_keyring_value_wins_over_the_plain_text_config(monkeypatch):
-    monkeypatch.setattr(nexus, "keyring",
-                        type("K", (), {"get_password": staticmethod(
-                            lambda s, u: "from-keyring")}))
-    assert nexus.load_api_key("from-config") == "from-keyring"
-
-
-def test_falls_back_to_config_when_nothing_is_stored(monkeypatch):
-    monkeypatch.setattr(nexus, "keyring",
-                        type("K", (), {"get_password": staticmethod(
-                            lambda s, u: None)}))
-    assert nexus.load_api_key("from-config") == "from-config"
-
-
-def test_sign_in_does_not_store_an_invalid_key(monkeypatch):
-    saved = []
-    monkeypatch.setattr(nexus, "validate", lambda k: {"ok": False, "error": "invalid"})
-    monkeypatch.setattr(nexus, "save_api_key", lambda k: saved.append(k))
-    assert nexus.sign_in("bad")["ok"] is False
-    assert saved == []
-
-
-def test_sign_in_stores_a_valid_key_and_reports_tier(monkeypatch):
-    saved = []
-    monkeypatch.setattr(nexus, "validate",
-                        lambda k: {"ok": True, "name": "Stoofie3", "is_premium": False})
-    monkeypatch.setattr(nexus, "save_api_key", lambda k: saved.append(k))
-    out = nexus.sign_in("good")
-    assert out["ok"] and out["is_premium"] is False
-    assert saved == ["good"]
+        nexus.download_link("KOTOR1", 1364, 2213, "token")
 
 
 def test_download_from_nxm_forwards_the_link_credentials(monkeypatch, tmp_path):
@@ -179,7 +143,7 @@ def test_download_from_nxm_forwards_the_link_credentials(monkeypatch, tmp_path):
 
     monkeypatch.setattr(nexus, "download_file", fake_download)
     nexus.download_from_nxm(
-        "nxm://kotor/mods/1364/files/2213?key=kk&expires=77", tmp_path, "apikey")
+        "nxm://kotor/mods/1364/files/2213?key=kk&expires=77", tmp_path, "token")
     assert captured == {"mod_id": 1364, "file_id": 2213,
                         "nxm_key": "kk", "nxm_expires": "77"}
 

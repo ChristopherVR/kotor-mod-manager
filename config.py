@@ -29,9 +29,6 @@ DEFAULTS = {
     "custom_patcher_path": "",
     # Optional 7-Zip executable. Blank uses automatic detection.
     "seven_zip_path": "",
-    # Nexus Mods personal API key (https://www.nexusmods.com/users/myaccount?tab=api).
-    # Empty by default; each user sets their own in Settings. Never commit a key.
-    "nexus_api_key": "",
     # Game install profiles - supports multiple KOTOR installs on one machine.
     # Each: {id, name, game ("KOTOR1"|"KOTOR2"), path}. The default profile for
     # a game uses id == game so existing manifests map straight across.

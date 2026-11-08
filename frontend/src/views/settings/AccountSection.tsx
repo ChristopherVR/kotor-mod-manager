@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, LogIn, LogOut, ExternalLink } from "lucide-react";
+import { CheckCircle2, LogIn, LogOut } from "lucide-react";
 import { api, type AppStatus } from "@/lib/api";
-import { NexusKeyForm } from "@/components/NexusKeyForm";
+import { NexusSignIn } from "@/components/NexusSignIn";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -93,20 +93,11 @@ export function AccountSection({ status, username, onSignIn, onSignOut, addLog }
         </CardContent>
       </Card>
 
-      {/* Nexus Mods API key */}
+      {/* Nexus Mods sign-in */}
       <Card>
         <CardHeader><CardTitle>{t("settings.nexus.title")}</CardTitle></CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            {t("settings.nexus.hint")}{" "}
-            <button
-              className="inline-flex items-center gap-0.5 text-[hsl(var(--info))] hover:underline"
-              onClick={() => api.openUrl("https://www.nexusmods.com/users/myaccount?tab=api").catch(() => {})}
-            >
-              {t("settings.nexus.getKey")} <ExternalLink className="size-3" />
-            </button>
-          </p>
-          <NexusKeyForm addLog={addLog} />
+          <NexusSignIn addLog={addLog} />
         </CardContent>
       </Card>
 

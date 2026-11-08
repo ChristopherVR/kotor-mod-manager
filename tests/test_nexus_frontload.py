@@ -26,7 +26,7 @@ def env(monkeypatch, tmp_path):
     pages it is asked to open and clicks the button for each."""
     broker = nexus.NxmBroker()
     monkeypatch.setattr(nexus, "NXM", broker)
-    monkeypatch.setattr(nexus, "load_api_key", lambda fallback="": "KEY")
+    monkeypatch.setattr(nexus, "current_auth", lambda: "KEY")
     state = {"premium": False, "opened": [], "click": True}
     monkeypatch.setattr(nexus, "validate",
                         lambda key: {"ok": True, "name": "x", "is_premium": state["premium"]})

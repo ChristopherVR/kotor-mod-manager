@@ -10,7 +10,7 @@ const mods = Array.from({ length: 60 }, (_, i) => ({
 }));
 
 async function mockBackend(page: Page) {
-  let settings = { language: "en", download_dir: "C:\\Downloads", nexus_api_key: "", seven_zip_path: "" };
+  let settings = { language: "en", download_dir: "C:\\Downloads", seven_zip_path: "" };
   await page.route("http://127.0.0.1:8756/**", async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/extractor/status") {
@@ -28,7 +28,7 @@ async function mockBackend(page: Page) {
     }
     const responses: Record<string, unknown> = {
       "/api/status": { version: "0.16.18", logged_in: true, pipeline_running: false },
-      "/api/settings": { language: "en", download_dir: "C:\\Downloads", nexus_api_key: "" },
+      "/api/settings": { language: "en", download_dir: "C:\\Downloads" },
       "/api/builds": { builds: [{ key: "k1_full", label: "KOTOR 1 - Full Build", game: "KOTOR1" }] },
       "/api/credentials": { username: "Test player" },
       "/api/profiles": { profiles: [{ id: "KOTOR1", name: "KOTOR 1", game: "KOTOR1" }], active: "KOTOR1" },
@@ -90,22 +90,6 @@ test("browser back follows the visible screen", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Mod builds", exact: true })).toBeVisible();
 });
 
-test("saving General keeps credentials saved in Account", async ({ page }) => {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("textbox", { name: "Download folder", exact: true }).fill("D:\\My mods");
-  await page.getByRole("button", { name: "Account", exact: true }).click();
-  await page.locator("#nexuskey").fill("test-api-key");
-  const accountSave = page.waitForResponse(r => r.url().endsWith("/api/settings") && r.request().method() === "POST");
-  await page.getByRole("button", { name: "Save API key", exact: true }).click();
-  await accountSave;
-  await page.getByRole("button", { name: "General", exact: true }).click();
-  const generalSave = page.waitForRequest(r => r.url().endsWith("/api/settings") && r.method() === "POST");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  expect((await generalSave).postDataJSON()).toMatchObject({
-    nexus_api_key: "test-api-key", download_dir: "D:\\My mods",
-  });
-});
-
 test("General editing waits for saved settings to load", async ({ page }) => {
   let releaseSettings!: () => void;
   const settingsReady = new Promise<void>(resolve => { releaseSettings = resolve; });
@@ -128,38 +112,11 @@ test("General editing waits for saved settings to load", async ({ page }) => {
   await expect(folder).toHaveValue("C:\\Downloads");
   await folder.fill("D:\\My mods");
   await page.getByRole("button", { name: "Account", exact: true }).click();
-  await page.locator("#nexuskey").fill("test-api-key");
-  const accountSaved = page.waitForResponse(r => r.url().endsWith("/api/settings") && r.request().method() === "POST");
-  await page.getByRole("button", { name: "Save API key", exact: true }).click();
-  await accountSaved;
   await page.getByRole("button", { name: "General", exact: true }).click();
   await expect(folder).toHaveValue("D:\\My mods");
   const saved = page.waitForRequest(r => r.url().endsWith("/api/settings") && r.method() === "POST");
   await save.click();
-  expect((await saved).postDataJSON()).toMatchObject({
-    download_dir: "D:\\My mods", nexus_api_key: "test-api-key",
-  });
-});
-
-test("Nexus key editing waits for saved settings to load", async ({ page }) => {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  let releaseSettings!: () => void;
-  const settingsReady = new Promise<void>(resolve => { releaseSettings = resolve; });
-  await page.route("http://127.0.0.1:8756/api/settings", async route => {
-    await settingsReady;
-    await route.fallback();
-  });
-  await page.getByRole("button", { name: "Account", exact: true }).click();
-  const key = page.locator("#nexuskey");
-  const save = page.getByRole("button", { name: "Save API key", exact: true });
-  await expect(key).toBeDisabled();
-  await expect(save).toBeDisabled();
-  releaseSettings();
-  await expect(key).toBeEnabled();
-  await key.fill("test-api-key");
-  const saved = page.waitForRequest(r => r.url().endsWith("/api/settings") && r.method() === "POST");
-  await save.click();
-  expect((await saved).postDataJSON()).toMatchObject({ nexus_api_key: "test-api-key" });
+  expect((await saved).postDataJSON()).toMatchObject({ download_dir: "D:\\My mods" });
 });
 
 test("7-Zip path can be saved and cleared without overwriting other settings", async ({ page }) => {
@@ -190,4 +147,43 @@ test("7-Zip path can be saved and cleared without overwriting other settings", a
 test("mod details do not duplicate guide instructions", async ({ page }) => {
   await page.getByRole("button", { name: /1 Community Patch Pending/ }).click();
   await expect(page.getByText("Install the TPC version.", { exact: true })).toHaveCount(1);
+});
+
+test("Sign in with Nexus Mods opens the Nexus page and waits for approval", async ({ page }) => {
+  let flow = { status: "idle" };
+  const authorize = "https://users.nexusmods.com/oauth/authorize?client_id=test";
+  await page.route("http://127.0.0.1:8756/api/nexus/oauth**", async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/start")) {
+      flow = { status: "waiting" };
+      await route.fulfill({ json: { ok: true, url: authorize } });
+      return;
+    }
+    if (path.endsWith("/cancel")) {
+      flow = { status: "cancelled" };
+      await route.fulfill({ json: { ok: true } });
+      return;
+    }
+    await route.fulfill({ json: { available: true, signed_in: false, name: "", is_premium: false, flow } });
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  await expect(page.locator("#nexuskey")).toHaveCount(0);
+  const opened = page.waitForRequest(r => r.url().includes("/api/update/open"));
+  await page.getByRole("button", { name: "Sign in with Nexus Mods", exact: true }).click();
+  expect(decodeURIComponent((await opened).url())).toContain(authorize);
+  await expect(page.getByText("Finish signing in on the Nexus Mods page")).toBeVisible();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Sign in with Nexus Mods", exact: true })).toBeEnabled();
+});
+
+test("Nexus sign-in stays disabled until the app has a Nexus client ID", async ({ page }) => {
+  await page.route("http://127.0.0.1:8756/api/nexus/oauth**", route => route.fulfill({
+    json: { available: false, signed_in: false, name: "", is_premium: false, flow: { status: "idle" } },
+  }));
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Sign in with Nexus Mods", exact: true })).toBeDisabled();
+  await expect(page.locator("#nexuskey")).toHaveCount(0);
+  await expect(page.getByText("client ID", { exact: false })).toHaveCount(0);
 });

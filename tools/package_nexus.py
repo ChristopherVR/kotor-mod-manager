@@ -56,7 +56,7 @@ This is a standalone app for KOTOR 1 and KOTOR 2, not a mod to deploy with Vorte
 2. {launch}
 3. In Settings > Game Installs, choose your KOTOR 1 and/or KOTOR 2 folders.
 4. Sign in to DeadlyStream under Account. If your build uses Nexus mods,
-   add your personal Nexus API key under Settings > Nexus.
+   press Sign in with Nexus Mods there too.
 5. Choose a build in Mod Builds, load its mod list, then Download & Install.
 
 No Python or Node installation is needed. The app downloads mods from their

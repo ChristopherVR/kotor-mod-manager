@@ -63,13 +63,13 @@ def test_settings_roundtrip(tmp_path, monkeypatch):
     from backend.models import SettingsModel
 
     path = str(tmp_path / "Portable 7-Zip" / "7z.exe")
-    server.set_settings(SettingsModel(seven_zip_path=path, nexus_api_key="keep-me"))
+    server.set_settings(SettingsModel(seven_zip_path=path, preferred_resolution="2560x1440"))
     assert server.get_settings()["seven_zip_path"] == path
     monkeypatch.setattr(extractor.shutil, "which", lambda cmd: path if cmd == path else None)
     assert server.extractor_status() == {"seven_zip_path": path}
     server.set_settings(SettingsModel(**{**server.get_settings(), "seven_zip_path": ""}))
     assert server.get_settings()["seven_zip_path"] == ""
-    assert server.get_settings()["nexus_api_key"] == "keep-me"
+    assert server.get_settings()["preferred_resolution"] == "2560x1440"
 
 
 @pytest.mark.parametrize("suffix", [".zip", ".exe"])

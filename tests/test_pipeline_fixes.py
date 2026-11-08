@@ -591,7 +591,7 @@ def _nexus_mod():
 def test_nexus_mod_downloads_through_nexus_not_deadlystream(tmp_path, monkeypatch):
     from scraper import nexus
     p = _pipeline(tmp_path, [_nexus_mod()])
-    monkeypatch.setattr(nexus, "load_api_key", lambda fallback="": "KEY")
+    monkeypatch.setattr(nexus, "current_auth", lambda: "KEY")
     monkeypatch.setattr(nexus, "list_files", lambda g, m, k: [
         {"file_id": 7, "file_name": "old.zip", "category_name": "OLD_VERSION",
          "uploaded_timestamp": 9},
@@ -613,21 +613,21 @@ def test_nexus_mod_downloads_through_nexus_not_deadlystream(tmp_path, monkeypatc
     assert [a.name for a in p.mods[0].archive_paths] == ["main.zip"]
 
 
-def test_nexus_mod_without_api_key_says_what_to_do(tmp_path, monkeypatch):
+def test_nexus_mod_without_sign_in_says_what_to_do(tmp_path, monkeypatch):
     from scraper import nexus
     import config as cfg
     p = _pipeline(tmp_path, [_nexus_mod()])
-    monkeypatch.setattr(nexus, "load_api_key", lambda fallback="": "")
+    monkeypatch.setattr(nexus, "current_auth", lambda: None)
     monkeypatch.setattr(cfg, "load", lambda: {})
     p._download_mod(p.mods[0])
     assert p.mods[0].status.name == "ERROR"
-    assert "API key" in p.mods[0].error
+    assert "Sign in to Nexus Mods" in p.mods[0].error
 
 
 def test_nexus_free_account_error_is_passed_on(tmp_path, monkeypatch):
     from scraper import nexus
     p = _pipeline(tmp_path, [_nexus_mod()])
-    monkeypatch.setattr(nexus, "load_api_key", lambda fallback="": "KEY")
+    monkeypatch.setattr(nexus, "current_auth", lambda: "KEY")
     monkeypatch.setattr(nexus, "list_files", lambda g, m, k: [
         {"file_id": 8, "file_name": "main.zip", "category_name": "MAIN", "is_primary": True}])
 
@@ -743,7 +743,7 @@ def test_finished_download_reads_ready_not_downloading(tmp_path, monkeypatch):
     seen = []
     p = _pipeline(tmp_path, [_nexus_mod()],
                   on_status=lambda fid, st, detail: seen.append((st.name, detail)))
-    monkeypatch.setattr(nexus, "load_api_key", lambda fallback="": "KEY")
+    monkeypatch.setattr(nexus, "current_auth", lambda: "KEY")
     monkeypatch.setattr(nexus, "list_files", lambda g, m, k: [
         {"file_id": 8, "file_name": "main.zip", "category_name": "MAIN", "is_primary": True}])
 

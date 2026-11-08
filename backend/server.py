@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 import config as cfg
 from backend.models import (
@@ -192,6 +192,7 @@ class AppState:
 state = AppState()
 
 from scraper import nexus as _nexus
+from scraper import nexus_oauth as _nexus_oauth
 _nexus.NXM.on_active = _nxm_active
 
 app = FastAPI(title="KOTOR Mod Installer Backend", version=__version__)
@@ -258,13 +259,20 @@ def status() -> dict:
         "shim_path": str(holo) if holo else None,
         "current_build": state.current_build,
         "nexus_key_set": _nexus_key_set(),
+        "nexus_oauth_available": _nexus_oauth.available(),
     }
 
 
-def _nexus_key_set() -> bool:
-    """Whether a Nexus API key is saved, so the UI can warn before Nexus mods fail."""
+def _nexus_auth():
+    """The player's Nexus sign-in, or None when not signed in."""
     from scraper import nexus
-    return bool(nexus.load_api_key(cfg.load().get("nexus_api_key", "")))
+    return nexus.current_auth()
+
+
+def _nexus_key_set() -> bool:
+    """Whether the player is signed in to Nexus, so the UI can warn before Nexus
+    mods fail."""
+    return bool(_nexus_auth())
 
 
 @app.get("/api/builds")
@@ -530,7 +538,6 @@ def get_settings() -> dict:
         "language": conf.get("language", "en"),
         "custom_patcher_path": conf.get("custom_patcher_path", ""),
         "seven_zip_path": conf.get("seven_zip_path", ""),
-        "nexus_api_key": conf.get("nexus_api_key", ""),
         "preferred_resolution": conf.get("preferred_resolution", ""),
     }
 
@@ -706,11 +713,11 @@ def _resolve_nexus_url(name: str, game: str) -> str:
         return _NEXUS_CACHE[ckey]
 
     result = fallback
-    api_key = cfg.load().get("nexus_api_key", "")
-    # 1. Official-ish API search (accurate, needs a key).
-    if api_key:
+    auth = _nexus_auth()
+    # 1. Official-ish API search (accurate, needs a sign-in).
+    if auth:
         try:
-            url = nexus.search_by_name(name, game, api_key)
+            url = nexus.search_by_name(name, game, auth)
             if url:
                 _NEXUS_CACHE[ckey] = url
                 _write_json_cache("nexus_urls.json", ckey, url)
@@ -802,10 +809,67 @@ def nexus_nxm(req: NxmRequest) -> dict:
 
 @app.get("/api/nexus/validate")
 def nexus_validate() -> dict:
-    """Validate the configured Nexus API key (for the Settings UI)."""
+    """Check the Nexus sign-in (Settings UI)."""
     from scraper import nexus
-    key = cfg.load().get("nexus_api_key", "")
-    return nexus.validate(key)
+    return nexus.validate(_nexus_auth())
+
+
+# Sign in with Nexus Mods (OAuth 2.0 + PKCE) ---------------------------------
+
+@app.get("/api/nexus/oauth")
+def nexus_oauth_state() -> dict:
+    """Whether sign-in is offered, who is signed in, and how a sign-in is going."""
+    return {"available": _nexus_oauth.available(),
+            **_nexus_oauth.account(),
+            "flow": _nexus_oauth.flow_status()}
+
+
+@app.post("/api/nexus/oauth/start")
+def nexus_oauth_start() -> dict:
+    """Begin a sign-in. The UI opens the returned URL in the browser."""
+    try:
+        return {"ok": True, "url": _nexus_oauth.begin()}
+    except _nexus_oauth.NexusOAuthError as e:
+        return JSONResponse(status_code=400, content={"ok": False, "error": str(e)})
+
+
+@app.post("/api/nexus/oauth/cancel")
+def nexus_oauth_cancel() -> dict:
+    _nexus_oauth.cancel()
+    return {"ok": True}
+
+
+@app.post("/api/nexus/oauth/signout")
+def nexus_oauth_signout() -> dict:
+    _nexus_oauth.sign_out()
+    return {"ok": True}
+
+
+def _oauth_page(title: str, message: str, ok: bool) -> HTMLResponse:
+    from html import escape
+    colour = "#5cb85c" if ok else "#e0a030"
+    return HTMLResponse(status_code=200 if ok else 400, content=f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>{escape(title)}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>body{{font-family:system-ui,sans-serif;background:#1b1a19;color:#eee;display:flex;
+align-items:center;justify-content:center;min-height:100vh;margin:0;padding:16px}}
+main{{max-width:420px;text-align:center}}h1{{color:{colour};font-size:1.4rem}}</style>
+</head><body><main><h1>{escape(title)}</h1><p>{escape(message)}</p></main></body></html>""")
+
+
+@app.get(_nexus_oauth.CALLBACK_PATH)
+def nexus_oauth_callback(code: str = "", oauth_state: str = Query("", alias="state"),
+                         error: str = "") -> HTMLResponse:
+    """The registered callback URI: Nexus sends the browser here after the
+    player approves (or declines) the app."""
+    try:
+        acc = _nexus_oauth.complete(code, oauth_state, error)
+    except _nexus_oauth.NexusOAuthError as e:
+        return _oauth_page("Not signed in", f"{e} You can close this tab.", ok=False)
+    state.hub.publish({"type": "log", "tag": "success",
+                       "message": f"Signed in to Nexus Mods as {acc.get('name') or 'your account'}."})
+    return _oauth_page("Signed in to Nexus Mods",
+                       "You can close this tab and go back to KOTOR Mod Installer.", ok=True)
 
 
 def _image_cache_dir() -> Path:
@@ -1192,6 +1256,7 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8756)
     args = parser.parse_args()
+    _nexus_oauth.set_port(args.port)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 

@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, ExternalLink, Gamepad2, KeyRound, LogIn, Sparkles } from "lucide-react";
+import { CheckCircle2, Gamepad2, KeyRound, LogIn, Sparkles } from "lucide-react";
 import { api, type GameKey, type Profile } from "@/lib/api";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { LoginForm } from "@/components/LoginDialog";
-import { NexusKeyForm } from "@/components/NexusKeyForm";
+import { NexusSignIn } from "@/components/NexusSignIn";
 import { cn } from "@/lib/utils";
 import { useT } from "@/lib/i18n";
 
@@ -137,16 +137,7 @@ export function SetupWizard({
 
         {step === "nexus" && (
           <StepBody icon={KeyRound} title={t("setup.nexus.title")}>
-            <p>
-              {t("settings.nexus.hint")}{" "}
-              <button
-                className="inline-flex items-center gap-0.5 text-[hsl(var(--info))] hover:underline"
-                onClick={() => api.openUrl("https://www.nexusmods.com/users/myaccount?tab=api").catch(() => {})}
-              >
-                {t("settings.nexus.getKey")} <ExternalLink className="size-3" />
-              </button>
-            </p>
-            <NexusKeyForm addLog={addLog} onValidated={(v) => setNexusOk(v.ok)} />
+            <NexusSignIn addLog={addLog} onValidated={(v) => setNexusOk(v.ok)} />
           </StepBody>
         )}
 
