@@ -85,6 +85,10 @@ class NxmRequest(BaseModel):
     url: str
 
 
+class NexusOAuthStartRequest(BaseModel):
+    client_id: str = ""
+
+
 class ConfirmAnswer(BaseModel):
     id: str
     choice: str

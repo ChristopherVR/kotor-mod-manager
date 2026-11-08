@@ -39,7 +39,14 @@ struct BackendChild(Mutex<Option<Child>>);
 /// allow apps that replace themselves, so its build only announces new versions.
 const NO_SELF_UPDATE_MARKER: &str = "nexus-build.flag";
 
+/// Off in the OAuth preview shared with Nexus Mods: it never replaces itself,
+/// whatever files sit next to it.
+const UPDATES_ENABLED: bool = false;
+
 fn self_update_disabled() -> bool {
+    if !UPDATES_ENABLED {
+        return true;
+    }
     std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|d| d.join(NO_SELF_UPDATE_MARKER)))

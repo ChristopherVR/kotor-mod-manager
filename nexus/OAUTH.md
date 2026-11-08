@@ -37,11 +37,28 @@ Downloads keep the usual Nexus rules. Premium accounts download directly. Free
 accounts download only after the player clicks "Mod manager download" on the mod
 page, which hands the app an `nxm://` link.
 
-## Turning sign-in on
+## Testing this build
 
-The **Sign in with Nexus Mods** button (Settings > Account, and the first-run
-setup) stays disabled until the app has a client ID. Once Nexus Mods issues
-one, set `CLIENT_ID` in `scraper/nexus_oauth.py` and rebuild.
+This preview has no client ID built in, so a **Nexus client ID** box sits next
+to the **Sign in with Nexus Mods** button (Settings > Account, and the first-run
+setup).
 
-Developers can try a client ID without rebuilding by starting the app with the
-`KMI_NEXUS_CLIENT_ID` environment variable set.
+1. Type the client ID Nexus issued, registered with the callback URI above.
+   The button turns on.
+2. Press **Sign in with Nexus Mods** and approve the app on the Nexus page that
+   opens. The app remembers the client ID and shows "Signed in as <name>", plus
+   "Premium" when the account has it.
+3. Install a build that includes a Nexus-hosted mod. The download uses the
+   sign-in.
+4. **Sign out** revokes the token.
+
+Once the real client ID goes into `CLIENT_ID` in `scraper/nexus_oauth.py`, the
+box disappears and the button works on its own. The `KMI_NEXUS_CLIENT_ID`
+environment variable also supplies a client ID without typing it.
+
+## No updates in the preview
+
+The preview never checks for, announces or installs updates (`UPDATES_ENABLED`
+in `backend/server.py` and `frontend/src-tauri/src/main.rs`). Testers stay on
+the exact build they were given. Settings > Updates says so instead of offering
+a check.

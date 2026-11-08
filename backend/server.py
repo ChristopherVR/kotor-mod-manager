@@ -31,6 +31,7 @@ from backend.models import (
     AddBuildRequest,
     ConfirmAnswer,
     LoginRequest,
+    NexusOAuthStartRequest,
     NxmRequest,
     SourceSiteRequest,
     OpenDownloadRequest,
@@ -332,9 +333,15 @@ UPDATE_REPO = "ChristopherVR/kotor-mod-manager"
 from scraper.nexus import NEXUS_PAGE_URL  # noqa: E402
 
 
+# Off in the OAuth preview shared with Nexus Mods for testing: it never checks
+# for, announces or installs updates, so a tester always stays on the exact
+# build they were given (newer releases do not have the preview's sign-in).
+UPDATES_ENABLED = False
+
+
 def _self_update_allowed() -> bool:
     """False for the Nexus Mods build, which may only announce new versions."""
-    return os.environ.get("KMI_NO_SELF_UPDATE") != "1"
+    return UPDATES_ENABLED and os.environ.get("KMI_NO_SELF_UPDATE") != "1"
 
 
 def _version_tuple(v: str) -> tuple:
@@ -357,6 +364,10 @@ def update_check() -> dict:
     """Compare the running version against the latest GitHub release."""
     import json
     import urllib.request
+
+    if not UPDATES_ENABLED:
+        return {"available": False, "current_version": __version__,
+                "updates_disabled": True, "can_self_update": False}
 
     api_url = f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest"
     req = urllib.request.Request(
@@ -819,14 +830,22 @@ def nexus_validate() -> dict:
 @app.get("/api/nexus/oauth")
 def nexus_oauth_state() -> dict:
     """Whether sign-in is offered, who is signed in, and how a sign-in is going."""
+    built_in = _nexus_oauth.built_in_client_id()
     return {"available": _nexus_oauth.available(),
+            "built_in_client": built_in,
+            "client_id": "" if built_in else _nexus_oauth.client_id(),
             **_nexus_oauth.account(),
             "flow": _nexus_oauth.flow_status()}
 
 
 @app.post("/api/nexus/oauth/start")
-def nexus_oauth_start() -> dict:
-    """Begin a sign-in. The UI opens the returned URL in the browser."""
+def nexus_oauth_start(req: Optional[NexusOAuthStartRequest] = None) -> dict:
+    """Begin a sign-in. The UI opens the returned URL in the browser.
+
+    Until a client ID is built in, the one typed next to the button comes along
+    and is remembered."""
+    if req is not None and req.client_id.strip() and not _nexus_oauth.built_in_client_id():
+        _nexus_oauth.set_client_id(req.client_id)
     try:
         return {"ok": True, "url": _nexus_oauth.begin()}
     except _nexus_oauth.NexusOAuthError as e:

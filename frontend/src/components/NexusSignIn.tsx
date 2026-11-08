@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, LogIn, LogOut } from "lucide-react";
 import { api, type NexusOAuthState, type NexusValidation } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useT } from "@/lib/i18n";
 
 /**
@@ -21,6 +22,8 @@ export function NexusSignIn({
   const [validation, setValidation] = useState<NexusValidation | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // Until a client ID is built in, it is typed next to the button.
+  const [clientId, setClientId] = useState("");
 
   // Callers pass these inline; refs keep the effects below from re-running.
   const onValidatedRef = useRef(onValidated);
@@ -38,7 +41,10 @@ export function NexusSignIn({
   const refresh = useCallback(() => api.nexusOAuth().then((o) => { setOauth(o); return o; }), []);
 
   useEffect(() => {
-    refresh().then((o) => { if (o.signed_in) check().catch(() => {}); }).catch(() => {});
+    refresh().then((o) => {
+      setClientId(o.client_id ?? "");
+      if (o.signed_in) check().catch(() => {});
+    }).catch(() => {});
   }, [refresh, check]);
 
   // While the Nexus page is open in the browser, watch for the sign-in to finish.
@@ -65,7 +71,7 @@ export function NexusSignIn({
     setFailed(false);
     setBusy(true);
     try {
-      const { url } = await api.nexusOAuthStart();
+      const { url } = await api.nexusOAuthStart(askClientId ? clientId.trim() : "");
       await refresh();
       await api.openUrl(url);
     } catch (e: any) {
@@ -96,6 +102,8 @@ export function NexusSignIn({
 
   const available = !!oauth?.available;
   const signedIn = available && !!oauth?.signed_in;
+  const askClientId = oauth?.built_in_client === false;
+  const canSignIn = askClientId ? !!clientId.trim() : available;
 
   return (
     <div className="space-y-3">
@@ -121,9 +129,24 @@ export function NexusSignIn({
         </div>
       ) : (
         <div className="space-y-1.5">
-          <Button onClick={signIn} disabled={busy || !available}>
-            <LogIn /> {t("settings.nexus.signIn")}
-          </Button>
+          <div className="flex gap-2">
+            {askClientId && (
+              <Input
+                id="nexusclientid"
+                className="flex-1"
+                value={clientId}
+                placeholder={t("settings.nexus.clientId")}
+                aria-label={t("settings.nexus.clientId")}
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(e) => setClientId(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && canSignIn && !busy && signIn()}
+              />
+            )}
+            <Button onClick={signIn} disabled={busy || !canSignIn}>
+              <LogIn /> {t("settings.nexus.signIn")}
+            </Button>
+          </div>
           {failed && (
             <p className="flex items-center gap-1.5 text-xs text-[hsl(var(--warning))]">
               <AlertTriangle className="size-3.5" /> {t("settings.nexus.signInFailed")}

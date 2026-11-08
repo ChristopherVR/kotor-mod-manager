@@ -177,13 +177,37 @@ test("Sign in with Nexus Mods opens the Nexus page and waits for approval", asyn
   await expect(page.getByRole("button", { name: "Sign in with Nexus Mods", exact: true })).toBeEnabled();
 });
 
-test("Nexus sign-in stays disabled until the app has a Nexus client ID", async ({ page }) => {
+test("Nexus client ID can be typed next to the sign-in button", async ({ page }) => {
+  let started: unknown = null;
+  await page.route("http://127.0.0.1:8756/api/nexus/oauth**", async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/start")) {
+      started = route.request().postDataJSON();
+      await route.fulfill({ json: { ok: true, url: "https://users.nexusmods.com/oauth/authorize?x=1" } });
+      return;
+    }
+    await route.fulfill({ json: {
+      available: false, built_in_client: false, client_id: "",
+      signed_in: false, name: "", is_premium: false, flow: { status: "idle" },
+    } });
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  const signIn = page.getByRole("button", { name: "Sign in with Nexus Mods", exact: true });
+  await expect(signIn).toBeDisabled();
+  await page.getByRole("textbox", { name: "Nexus client ID", exact: true }).fill("  kmi_client  ");
+  await expect(signIn).toBeEnabled();
+  await signIn.click();
+  await expect.poll(() => started).toEqual({ client_id: "kmi_client" });
+});
+
+test("No client ID box once the client ID is built in", async ({ page }) => {
   await page.route("http://127.0.0.1:8756/api/nexus/oauth**", route => route.fulfill({
-    json: { available: false, signed_in: false, name: "", is_premium: false, flow: { status: "idle" } },
+    json: { available: true, built_in_client: true, client_id: "", signed_in: false,
+            name: "", is_premium: false, flow: { status: "idle" } },
   }));
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Account", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Sign in with Nexus Mods", exact: true })).toBeDisabled();
-  await expect(page.locator("#nexuskey")).toHaveCount(0);
-  await expect(page.getByText("client ID", { exact: false })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign in with Nexus Mods", exact: true })).toBeEnabled();
+  await expect(page.locator("#nexusclientid")).toHaveCount(0);
 });

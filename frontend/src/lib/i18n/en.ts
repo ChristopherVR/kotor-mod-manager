@@ -283,6 +283,7 @@ export const en: Dict = {
   "settings.nexus.saving": "Saving…",
   "settings.nexus.allowance": "Nexus allowance left: {daily} today, {hourly} this hour.",
   "settings.nexus.signIn": "Sign in with Nexus Mods",
+  "settings.nexus.clientId": "Nexus client ID",
   "settings.nexus.waiting": "Finish signing in on the Nexus Mods page that just opened in your browser.",
   "settings.nexus.cancel": "Cancel",
   "settings.nexus.signedInAs": "Signed in as {name}",
@@ -335,6 +336,7 @@ export const en: Dict = {
   "settings.updates.installing": "Installing…",
   "settings.updates.downloading": "Downloading update… {pct}%",
   "settings.updates.upToDate": "Up to date.",
+  "settings.updates.disabled": "This is a preview build for testing, so it does not check for or install updates.",
 
   // Login dialog
   "login.title": "Sign in to DeadlyStream",

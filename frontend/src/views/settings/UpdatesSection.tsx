@@ -78,13 +78,17 @@ export function UpdatesSection({ status, addLog }: UpdatesSectionProps) {
               v{update?.current_version ?? status?.version ?? "?"}
             </span>
           </p>
-          <Button variant="outline" size="sm" className="ml-auto"
-                  onClick={checkUpdates} disabled={checking}>
-            <RefreshCw className={checking ? "animate-spin" : ""} />
-            {checking ? t("settings.updates.checking") : t("settings.updates.check")}
-          </Button>
+          {!update?.updates_disabled && (
+            <Button variant="outline" size="sm" className="ml-auto"
+                    onClick={checkUpdates} disabled={checking}>
+              <RefreshCw className={checking ? "animate-spin" : ""} />
+              {checking ? t("settings.updates.checking") : t("settings.updates.check")}
+            </Button>
+          )}
         </div>
-        {update?.available ? (
+        {update?.updates_disabled ? (
+          <p className="text-xs text-muted-foreground">{t("settings.updates.disabled")}</p>
+        ) : update?.available ? (
           <div className="rounded-md border border-[hsl(var(--info)/0.4)] bg-[hsl(var(--info)/0.1)] p-3">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-[hsl(var(--info))]">

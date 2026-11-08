@@ -21,9 +21,9 @@ document (https://users.nexusmods.com/.well-known/openid-configuration):
 
 This is a public client: there is no client secret, PKCE protects the code. The
 client ID is issued by Nexus Mods support and goes in `CLIENT_ID` below. Until it
-is set, `available()` is False and the Sign in button stays disabled. Developers
-can try a client ID without rebuilding through the KMI_NEXUS_CLIENT_ID
-environment variable.
+is set, the app shows a client ID box next to the Sign in button (saved as the
+`nexus_oauth_client_id` setting), and the KMI_NEXUS_CLIENT_ID environment
+variable works too.
 
 Tokens live in the OS keyring, never in config.json. Windows caps a single
 credential at 2560 bytes and a JWT can be longer, so they are stored in chunks.
@@ -108,8 +108,32 @@ class _TokenRejected(NexusOAuthError):
 # Configuration
 # ---------------------------------------------------------------------------
 
+def built_in_client_id() -> bool:
+    """Whether this build ships with the client ID Nexus issued."""
+    return bool(CLIENT_ID)
+
+
 def client_id() -> str:
-    return CLIENT_ID or os.environ.get("KMI_NEXUS_CLIENT_ID", "").strip()
+    if CLIENT_ID:
+        return CLIENT_ID
+    env = os.environ.get("KMI_NEXUS_CLIENT_ID", "").strip()
+    if env:
+        return env
+    try:
+        import config as cfg
+        return str(cfg.load().get("nexus_oauth_client_id", "") or "").strip()
+    except Exception:
+        return ""
+
+
+def set_client_id(value: str) -> None:
+    """Remember a typed-in client ID (only when none is built in)."""
+    if CLIENT_ID:
+        return
+    import config as cfg
+    conf = cfg.load()
+    conf["nexus_oauth_client_id"] = (value or "").strip()
+    cfg.save(conf)
 
 
 def available() -> bool:

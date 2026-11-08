@@ -229,6 +229,7 @@ export const de: Dict = {
   "settings.nexus.saving": "Wird gespeichert…",
   "settings.nexus.allowance": "Verbleibendes Nexus-Kontingent: {daily} heute, {hourly} in dieser Stunde.",
   "settings.nexus.signIn": "Mit Nexus Mods anmelden",
+  "settings.nexus.clientId": "Nexus-Client-ID",
   "settings.nexus.waiting": "Schließe die Anmeldung auf der Nexus-Mods-Seite ab, die sich gerade in deinem Browser geöffnet hat.",
   "settings.nexus.cancel": "Abbrechen",
   "settings.nexus.signedInAs": "Angemeldet als {name}",
@@ -268,6 +269,7 @@ export const de: Dict = {
   "settings.updates.installing": "Installiert…",
   "settings.updates.downloading": "Update wird heruntergeladen… {pct}%",
   "settings.updates.upToDate": "Du hast die neueste Version.",
+  "settings.updates.disabled": "Dies ist ein Vorschau-Build zum Testen, daher sucht und installiert er keine Updates.",
 
   // Login dialog
   "login.title": "DeadlyStream-Anmeldung",

@@ -229,6 +229,7 @@ export const es: Dict = {
   "settings.nexus.saving": "Guardando…",
   "settings.nexus.allowance": "Cuota de Nexus restante: {daily} hoy, {hourly} esta hora.",
   "settings.nexus.signIn": "Iniciar sesión con Nexus Mods",
+  "settings.nexus.clientId": "ID de cliente de Nexus",
   "settings.nexus.waiting": "Termina de iniciar sesión en la página de Nexus Mods que se acaba de abrir en tu navegador.",
   "settings.nexus.cancel": "Cancelar",
   "settings.nexus.signedInAs": "Sesión iniciada como {name}",
@@ -268,6 +269,7 @@ export const es: Dict = {
   "settings.updates.installing": "Instalando…",
   "settings.updates.downloading": "Descargando actualización… {pct}%",
   "settings.updates.upToDate": "Tienes la última versión.",
+  "settings.updates.disabled": "Esta es una versión preliminar para pruebas, así que no busca ni instala actualizaciones.",
 
   // Login dialog
   "login.title": "Inicio de sesión en DeadlyStream",

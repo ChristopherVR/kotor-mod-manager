@@ -88,8 +88,12 @@ export interface NexusValidation {
 }
 
 export interface NexusOAuthState {
-  /** Sign-in is set up in this build (it has a Nexus client ID). */
+  /** A Nexus client ID is set, so sign-in can start. */
   available: boolean;
+  /** The client ID is built into this build (no client ID box needed). */
+  built_in_client?: boolean;
+  /** The typed-in client ID, when none is built in. */
+  client_id?: string;
   signed_in: boolean;
   name: string;
   is_premium: boolean;
@@ -243,7 +247,11 @@ export const api = {
   logout: () => req<{ ok: boolean }>("/api/logout", { method: "POST" }),
   nexusValidate: () => req<NexusValidation>("/api/nexus/validate"),
   nexusOAuth: () => req<NexusOAuthState>("/api/nexus/oauth"),
-  nexusOAuthStart: () => req<{ ok: boolean; url: string }>("/api/nexus/oauth/start", { method: "POST" }),
+  nexusOAuthStart: (client_id = "") =>
+    req<{ ok: boolean; url: string }>("/api/nexus/oauth/start", {
+      method: "POST",
+      body: JSON.stringify({ client_id }),
+    }),
   nexusOAuthCancel: () => req<{ ok: boolean }>("/api/nexus/oauth/cancel", { method: "POST" }),
   nexusSignOut: () => req<{ ok: boolean }>("/api/nexus/oauth/signout", { method: "POST" }),
   getSettings: () => req<Settings>("/api/settings"),
@@ -419,6 +427,8 @@ export interface UpdateInfo {
   /** False in the Nexus Mods build: it only announces updates. */
   can_self_update?: boolean;
   nexus_url?: string;
+  /** This build never checks for or installs updates (testing preview). */
+  updates_disabled?: boolean;
   error?: string;
 }
 

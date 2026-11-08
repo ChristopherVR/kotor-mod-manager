@@ -428,3 +428,36 @@ def test_no_sign_in_without_a_client_id(monkeypatch, rsa_key):
 def test_no_api_key_header_is_ever_sent():
     assert nexus._auth_headers("raw-token") == {"Authorization": "Bearer raw-token"}
     assert nexus._auth_headers(None) == {}
+
+
+def test_typed_client_id_is_remembered_and_used(monkeypatch):
+    saved = {}
+    monkeypatch.setattr(oauth, "CLIENT_ID", "")
+    monkeypatch.delenv("KMI_NEXUS_CLIENT_ID", raising=False)
+    monkeypatch.setattr("config.load", lambda: dict(saved))
+    monkeypatch.setattr("config.save", lambda c: saved.update(c))
+    assert not oauth.available()
+    oauth.set_client_id("  typed_client ")
+    assert saved["nexus_oauth_client_id"] == "typed_client"
+    assert oauth.available() and not oauth.built_in_client_id()
+    assert _query(oauth.begin())["client_id"] == "typed_client"
+
+
+def test_typed_client_id_never_replaces_a_built_in_one(monkeypatch):
+    monkeypatch.setattr("config.save", lambda c: pytest.fail("must not save"))
+    oauth.set_client_id("other")
+    assert oauth.client_id() == "kmi_test_client" and oauth.built_in_client_id()
+
+
+def test_start_route_saves_the_typed_client_id(monkeypatch):
+    from backend import server
+    from backend.models import NexusOAuthStartRequest
+    saved = {}
+    monkeypatch.setattr(oauth, "CLIENT_ID", "")
+    monkeypatch.delenv("KMI_NEXUS_CLIENT_ID", raising=False)
+    monkeypatch.setattr("config.load", lambda: dict(saved))
+    monkeypatch.setattr("config.save", lambda c: saved.update(c))
+    out = server.nexus_oauth_start(NexusOAuthStartRequest(client_id="from_box"))
+    assert out["ok"] and _query(out["url"])["client_id"] == "from_box"
+    state = server.nexus_oauth_state()
+    assert state["built_in_client"] is False and state["client_id"] == "from_box"
