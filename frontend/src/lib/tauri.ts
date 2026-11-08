@@ -35,6 +35,20 @@ export async function closeGameFront(): Promise<void> {
   await invoke("close_gamefront");
 }
 
+/** Whether the player is signed in to GameFront (desktop app only). */
+export async function gameFrontSignedIn(): Promise<boolean> {
+  if (!isTauri()) return false;
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke<boolean>("gamefront_account");
+}
+
+/** Forget the saved GameFront sign-in. */
+export async function signOutGameFront(): Promise<void> {
+  if (!isTauri()) return;
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("sign_out_gamefront");
+}
+
 export async function finishGameFront(id: string): Promise<void> {
   const { invoke } = await import("@tauri-apps/api/core");
   await invoke("finish_gamefront", { id });

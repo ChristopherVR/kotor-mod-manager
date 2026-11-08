@@ -276,6 +276,11 @@ export const en: Dict = {
   "settings.account.signedInHint": "Connected to DeadlyStream.",
   "settings.account.notSignedIn": "Not signed in",
   "settings.account.notSignedInHint": "Sign in to DeadlyStream to download mods that require an account.",
+  "settings.gamefront.signedInHint": "Connected to GameFront. Mod downloads from GameFront use this sign-in.",
+  "settings.gamefront.notSignedInHint": "Sign in to GameFront to download mods hosted there. Tick Stay logged in so the app remembers you.",
+  "settings.gamefront.desktopOnly": "GameFront sign-in is only available in the desktop app.",
+  "settings.gamefront.signedOut": "Signed out of GameFront.",
+  "settings.gamefront.openFailed": "Could not open GameFront: {error}",
 
   // Settings → Nexus
   "settings.nexus.title": "Nexus Mods",

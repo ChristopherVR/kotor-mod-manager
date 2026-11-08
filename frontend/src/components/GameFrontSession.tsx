@@ -1,51 +1,89 @@
-import { useState } from "react";
-import { api } from "@/lib/api";
-import { closeGameFront, isTauri, openGameFront } from "@/lib/tauri";
+import { useEffect, useState } from "react";
+import { CheckCircle2, LogIn, LogOut } from "lucide-react";
+import { gameFrontSignedIn, isTauri, openGameFront, signOutGameFront } from "@/lib/tauri";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useT } from "@/lib/i18n";
 
-export function GameFrontSession() {
-  const [message, setMessage] = useState("");
+interface GameFrontSessionProps {
+  addLog: (message: string, tag?: string) => void;
+}
+
+/** GameFront account card, laid out like the DeadlyStream one. */
+export function GameFrontSession({ addLog }: GameFrontSessionProps) {
+  const t = useT();
+  const [signedIn, setSignedIn] = useState(false);
   const [busy, setBusy] = useState(false);
-  const open = async (external: boolean) => {
+  const desktop = isTauri();
+
+  useEffect(() => {
+    if (!desktop) return;
+    let stopped = false;
+    let unlisten: (() => void) | undefined;
+    gameFrontSignedIn().then((v) => { if (!stopped) setSignedIn(v); }).catch(() => {});
+    // The GameFront window reports sign-ins as they happen.
+    import("@tauri-apps/api/event").then(async ({ listen }) => {
+      const off = await listen<boolean>("gamefront-account", (e) => setSignedIn(e.payload));
+      if (stopped) off(); else unlisten = off;
+    }).catch(() => {});
+    return () => { stopped = true; unlisten?.(); };
+  }, [desktop]);
+
+  const signIn = async () => {
     setBusy(true);
     try {
-      if (external) {
-        const result = await api.gamefrontExternal();
-        setMessage(`Save the mod archive in ${result.destination}.`);
-      } else {
-        // Without the backend the window can still open on the sign-in page.
-        const request = await api.gamefrontRequest().then(r => r.request, () => null);
-        await openGameFront(request);
-        setMessage("GameFront is open. Choose Stay logged in when signing in. You can reopen this window at any time.");
-      }
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not open GameFront.");
-    } finally { setBusy(false); }
-  };
-  const close = async () => {
-    try {
-      await closeGameFront();
-      setMessage("The GameFront window was closed. You can open it again at any time.");
-    } catch {
-      setMessage("Could not close the GameFront window. Restarting the app closes it.");
+      await openGameFront(null);
+    } catch (e) {
+      addLog(t("settings.gamefront.openFailed", { error: e instanceof Error ? e.message : String(e) }), "error");
+    } finally {
+      setBusy(false);
     }
   };
-  return <Card>
-    <CardHeader><CardTitle>GameFront</CardTitle></CardHeader>
-    <CardContent className="space-y-3">
-      <p className="text-sm text-muted-foreground">
-        Sign in once in the GameFront window and choose Stay logged in. Your browser session
-        is saved on this device and reused for mod downloads. GameFront may occasionally
-        ask you to verify again. To sign out, use Logout in that window. If the window
-        stays blank or will not close, use Close GameFront window, then try your regular browser.
-      </p>
-      <div className="flex flex-wrap gap-2">
-        {isTauri() && <Button disabled={busy} onClick={() => open(false)}>Open saved GameFront session</Button>}
-        <Button variant="outline" disabled={busy} onClick={() => open(true)}>Use my regular browser</Button>
-        {isTauri() && <Button variant="ghost" onClick={close}>Close GameFront window</Button>}
-      </div>
-      {message && <p role="status" className="text-sm text-muted-foreground">{message}</p>}
-    </CardContent>
-  </Card>;
+
+  const signOut = async () => {
+    setBusy(true);
+    try {
+      await signOutGameFront();
+      setSignedIn(false);
+      addLog(t("settings.gamefront.signedOut"), "success");
+    } catch (e) {
+      addLog(e instanceof Error ? e.message : String(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>GameFront</CardTitle></CardHeader>
+      <CardContent>
+        {signedIn ? (
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                {t("settings.account.signedInName")}
+                <CheckCircle2 className="size-4 text-[hsl(var(--success))]" />
+              </p>
+              <p className="text-xs text-muted-foreground">{t("settings.gamefront.signedInHint")}</p>
+            </div>
+            <Button variant="outline" size="sm" disabled={busy} onClick={signOut}>
+              <LogOut /> {t("common.signOut")}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">{t("settings.account.notSignedIn")}</p>
+              <p className="text-xs text-muted-foreground">
+                {desktop ? t("settings.gamefront.notSignedInHint") : t("settings.gamefront.desktopOnly")}
+              </p>
+            </div>
+            <Button variant="default" size="sm" disabled={busy || !desktop} onClick={signIn}>
+              <LogIn /> {t("common.signIn")}
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }

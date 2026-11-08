@@ -407,7 +407,8 @@ fn main() {
         .manage(gamefront::Session::default())
         .invoke_handler(tauri::generate_handler![apply_update, set_nxm_handler,
             gamefront::open_gamefront, gamefront::finish_gamefront,
-            gamefront::close_gamefront])
+            gamefront::close_gamefront, gamefront::gamefront_account,
+            gamefront::sign_out_gamefront])
         .on_window_event(|window, event| {
             // Only the main window ending means the app is over.
             if window.label() != "main" {

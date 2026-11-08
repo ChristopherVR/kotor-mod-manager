@@ -222,6 +222,11 @@ export const es: Dict = {
   "settings.account.signedInHint": "Conectado a DeadlyStream.",
   "settings.account.notSignedIn": "Sin sesión iniciada",
   "settings.account.notSignedInHint": "Inicia sesión en DeadlyStream para descargar mods que requieran una cuenta.",
+  "settings.gamefront.signedInHint": "Conectado a GameFront. Las descargas de mods de GameFront usan esta sesión.",
+  "settings.gamefront.notSignedInHint": "Inicia sesión en GameFront para descargar los mods alojados allí. Marca Mantener sesión iniciada para que la app te recuerde.",
+  "settings.gamefront.desktopOnly": "El inicio de sesión en GameFront solo está disponible en la app de escritorio.",
+  "settings.gamefront.signedOut": "Sesión de GameFront cerrada.",
+  "settings.gamefront.openFailed": "No se pudo abrir GameFront: {error}",
 
   // Settings → Nexus
   "settings.nexus.title": "Nexus Mods",

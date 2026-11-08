@@ -56,7 +56,6 @@ export function AccountSection({ status, username, onSignIn, onSignOut, addLog }
 
   return (
     <div className="space-y-4">
-      <GameFrontSession />
       {/* DeadlyStream account */}
       <Card>
         <CardHeader><CardTitle>{t("settings.account.title")}</CardTitle></CardHeader>
@@ -109,6 +108,8 @@ export function AccountSection({ status, username, onSignIn, onSignOut, addLog }
           <NexusKeyForm addLog={addLog} />
         </CardContent>
       </Card>
+
+      <GameFrontSession addLog={addLog} />
 
       {/* Mod build source site (scraping) */}
       <Card>

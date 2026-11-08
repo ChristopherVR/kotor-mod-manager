@@ -7,15 +7,22 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Mutex, MutexGuard,
     },
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
-use tauri::{Emitter, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    Emitter, Manager, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+};
 
 const LABEL: &str = "gamefront-browser";
+const ACCOUNT_URL: &str = "https://www.gamefront.com/account";
+/// GameFront only keeps a player signed in between visits when they tick
+/// "Stay logged in", which sets this cookie. Its presence is what "signed in"
+/// means for the installer, because that is what makes later downloads work.
+const REMEMBER_COOKIE: &str = "remember_web_";
 /// How long a GameFront page may stay blank before the player is told how to
 /// get out of it. Slow verification pages usually finish well inside this.
 const LOAD_TIMEOUT: Duration = Duration::from_secs(30);
@@ -36,6 +43,11 @@ pub struct Session {
     /// newer navigation or finished load has happened since it started.
     load_generation: AtomicU64,
     loaded_generation: AtomicU64,
+    /// Set when the installer closes the window itself, so that is not
+    /// mistaken for the player giving up on a download.
+    closing_quietly: AtomicBool,
+    /// Serializes sign-in checks so two page loads cannot race each other.
+    account: Mutex<()>,
 }
 
 /// A panic while a lock was held must not take every later download with it.
@@ -125,7 +137,7 @@ fn report(app: &tauri::AppHandle, message: &str) {
 
 pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), String> {
     let state = app.state::<Session>();
-    let mut target: Url = "https://www.gamefront.com/account".parse().unwrap();
+    let mut target: Url = ACCOUNT_URL.parse().unwrap();
     let mut navigate = false;
     if let Some(mut req) = request {
         target = request_url(&req)?;
@@ -158,17 +170,26 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
         eprintln!("[GameFront] Replacing an unresponsive GameFront window");
         let _ = window.destroy();
     }
+    watch_page_load(app);
+    build(app, target, true)?;
+    Ok(())
+}
+
+fn build(app: &tauri::AppHandle, target: Url, visible: bool) -> Result<WebviewWindow, String> {
     let profile = app
         .path()
         .app_local_data_dir()
         .map_err(|_| "Profile folder unavailable")?
         .join("gamefront-profile");
     fs::create_dir_all(&profile).map_err(|_| "Cannot create GameFront profile")?;
-    watch_page_load(app);
-    WebviewWindowBuilder::new(app, LABEL, WebviewUrl::External(target))
-        .title("GameFront - saved browser session")
+    app.state::<Session>()
+        .closing_quietly
+        .store(false, Ordering::SeqCst);
+    let window = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::External(target))
+        .title("GameFront")
         .inner_size(1100.0, 780.0)
         .center()
+        .visible(visible)
         .data_directory(profile)
         .on_navigation(site_url)
         .on_new_window(|_, _| NewWindowResponse::Deny)
@@ -177,6 +198,11 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
                 let state = window.app_handle().state::<Session>();
                 let current = state.load_generation.load(Ordering::SeqCst);
                 state.loaded_generation.store(current, Ordering::SeqCst);
+                // Reading cookies from this thread would deadlock WebView2.
+                let app = window.app_handle().clone();
+                std::thread::spawn(move || {
+                    refresh_account(&app);
+                });
             }
         })
         .on_download(|webview, event| {
@@ -256,6 +282,136 @@ pub fn open(app: &tauri::AppHandle, request: Option<Request>) -> Result<(), Stri
         })
         .build()
         .map_err(|_| "Could not create the GameFront browser")?;
+    let handle = app.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::Destroyed = event {
+            let state = handle.state::<Session>();
+            let quiet = state.closing_quietly.swap(false, Ordering::SeqCst);
+            // The player closed the window while a mod was still waiting on
+            // it. Let the installer carry on in their regular browser instead.
+            if !quiet && lock(&state.active).is_some() {
+                let _ = handle.emit_to("main", "gamefront-closed", ());
+            }
+        }
+    });
+    Ok(window)
+}
+
+fn account_file(app: &tauri::AppHandle) -> Option<PathBuf> {
+    Some(app.path().app_local_data_dir().ok()?.join("gamefront-account.json"))
+}
+
+fn now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// The sign-in last seen in the GameFront window. The browser profile can only
+/// be read while that window exists, so this remembers it in between.
+fn saved_sign_in(app: &tauri::AppHandle) -> bool {
+    let Some(text) = account_file(app).and_then(|p| fs::read_to_string(p).ok()) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    match value.get("expires").and_then(|e| e.as_i64()) {
+        Some(expires) => expires > now(),
+        None => value.get("signed_in").and_then(|s| s.as_bool()) == Some(true),
+    }
+}
+
+/// `Some(expiry)` records a sign-in, `None` forgets it.
+fn save_sign_in(app: &tauri::AppHandle, sign_in: Option<Option<i64>>) {
+    let Some(path) = account_file(app) else {
+        return;
+    };
+    match sign_in {
+        Some(expires) => {
+            let body = serde_json::json!({ "signed_in": true, "expires": expires });
+            let _ = fs::write(path, body.to_string());
+        }
+        None => {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+/// Read the sign-in straight from the GameFront window: `None` when it cannot
+/// be read, `Some(None)` when signed out, `Some(Some(expiry))` when signed in.
+/// Must not run on the main thread.
+fn live_sign_in(window: &WebviewWindow) -> Option<Option<Option<i64>>> {
+    let cookies = window.cookies_for_url(ACCOUNT_URL.parse().ok()?).ok()?;
+    Some(
+        cookies
+            .iter()
+            .find(|c| c.name().starts_with(REMEMBER_COOKIE))
+            .map(|c| c.expires_datetime().map(|t| t.unix_timestamp())),
+    )
+}
+
+/// Check whether the player is signed in, remember it, and tell the installer
+/// when it changes. Signing in from Settings closes the window again by
+/// itself, because there is nothing left to do in it.
+fn refresh_account(app: &tauri::AppHandle) -> bool {
+    let state = app.state::<Session>();
+    let _guard = lock(&state.account);
+    let before = saved_sign_in(app);
+    let Some(window) = app.get_webview_window(LABEL) else {
+        return before;
+    };
+    // A hidden window only exists while signing out.
+    if !window.is_visible().unwrap_or(false) {
+        return before;
+    }
+    let Some(live) = live_sign_in(&window) else {
+        return before;
+    };
+    let after = live.is_some();
+    save_sign_in(app, live);
+    if after != before {
+        let _ = app.emit_to("main", "gamefront-account", after);
+        if after && lock(&state.active).is_none() {
+            close(app);
+        }
+    }
+    after
+}
+
+/// Forget the GameFront sign-in by wiping the window's saved browser data.
+fn sign_out(app: &tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<Session>();
+    let _guard = lock(&state.account);
+    let existing = app.get_webview_window(LABEL);
+    let window = match &existing {
+        Some(window) => window.clone(),
+        // The profile can only be cleared through a browser that uses it.
+        None => build(app, "about:blank".parse().unwrap(), false)?,
+    };
+    let cleared = window.clear_all_browsing_data().is_ok() && {
+        // Clearing finishes in the background. Wait until the sign-in is
+        // really gone before reporting success, so the button never lies.
+        (0..50).any(|_| {
+            let gone = live_sign_in(&window) == Some(None);
+            if !gone {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            gone
+        })
+    };
+    if existing.is_some() {
+        // Show the sign-in page again in a window the player already had open.
+        let _ = window.navigate(ACCOUNT_URL.parse().unwrap());
+    } else {
+        close(app);
+    }
+    if !cleared {
+        return Err("Could not sign out of GameFront. Please try again.".into());
+    }
+    save_sign_in(app, None);
+    let _ = app.emit_to("main", "gamefront-account", false);
     Ok(())
 }
 
@@ -273,7 +429,7 @@ fn watch_page_load(app: &tauri::AppHandle) {
         if still_current && !loaded && app.get_webview_window(LABEL).is_some() {
             report(
                 &app,
-                "GameFront is taking a long time to load. If its window stays blank, close it and choose \"Use my regular browser\" in Settings > Account.",
+                "GameFront is taking a long time to load. If its window stays blank, close it and the installer will open GameFront in your regular browser instead.",
             );
         }
     });
@@ -283,6 +439,9 @@ fn watch_page_load(app: &tauri::AppHandle) {
 /// button and when the main window goes away, so it can never be left behind.
 pub fn close(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window(LABEL) {
+        app.state::<Session>()
+            .closing_quietly
+            .store(true, Ordering::SeqCst);
         if window.destroy().is_err() {
             let _ = window.close();
         }
@@ -328,6 +487,26 @@ pub async fn close_gamefront(window: WebviewWindow, app: tauri::AppHandle) -> Re
     }
     close(&app);
     Ok(())
+}
+
+/// Whether the player is signed in to GameFront.
+#[tauri::command]
+pub async fn gamefront_account(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
+    if window.label() != "main" {
+        return Err("Only the installer can check GameFront".into());
+    }
+    Ok(refresh_account(&app))
+}
+
+#[tauri::command]
+pub async fn sign_out_gamefront(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+    if window.label() != "main" {
+        return Err("Only the installer can sign out of GameFront".into());
+    }
+    sign_out(&app)
 }
 
 #[cfg(test)]

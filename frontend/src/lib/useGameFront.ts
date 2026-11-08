@@ -9,7 +9,17 @@ export function useGameFront(ready: boolean, log: (message: string, tag?: string
     let stopped = false, busy = false, current: string | null = null;
     let unlisten: (() => void) | undefined;
     import("@tauri-apps/api/event").then(async ({ listen }) => {
-      const off = await listen<string>("gamefront-message", e => log(e.payload, "info"));
+      const offMessage = await listen<string>("gamefront-message", e => log(e.payload, "info"));
+      // The player closed the GameFront window before the mod arrived, for
+      // example because it stayed blank. Carry on in their regular browser.
+      const offClosed = await listen("gamefront-closed", async () => {
+        try {
+          if (!(await api.gamefrontRequest()).request) return;
+          const fallback = await api.gamefrontExternal();
+          log(`GameFront was opened in your regular browser. Save the download in ${fallback.destination} or your Downloads folder.`, "warning");
+        } catch { /* The backend is gone; nothing is waiting on GameFront. */ }
+      });
+      const off = () => { offMessage(); offClosed(); };
       if (stopped) off(); else unlisten = off;
     }).catch(() => {});
     const poll = async () => {
