@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.26.0] - 2026-11-08
+
+### Features
+
+- Simple Sign in and Sign out buttons for GameFront
+
+### Miscellaneous
+
+- Remove stray build cache files
 ## [0.25.1] - 2026-11-06
 
 ### Miscellaneous
