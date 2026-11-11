@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.26.1] - 2026-11-11
+
+### Miscellaneous
+
+- Bump taiki-e/install-action from 2.88.1 to 2.90.2 (#115)
+- Bump the npm-minor-and-patch group in /frontend with 6 updates (#116)
+- Bump the pip-minor-and-patch group with 6 updates (#117)
+- Bump soupsieve from 3.0.4 to 4.0.1 (#118)
 ## [0.26.0] - 2026-11-08
 
 ### Features
