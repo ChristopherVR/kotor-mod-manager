@@ -88,6 +88,24 @@ K1_CUTSCENES_REMASTERED = {
 # Each value is a dict of Directives field names -> verified value, plus the
 # optional pseudo-field "note" (free text shown to the player, never acted on).
 
+# Taris Reskin: only Part 1 and Part 2, and the sky textures must go first. The
+# archive names its folders Taris_Tex_Part1, Taris_Tex_Part2, SithBase and
+# Dantooine_Estates, so those exact names are matched (the guide's wording,
+# "Part 1" and "Sith Base", matches nothing and would install everything). The
+# guide says to delete the sky files "sorted by name" from LTS_sky0001 to
+# LTS_SKY0005, which takes in the two "Fix" files that sort between them.
+K1_TARIS_RESKIN = {
+    "layer": LAYER_AREA,
+    "file_only": ["Taris_Tex_Part1", "Taris_Tex_Part2"],
+    "file_except": ["Dantooine_Estates", "SithBase",
+                    "LTS_Bsky01.tga", "LTS_Bsky02.tga",
+                    "LTS_sky0001.tga", "LTS_Sky0001Fix.tga",
+                    "LTS_sky0002.tga", "LTS_sky0003.tga",
+                    "LTS_sky0004.tga", "LTS_Sky0004Fix.tga",
+                    "LTS_sky0005.tga"],
+    "requires_patch": True,
+}
+
 K1_SPOILERFREE: dict[str, dict] = {
 
     # -- Layer 0: dialogue and bugfix groundwork ---------------------------
@@ -414,16 +432,8 @@ K1_SPOILERFREE: dict[str, dict] = {
     "2247": {"layer": LAYER_HAWK,
              "note": "The version without overlays is recommended."},
 
-    # [91] Only Part 1 and Part 2, and seven sky textures must go first.
-    "guide:91": {
-        "layer": LAYER_AREA,
-        "file_only": ["Part 1", "Part 2"],
-        "file_except": ["Dantooine Estates", "Sith Base",
-                        "LTS_Bsky01.tga", "LTS_Bsky02.tga",
-                        "LTS_sky0001.tga", "LTS_sky0002.tga", "LTS_sky0003.tga",
-                        "LTS_sky0004.tga", "LTS_sky0005.tga"],
-        "requires_patch": True,
-    },
+    # [91] Taris Reskin - see K1_TARIS_RESKIN (the K1 Full build has it at 92).
+    "guide:91": K1_TARIS_RESKIN,
 
     "guide:92": {"layer": LAYER_SKYBOX},
 
@@ -785,6 +795,7 @@ K1_SPOILERFREE_NOTES = {
 # the same steps as in the spoiler-free build (entries 186 and 188 here), and
 # the two cutscene packs (entries 196 and 197 here).
 K1_FULL = {
+    "guide:92": K1_TARIS_RESKIN,
     "guide:186": {"tool_step": "laa"},
     "1159": {"tool_step": "hrmenus"},
     "2380": K1_CUTSCENES_RESCALED,

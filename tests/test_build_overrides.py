@@ -360,3 +360,27 @@ def test_full_build_shares_the_cutscene_rules_with_the_spoiler_free_build():
 
     other = build_overrides.apply(Directives(), "k1_full", "", guide_index=197)
     assert other.skip_if == ["K1 Cutscenes Rescaled"]
+
+
+def test_taris_reskin_keeps_only_parts_one_and_two_in_both_k1_builds():
+    """The Nexus archive names its folders Taris_Tex_Part1 / Taris_Tex_Part2 /
+    SithBase / Dantooine_Estates. The curated rule once used the guide's wording
+    ("Part 1", "Sith Base"), which matched nothing, so everything was installed:
+    the Dantooine and Sith Base textures and every sky file the guide says to
+    delete. K1 Full had no rule at all."""
+    from installer.build_directives import Directives, select_paths
+    base = "Taris_Reskin/Taris_TexturePack/"
+    rels = [base + "Readme.txt"]
+    rels += [f"{base}Dantooine_Estates/LDA_wall{i}.tga" for i in range(3)]
+    rels += [f"{base}SithBase/LSB_wall{i}.tga" for i in range(3)]
+    rels += [f"{base}Taris_Tex_Part1/LTS_wall{i}.tga" for i in range(3)]
+    rels += [f"{base}Taris_Tex_Part2/LTS_floor{i}.tga" for i in range(3)]
+    skies = ["LTS_Bsky01.tga", "LTS_Bsky02.tga", "LTS_sky0001.tga", "LTS_Sky0001Fix.tga",
+             "LTS_sky0002.tga", "LTS_sky0003.tga", "LTS_SKY0004.tga", "LTS_SKY0004Fix.tga",
+             "LTS_SKY0005.tga"]
+    rels += [f"{base}Taris_Tex_Part1/{n}" for n in skies]
+    for build, order in (("k1_full", 92), ("k1_spoilerfree", 91)):
+        dirs = build_overrides.apply(Directives(), build, "", order)
+        kept, _ = select_paths(rels, dirs)
+        assert sorted(kept) == sorted(r for r in rels
+                                      if "Part1/LTS_wall" in r or "Part2/" in r), build
