@@ -27,6 +27,12 @@ def _tree(tmp_path, text=ORIGINAL):
     lexer = tmp_path / "Libraries/PyKotor/src/pykotor/resource/formats/ncs/compiler/lexer.py"
     lexer.parent.mkdir(parents=True)
     lexer.write_text(LEXER, encoding="utf-8")
+    reader = tmp_path / "Libraries/PyKotor/src/pykotor/tslpatcher/reader.py"
+    reader.parent.mkdir(parents=True)
+    reader.write_text(READER, encoding="utf-8")
+    gff = tmp_path / "Libraries/PyKotor/src/pykotor/tslpatcher/mods/gff.py"
+    gff.parent.mkdir(parents=True)
+    gff.write_text(GFF_MODS, encoding="utf-8")
     return f
 
 
@@ -124,3 +130,29 @@ def test_the_float_first_forms_were_already_right_and_are_left_alone(tmp_path):
     text = f.read_text()
     assert "NCSInstructionType.MULFI, DataType.FLOAT, DataType.FLOAT, DataType.INT" in text
     assert "NCSInstructionType.ADDFI, DataType.FLOAT, DataType.FLOAT, DataType.INT" in text
+
+
+READER = """            raw_struct_id: str = ini_section_dict.pop("TypeId", "0").strip()
+            if not is_int(raw_struct_id):
+                msg = f"Invalid TypeId: expected int but got '{raw_struct_id}' in [{identifier}]"
+                raise ValueError(msg)
+            struct_id = int(raw_struct_id)
+"""
+
+GFF_MODS = """        list_container._structs.append(new_struct)
+        if self.index_to_token is not None:
+            pass
+"""
+
+
+def test_a_struct_can_take_the_position_in_the_list_as_its_id(tmp_path):
+    """Trask Ulgo Without Tutorials uses TypeId=ListIndex, which the pinned reader
+    refused: "Invalid TypeId: expected int but got 'ListIndex'"."""
+    _tree(tmp_path)
+    assert hp._apply_source_patches(tmp_path)
+    reader = (tmp_path / "Libraries/PyKotor/src/pykotor/tslpatcher/reader.py").read_text()
+    gff = (tmp_path / "Libraries/PyKotor/src/pykotor/tslpatcher/mods/gff.py").read_text()
+    assert 'raw_struct_id.lower() == "listindex"' in reader
+    placeholder = reader.split('raw_struct_id = "')[1].split('"')[0]
+    assert f"new_struct.struct_id == {placeholder}" in gff
+    assert "new_struct.struct_id = len(list_container) - 1" in gff

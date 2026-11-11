@@ -84,6 +84,23 @@ SOURCE_PATCHES = (
      "        if value > 0x7FFFFFFF:  # 32-bit signed: 0xFFFFFFFF is -1\n"
      "            value -= 1 << 32\n"
      "        t.value = IntExpression(value)\n"),
+    # TSLPatcher lets a struct added to a list say "TypeId=ListIndex": its struct id
+    # becomes its position in the list. The pinned reader only accepted a number, so
+    # a mod using it (Trask Ulgo Without Tutorials) stopped with "Invalid TypeId:
+    # expected int but got 'ListIndex'". The reader marks such a struct with a
+    # placeholder id and the list code swaps in the real position once it is added.
+    ("Libraries/PyKotor/src/pykotor/tslpatcher/reader.py",
+     "            if not is_int(raw_struct_id):\n"
+     "                msg = f\"Invalid TypeId:",
+     "            if raw_struct_id.lower() == \"listindex\":\n"
+     "                raw_struct_id = \"-2147483647\"  # placeholder, see gff.py\n"
+     "            if not is_int(raw_struct_id):\n"
+     "                msg = f\"Invalid TypeId:"),
+    ("Libraries/PyKotor/src/pykotor/tslpatcher/mods/gff.py",
+     "        list_container._structs.append(new_struct)\n",
+     "        list_container._structs.append(new_struct)\n"
+     "        if new_struct.struct_id == -2147483647:  # TypeId=ListIndex\n"
+     "            new_struct.struct_id = len(list_container) - 1\n"),
 ) + tuple(
     # An int combined with a float is a float: "FloatToInt(50 * fModifier)" is valid
     # NWScript. The compiler's table recorded the result of int+float, int-float,
