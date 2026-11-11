@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.26.2] - 2026-11-11
+
+### Bug Fixes
+
+- Let Trask Without Tutorials install instead of failing every time
+
+### Miscellaneous
+
+- Add easy forms for reporting problems and suggesting mods
 ## [0.26.1] - 2026-11-11
 
 ### Miscellaneous
