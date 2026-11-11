@@ -1,0 +1,87 @@
+name: Something went wrong
+description: A mod failed to download or install, or the app did something unexpected.
+title: "[Problem] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for letting us know. The more detail you give, the faster we can fix it. You do not need to be technical, just tell us what you saw.
+  - type: input
+    id: mod
+    attributes:
+      label: Which mod (or mods) failed?
+      description: Use the name shown in the app. If every mod fails, say so.
+      placeholder: "Example: Trask Without Tutorials"
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Which build were you installing?
+      options:
+        - KOTOR 1 Full
+        - KOTOR 1 Spoiler-free
+        - KOTOR 2 Full
+        - KOTOR 2 Spoiler-free
+        - Single mods from the library (no build)
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: step
+    attributes:
+      label: When did it go wrong?
+      options:
+        - While downloading
+        - While installing
+        - While signing in to Nexus Mods
+        - The app would not start
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: What did the error say?
+      description: Copy the message exactly if you can, or paste a screenshot. The Activity page in the app also lists what happened, please paste the last few lines for the failing mod.
+      placeholder: Paste the message here
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Shown at the bottom of the left-hand menu in the app (for example v0.26.0).
+      placeholder: "Example: 0.26.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Your computer
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux
+        - Steam Deck
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: game
+    attributes:
+      label: Where did you get the game?
+      description: Some editions are missing folders that a few mods expect.
+      options:
+        - Steam
+        - GOG
+        - Epic Games
+        - Amazon
+        - Disc or other
+        - Not sure
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else?
+      description: Did you try again, restart the app, or install other mods first? Does it happen every time?
