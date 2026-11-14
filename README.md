@@ -1,5 +1,17 @@
 # KOTOR Mod Installer
 
+> [!IMPORTANT]
+> **We recommend [ModSync.rs](https://github.com/kolto-labs/ModSync.rs) instead.**
+> KOTOR Mod Installer is moving into maintenance mode, and its interface is being
+> brought over to ModSync.rs. ModSync.rs is built on shared KOTOR modding tools
+> such as OdyPatcher, and it reads the same instruction files that mod build
+> authors maintain. That makes it easier to keep working as the builds change, and it
+> leaves room to support more BioWare games later, not just KOTOR 1 and 2.
+>
+> This app still works, and you can still
+> [report a problem](../../issues/new/choose) here. New features will land in
+> ModSync.rs.
+
 **Mod _Star Wars: Knights of the Old Republic_ 1 & 2 without the busywork.**
 Download, install, and manage the recommended community mod builds from a single
 app. Pick a build, click once, and it downloads every mod, unpacks it, works out
