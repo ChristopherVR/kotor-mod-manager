@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.26.3] - 2026-11-15
+
+### Bug Fixes
+
+- Install only the Taris Reskin textures the guide asks for, in both KOTOR 1 builds
+
+### Documentation
+
+- Recommend ModSync.rs for new installs going forward
 ## [0.26.2] - 2026-11-11
 
 ### Bug Fixes
