@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.26.5] - 2026-11-23
+
+### Miscellaneous
+
+- Bump the npm-minor-and-patch group in /frontend with 6 updates (#123)
+- Bump taiki-e/install-action from 2.90.3 to 2.90.6 (#124)
+- Bump the pip-minor-and-patch group with 5 updates (#125)
 ## [0.26.4] - 2026-11-16
 
 ### Miscellaneous
